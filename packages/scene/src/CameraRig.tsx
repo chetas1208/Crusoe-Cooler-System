@@ -11,7 +11,8 @@ import type { CamGoal } from './view';
 import type { Topology } from '@loopkeeper/core/contracts';
 import { useCockpit } from './cockpit';
 import { useMapCamera } from './mapCamera';
-import { computeMountTransform, getCameraMount } from './MountedCameraTransforms';
+import { getCameraMount } from './MountedCameraTransforms';
+import { computeMountTransform } from './mountTransform';
 
 const damp = (cur: number, goal: number, lambda: number, dt: number) => cur + (goal - cur) * (1 - Math.exp(-lambda * dt));
 

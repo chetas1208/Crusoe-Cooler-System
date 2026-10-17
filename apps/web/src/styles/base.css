@@ -18,6 +18,7 @@ input { font: inherit; color: inherit; }
 .num { font-variant-numeric: tabular-nums; font-feature-settings: 'tnum' 1, 'zero' 0; }
 .mono { font-family: var(--mono); }
 .app { position: fixed; inset: 0; overflow: hidden; }
+@supports (height: 100dvh) { .app { height: 100dvh; bottom: auto; } }
 .stage, .viewport { position: absolute; inset: 0; }
 .viewport canvas { display: block; touch-action: none; outline: none; }
 

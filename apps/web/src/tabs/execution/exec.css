@@ -157,3 +157,4 @@ textarea.in { height: auto; padding: 8px 10px; resize: vertical; line-height: 1.
 /* honest "topology unavailable" stage: opaque, under the panels, over the 3D canvas */
 .ex-void { position: absolute; inset: 0; z-index: -1; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 8px; padding: 0 28%; text-align: center; background: #090b0f; color: var(--t2); pointer-events: auto; font-size: 13px; line-height: 1.5; }
 .ex-void b { color: var(--warning); font-size: 15px; }
+.ex-prompt { position: absolute; left: 12px; top: 108px; width: min(560px, calc(100vw - 424px)); pointer-events: auto; z-index: 46; }

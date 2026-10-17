@@ -143,6 +143,11 @@ function Hint() {
 function useSafeArea() {
   useEffect(() => {
     const id = setInterval(() => {
+      if (document.documentElement.dataset.phone === '1') {
+        const c = useView.getState().insets;
+        if (c.left || c.right || c.bottom || c.top !== 64) useView.getState().setInsets({ left: 0, right: 0, bottom: 0, top: 64 });
+        return;
+      }
       const W = window.innerWidth;
       const H = window.innerHeight;
       let left = 0;

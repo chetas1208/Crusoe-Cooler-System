@@ -1,4 +1,3 @@
-import * as THREE from 'three';
 import type { Topology, Vec3 } from '@loopkeeper/core/contracts';
 import type { CamGoal } from './view';
 
@@ -33,41 +32,50 @@ export function fitCamera(o: FitOptions): CamGoal {
   const freeH = Math.max(200, o.height - o.insets.top - o.insets.bottom);
   const tanHalf = Math.tan((fov * Math.PI) / 360) * (freeH / o.height);
   const effFov = (2 * Math.atan(tanHalf) * 180) / Math.PI;
-  const cam = new THREE.PerspectiveCamera(effFov, freeW / freeH, 0.1, 500);
-  const corners: THREE.Vector3[] = [];
-  const lo3 = new THREE.Vector3(Infinity, Infinity, Infinity);
-  const hi3 = new THREE.Vector3(-Infinity, -Infinity, -Infinity);
+  // Plain-math perspective projection (exactly what a THREE.PerspectiveCamera + Vector3.project gives for x/y NDC), so this module -
+  // and therefore the view store that imports it - never pulls three.js into the first-paint bundle.
+  type V = [number, number, number];
+  const norm = (a: V): V => {
+    const l = Math.hypot(a[0], a[1], a[2]) || 1;
+    return [a[0] / l, a[1] / l, a[2] / l];
+  };
+  const cross = (a: V, b: V): V => [a[1] * b[2] - a[2] * b[1], a[2] * b[0] - a[0] * b[2], a[0] * b[1] - a[1] * b[0]];
+  const corners: V[] = [];
+  const lo3: V = [Infinity, Infinity, Infinity];
+  const hi3: V = [-Infinity, -Infinity, -Infinity];
   for (const b of o.boxes) {
-    for (const x of [b.min[0], b.max[0]]) for (const y of [b.min[1], b.max[1]]) for (const z of [b.min[2], b.max[2]]) corners.push(new THREE.Vector3(x, y, z));
-    lo3.min(new THREE.Vector3(...b.min));
-    hi3.max(new THREE.Vector3(...b.max));
+    for (const x of [b.min[0], b.max[0]]) for (const y of [b.min[1], b.max[1]]) for (const z of [b.min[2], b.max[2]]) corners.push([x, y, z]);
+    for (let k = 0; k < 3; k++) {
+      lo3[k] = Math.min(lo3[k], b.min[k]);
+      hi3[k] = Math.max(hi3[k], b.max[k]);
+    }
   }
-  const target = lo3.clone().add(hi3).multiplyScalar(0.5);
-  const dir = new THREE.Vector3(Math.sin(az) * Math.cos(el), Math.sin(el), Math.cos(az) * Math.cos(el));
-  const v = new THREE.Vector3();
+  const target: V = [(lo3[0] + hi3[0]) / 2, (lo3[1] + hi3[1]) / 2, (lo3[2] + hi3[2]) / 2];
+  const dir: V = [Math.sin(az) * Math.cos(el), Math.sin(el), Math.cos(az) * Math.cos(el)];
+  const aspect = freeW / freeH;
+  // camera basis for lookAt(target) from target + dir*dist with world up +y (dir is the camera's +z axis)
+  const bz = norm(dir);
+  const bx = norm(cross([0, 1, 0], bz));
+  const by = cross(bz, bx);
   const extent = (dist: number) => {
-    cam.position.copy(target).addScaledVector(dir, dist);
-    cam.lookAt(target);
-    cam.updateMatrixWorld(true);
-    cam.updateProjectionMatrix();
+    const p: V = [target[0] + dir[0] * dist, target[1] + dir[1] * dist, target[2] + dir[2] * dist];
     let mx = 0;
-    let cx = 0;
-    let cy = 0;
     let minx = 9;
     let maxx = -9;
     let miny = 9;
     let maxy = -9;
     for (const c of corners) {
-      v.copy(c).project(cam);
-      mx = Math.max(mx, Math.abs(v.x), Math.abs(v.y));
-      minx = Math.min(minx, v.x);
-      maxx = Math.max(maxx, v.x);
-      miny = Math.min(miny, v.y);
-      maxy = Math.max(maxy, v.y);
+      const d: V = [c[0] - p[0], c[1] - p[1], c[2] - p[2]];
+      const w = -(d[0] * bz[0] + d[1] * bz[1] + d[2] * bz[2]);
+      const nx = (d[0] * bx[0] + d[1] * bx[1] + d[2] * bx[2]) / (w * tanHalf * aspect);
+      const ny = (d[0] * by[0] + d[1] * by[1] + d[2] * by[2]) / (w * tanHalf);
+      mx = Math.max(mx, Math.abs(nx), Math.abs(ny));
+      minx = Math.min(minx, nx);
+      maxx = Math.max(maxx, nx);
+      miny = Math.min(miny, ny);
+      maxy = Math.max(maxy, ny);
     }
-    cx = (minx + maxx) / 2;
-    cy = (miny + maxy) / 2;
-    return { mx, cx, cy };
+    return { mx, cx: (minx + maxx) / 2, cy: (miny + maxy) / 2 };
   };
   let dist = 30;
   for (let pass = 0; pass < 4; pass++) {
@@ -82,12 +90,10 @@ export function fitCamera(o: FitOptions): CamGoal {
     // recentre: shift the target so the projected box is centred in the free region
     const { cx, cy } = extent(dist);
     const halfH = dist * tanHalf;
-    const halfW = halfH * (freeW / freeH);
-    const right = new THREE.Vector3().setFromMatrixColumn(cam.matrixWorld, 0);
-    const up = new THREE.Vector3().setFromMatrixColumn(cam.matrixWorld, 1);
-    target.addScaledVector(right, cx * halfW).addScaledVector(up, cy * halfH);
+    const halfW = halfH * aspect;
+    for (let k = 0; k < 3; k++) target[k] += bx[k] * cx * halfW + by[k] * cy * halfH;
   }
-  return { azimuth: az, elevation: el, distance: dist, target: [target.x, target.y, target.z], fov };
+  return { azimuth: az, elevation: el, distance: dist, target: [target[0], target[1], target[2]], fov };
 }
 
 /** Default overview camera: a steep 3/4 view that keeps all five rows / four roads countable. Dashboard, Map and Fit Facility share it. */
@@ -108,6 +114,8 @@ export function overviewBoxes(topo: Topology): Array<{ min: Vec3; max: Vec3 }> {
 
 /** Free region (CSS px) the panels leave in a canvas: same rule the Shell uses for the camera rig's safe area. */
 export function measureInsets(): { left: number; right: number; top: number; bottom: number } {
+  // phone layout: panels live BELOW the stage (normal flow), so the stage is the whole canvas under the compact top bar
+  if (typeof document !== 'undefined' && document.documentElement.dataset.phone === '1') return { left: 0, right: 0, top: 64, bottom: 0 };
   const W = window.innerWidth;
   const H = window.innerHeight;
   let left = 0;

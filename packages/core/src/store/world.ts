@@ -251,7 +251,22 @@ function applySnapshot(s: WorldSnapshot) {
 }
 
 /** The one place server events change world state. */
+/**
+ * Communications events (`comm.*`) are not world state: they are forwarded, untouched and before any replay/dup filtering,
+ * to whoever registered (the Communications store dedupes by run_id+seq itself). The world reducer never sees them.
+ */
+type RawStreamListener = (e: { type: string; seq?: number; run_id?: string; payload?: unknown } & Record<string, unknown>) => void;
+const rawListeners = new Set<RawStreamListener>();
+export function onCommStreamEvent(fn: RawStreamListener): () => void {
+  rawListeners.add(fn);
+  return () => rawListeners.delete(fn);
+}
+
 export function applyEvent(e: StreamEvent) {
+  if ((e.type as string).startsWith('comm.') || (e.type as string) === 'dod.contract') {
+    for (const l of rawListeners) l(e as unknown as Parameters<RawStreamListener>[0]);
+    return;
+  }
   // replay never mutates the authoritative world: live events are dropped while scrubbing,
   // and a fresh snapshot is fetched when the operator returns to live.
   if (useReplay.getState().active && e.type !== 'heartbeat') return;

@@ -1,7 +1,7 @@
 # Provenance
 
-This public repository is a **clean export** of a private development repository. The export was made on 17 October 2026 from the
-private repository's commit `8ad9aec`, and the public history starts fresh. The private repository keeps the full development history
+This public repository is a **clean export** of a private development repository. The export was made on 17 October 2026 (refreshed later that day) from the
+private repository's commit `a80dd59`, and the public history starts fresh. The private repository keeps the full development history
 (including every intermediate state); a bundle of it is retained by the maintainer.
 
 * Pre-existing / earlier work: the simulator, mock API, web console and iOS app that predate the work listed in `PROGRESS.md` sections dated

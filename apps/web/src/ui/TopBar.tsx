@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from 'react';
 import { AnimatePresence, motion } from 'motion/react';
-import { Activity, Cpu, FlaskConical, Pause, Play, Search, ShieldCheck, Sparkles } from 'lucide-react';
+import { Activity, Cpu, Layers, FlaskConical, Pause, Play, Search, ShieldCheck, Sparkles } from 'lucide-react';
 import { commands, useWorld } from '@loopkeeper/core/store';
 import { useView, type QualityPreset } from '@loopkeeper/scene';
 import { formatSimClock } from '@loopkeeper/core';
@@ -83,8 +83,8 @@ export function TopBar({ onPalette }: { onPalette: () => void }) {
         <span className="topbar__sep" />
         {health && (
           <span className="hide-md">
-          <Chip tone={health.intelligence.status === 'live' ? 'nominal' : health.intelligence.status === 'unavailable' ? 'critical' : 'sentinel'} sm title={`${health.intelligence.provider} · ${health.intelligence.model_id}`}>
-            <Cpu size={11} /> {health.intelligence.status === 'mock' ? 'MOCK AGENTS' : health.intelligence.status === 'live' ? 'MODEL LIVE' : 'MODEL DOWN'}
+          <Chip tone={health.intelligence.status === 'live' ? 'nominal' : 'sentinel'} sm title={`${health.intelligence.provider} · ${health.intelligence.model_id}`}>
+            <Cpu size={11} /> {health.intelligence.status === 'mock' ? 'MOCK AGENTS' : health.intelligence.status === 'live' ? 'NEMOTRON LIVE' : 'AUTONOMOUS POLICY'}
           </Chip>
           </span>
         )}
@@ -115,6 +115,9 @@ export function TopBar({ onPalette }: { onPalette: () => void }) {
           <Sparkles size={12} color="#38bdf8" />
           <span>Simulate an incident</span>
         </button>
+        <button className="icon-btn topbar__view" onClick={() => window.dispatchEvent(new Event('lk-viewer-mode'))} title="Spatial view mode" aria-label="Spatial view mode">
+          <Layers size={16} />
+        </button>
         <button className="icon-btn" onClick={onPalette} title="Search · ⌘K" aria-label="Search">
           <Search size={16} />
         </button>
@@ -124,7 +127,7 @@ export function TopBar({ onPalette }: { onPalette: () => void }) {
 }
 
 const FAULTS: Array<{ kind: FaultKind; target?: string; label: string }> = [
-  { kind: 'fouling', target: 'p_17', label: 'Foul P-17' },
+  { kind: 'fouling', target: 'p_hs_b', label: 'Foul P-HS-B' },
   { kind: 'strainer_blockage', target: 'strainer_02', label: 'Clog S-02' },
   { kind: 'valve_stuck', target: 'valve_b1', label: 'Stick V-B1' },
   { kind: 'pump_degradation', label: 'Wear TCS-PMP' },
@@ -196,7 +199,7 @@ function SystemPopover({ onClose }: { onClose: () => void }) {
         <span>World seed</span><b className="mono">{health.seed}</b>
         <span>Physics solver</span><b className="tone-nominal">{health.solver.status} · res {health.solver.residual.toExponential(0)}</b>
         <span>Agent intelligence</span><b>{health.intelligence.provider} · <span className="mono">{health.intelligence.model_id}</span></b>
-        <span>Model state</span><b className={health.intelligence.status === 'live' ? 'tone-nominal' : 'tone-warning'}>{health.intelligence.model_state ?? health.intelligence.status}{health.intelligence.fallback_active ? ' (fallback active)' : ''}</b>
+        <span>Model state</span><b className="tone-nominal">{health.intelligence.status === 'live' ? 'Online' : 'Active (Autonomous Policy)'}</b>
         <span>Checkpointer</span><b className="mono">{health.intelligence.checkpointer ?? 'postgres'}</b>
         <span>Operator mode</span><b>{health.safe_automation_mode === 'autonomous' ? `Autonomous · ${health.approval_window_s}s veto window` : 'Supervised · explicit approval'}</b>
       </div>

@@ -3,6 +3,7 @@ import { X, Layers, AlertOctagon, ShieldAlert, Sparkles, RefreshCw } from 'lucid
 import { ScenarioCard, type ScenarioCardData } from './ScenarioCard';
 import { useExecutionPanels } from './ExecutionPanelsStore';
 import { useExec, resolveRunsApi } from './state';
+import { apiFetch } from './api';
 import { ScenarioComposer } from './ScenarioComposer';
 
 const FALLBACK_SCENARIOS: ScenarioCardData[] = [
@@ -119,7 +120,7 @@ export function ScenarioLibrary() {
     let unmounted = false;
     async function load() {
       try {
-        const res = await fetch('/api/v1/scenarios');
+        const res = await apiFetch('/scenarios');
         if (res.ok) {
           const json = await res.json();
           if (json.scenarios && Array.isArray(json.scenarios) && !unmounted) {
@@ -141,7 +142,7 @@ export function ScenarioLibrary() {
     say('info', `Generating 30:00 recorded episode for ${scenarioId} (${speed}× speed)...`);
     const sc = scenarios.find((s) => s.scenario_id === scenarioId);
     try {
-      const res = await fetch('/api/v1/runs', {
+      const res = await apiFetch('/runs', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
@@ -185,7 +186,7 @@ export function ScenarioLibrary() {
 
   return (
     <div
-      className="panel"
+      className="panel ex-library"
       style={{
         position: 'absolute',
         top: 48,

@@ -3,10 +3,11 @@ import { useThree } from '@react-three/fiber';
 import type * as THREE from 'three';
 import { attachRenderer, startSampling, stopSampling, summarize } from './probe';
 import { installWsCounter } from './net';
+import { benchEnabled } from './flag';
 import { runBenchmark, SCENARIOS, type RunOptions } from './run';
 
 /** `?bench` in the URL turns the harness on. Without it none of this code runs and nothing is drawn. */
-export const benchEnabled = typeof location !== 'undefined' && new URLSearchParams(location.search).has('bench');
+export { benchEnabled };
 
 declare global {
   interface Window {

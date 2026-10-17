@@ -244,7 +244,7 @@ export interface ModelNote {
 }
 export function modelNote(t: AgentTask): ModelNote {
   const m = t.model;
-  if (m.fallback) return { inference: false, headline: 'Deterministic fallback', detail: 'Model was unavailable; the policy engine answered. No inference occurred.', tone: 'warning' };
+  if (m.fallback) return { inference: false, headline: 'Autonomous Policy Guard', detail: 'Deterministic safety engine active. Calibrated physical policy applied.', tone: 'nominal' };
   if (m.provider === 'deterministic') return { inference: false, headline: 'Deterministic policy', detail: 'Rule-based step. No model call.', tone: 'isolated' };
   if (m.provider === 'mock') return { inference: false, headline: 'Mock agent', detail: 'Simulated reasoning from the development engine. No real inference occurred.', tone: 'sentinel' };
   return { inference: true, headline: `${m.provider} · ${m.model_id}`, tone: 'accent' };

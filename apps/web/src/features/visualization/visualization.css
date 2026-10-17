@@ -1,0 +1,13 @@
+.tactical2d { touch-action: none; }
+.tactical2d__canvas { position: absolute; inset: 0; width: 100%; height: 100%; display: block; touch-action: none; cursor: grab; }
+.viewer-placeholder { position: absolute; inset: 0; display: grid; place-items: center; color: var(--t3); font-size: 12px; pointer-events: none; }
+.viewer-placeholder__ring { width: 28px; height: 28px; margin: 0 auto 10px; border-radius: 50%; border: 2px solid rgba(255, 255, 255, 0.12); border-top-color: var(--accent); animation: lk-spin 0.9s linear infinite; }
+@keyframes lk-spin { to { transform: rotate(360deg); } }
+.viewer-notice { position: absolute; z-index: 30; left: 50%; transform: translateX(-50%); bottom: calc(14px + env(safe-area-inset-bottom, 0px)); max-width: min(560px, calc(100% - 24px)); display: flex; gap: 10px; align-items: center; padding: 8px 12px; font-size: 12px; line-height: 1.35; }
+.viewer-notice button { min-height: 32px; padding: 0 12px; border-radius: 8px; background: var(--panel-3); border: 1px solid var(--line-2); font-weight: 560; white-space: nowrap; }
+.viewer-switch { display: flex; flex-direction: column; gap: 6px; min-width: 220px; }
+.viewer-switch__item { display: flex; align-items: center; gap: 10px; min-height: 44px; padding: 6px 10px; border-radius: 10px; border: 1px solid var(--line); text-align: left; }
+.viewer-switch__item[aria-checked='true'] { border-color: rgba(91, 227, 208, 0.45); background: var(--accent-soft); }
+.viewer-switch__item[aria-disabled='true'] { opacity: 0.5; cursor: not-allowed; }
+.viewer-switch__t { font-weight: 600; font-size: 12.5px; }
+.viewer-switch__s { font-size: 11px; color: var(--t3); }

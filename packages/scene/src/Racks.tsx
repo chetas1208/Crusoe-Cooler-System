@@ -450,112 +450,12 @@ function ContextCabinetSet({ cabinets }: { cabinets: ContextCabinet[] }) {
       const row = c.row_id ?? '';
       const isLiquidPodRow = row.includes('a1') || row.includes('b1');
 
-      // Realistic allocation across rows:
-      // ~62% active loaded units, ~26% cold/dormant standby, ~12% service/maintenance
-      let live = 0.0;
-      let heat = 0.02;
-      let beacon: [number, number, number] = [0.04, 0.16, 0.20]; // idle standby dim sleep beacon
-      let glow: [number, number, number] = [0.06, 0.18, 0.22];
-      let kind = slot % 3 === 0 ? 3 : slot % 3 === 1 ? 2 : 1;
-
-      if (isLiquidPodRow) {
-        // AI pod row continuation (slots 9-24)
-        if (slot >= 9 && slot <= 14) {
-          // Active high-density compute cluster
-          kind = 3;
-          live = 0.82 + ((slot * 7) % 15) / 100;
-          heat = 0.22;
-          beacon = [0.18, 0.94, 0.62]; // bright active emerald
-          glow = [0.18, 0.85, 0.65];
-        } else if (slot === 15 || slot === 16) {
-          // High-throughput spine switches
-          kind = 1;
-          live = 0.92;
-          heat = 0.16;
-          beacon = [0.16, 0.82, 0.96]; // active cyan
-          glow = [0.15, 0.75, 0.90];
-        } else if (slot === 17 || slot === 18) {
-          // Cold standby pods (unpowered reserve) - INACTIVE!
-          kind = 3;
-          live = 0.0;
-          heat = 0.01;
-          beacon = [0.03, 0.12, 0.16];
-          glow = [0.04, 0.12, 0.16];
-        } else if (slot >= 19 && slot <= 21) {
-          // Active storage array
-          kind = 2;
-          live = 0.75 + ((slot * 11) % 12) / 100;
-          heat = 0.14;
-          beacon = [0.20, 0.88, 0.60];
-          glow = [0.18, 0.80, 0.60];
-        } else if (slot === 22) {
-          // Maintenance hold - INACTIVE / SERVICE!
-          kind = 1;
-          live = 0.0;
-          heat = 0.03;
-          beacon = [0.95, 0.58, 0.12]; // amber service beacon
-          glow = [0.85, 0.48, 0.10];
-        } else {
-          // Active general inference
-          kind = 3;
-          live = 0.78;
-          heat = 0.18;
-          beacon = [0.18, 0.90, 0.62];
-          glow = [0.18, 0.82, 0.64];
-        }
-      } else {
-        // General compute & storage rows (row_a2, row_b2, slots 1-24)
-        if (slot >= 1 && slot <= 6) {
-          // Active general compute
-          kind = 3;
-          live = 0.76 + ((slot * 9) % 18) / 100;
-          heat = 0.18;
-          beacon = [0.18, 0.90, 0.62];
-          glow = [0.18, 0.82, 0.64];
-        } else if (slot === 7 || slot === 8) {
-          // Unallocated / powered-down cold reserve - INACTIVE!
-          kind = 2;
-          live = 0.0;
-          heat = 0.01;
-          beacon = [0.03, 0.12, 0.16];
-          glow = [0.04, 0.12, 0.16];
-        } else if (slot >= 9 && slot <= 13) {
-          // Active storage cluster
-          kind = 2;
-          live = 0.70 + ((slot * 13) % 15) / 100;
-          heat = 0.15;
-          beacon = [0.18, 0.86, 0.62];
-          glow = [0.18, 0.80, 0.60];
-        } else if (slot === 14 || slot === 15) {
-          // Standby storage nodes - INACTIVE!
-          kind = 2;
-          live = 0.0;
-          heat = 0.01;
-          beacon = [0.03, 0.12, 0.16];
-          glow = [0.04, 0.12, 0.16];
-        } else if (slot === 16) {
-          // Scheduled firmware maintenance - INACTIVE / SERVICE!
-          kind = 3;
-          live = 0.0;
-          heat = 0.02;
-          beacon = [0.95, 0.58, 0.12]; // amber service beacon
-          glow = [0.85, 0.48, 0.10];
-        } else if (slot >= 17 && slot <= 22) {
-          // Active compute & leaf switches
-          kind = slot % 2 === 0 ? 3 : 1;
-          live = 0.80 + ((slot * 5) % 15) / 100;
-          heat = 0.19;
-          beacon = [0.18, 0.92, 0.64];
-          glow = [0.18, 0.85, 0.65];
-        } else {
-          // Idle expansion slots - INACTIVE!
-          kind = 3;
-          live = 0.0;
-          heat = 0.01;
-          beacon = [0.03, 0.12, 0.16];
-          glow = [0.04, 0.12, 0.16];
-        }
-      }
+      // Fully active data-center units: GPU compute clusters, high-throughput network fabric, and NVMe storage
+      const kind = slot % 3 === 0 ? 3 : slot % 3 === 1 ? 2 : 1;
+      const live = 0.78 + ((slot * 7) % 18) / 100;
+      const heat = 0.16 + ((slot * 3) % 10) / 100;
+      const beacon: [number, number, number] = kind === 1 ? [0.16, 0.82, 0.96] : kind === 2 ? [0.20, 0.88, 0.60] : [0.18, 0.94, 0.62];
+      const glow: [number, number, number] = kind === 1 ? [0.15, 0.75, 0.90] : kind === 2 ? [0.18, 0.80, 0.60] : [0.18, 0.85, 0.65];
 
       attrs.aKind.setX(i, kind);
       attrs.aLive.setX(i, live);

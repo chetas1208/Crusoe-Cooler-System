@@ -1,6 +1,8 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { Sparkles, ArrowRight, CheckCircle2, Clock, Cpu, AlertTriangle, ShieldCheck, RefreshCw, XCircle } from 'lucide-react';
-import { useExec, resolveRunsApi } from './state';
+import { useExec } from './state';
+import { apiFetch } from './api';
+import { usePromptRequest } from '../../features/mission/promptStore';
 import { useUi } from '../../ui/store';
 
 export const CHIP_PRESETS = [
@@ -93,10 +95,9 @@ export function ScenarioComposer({ onCompleted, compact = false }: ScenarioCompo
     setRunId(null);
     setInterpretation(null);
 
-    const apiBase = resolveRunsApi();
-
+    usePromptRequest.getState().begin(textToSubmit);
     try {
-      const res = await fetch(`${apiBase}/scenario-requests`, {
+      const res = await apiFetch('/scenario-requests', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
@@ -111,11 +112,13 @@ export function ScenarioComposer({ onCompleted, compact = false }: ScenarioCompo
       }
 
       const data = await res.json();
+      usePromptRequest.getState().update(data);
       setRequestId(data.request_id);
       setPhase(data.phase ?? 'RECEIVED');
       setStatus(data.status ?? 'QUEUED');
     } catch (err: any) {
       setError(err.message || 'Failed to submit scenario request');
+      usePromptRequest.getState().fail('submit', err.message || 'Failed to submit scenario request');
       setLoading(false);
     }
   };
@@ -126,13 +129,13 @@ export function ScenarioComposer({ onCompleted, compact = false }: ScenarioCompo
       return;
     }
 
-    const apiBase = resolveRunsApi();
     const poll = async () => {
       try {
-        const res = await fetch(`${apiBase}/scenario-requests/${requestId}`);
+        const res = await apiFetch(`/scenario-requests/${requestId}`);
         if (!res.ok) return;
 
         const data = await res.json();
+        usePromptRequest.getState().update(data);
         setPhase(data.phase);
         setStatus(data.status);
         if (data.interpretation) {

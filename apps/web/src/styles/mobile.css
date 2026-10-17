@@ -1,0 +1,98 @@
+/* V10 phone layout. Everything is gated on the phone media query, so desktop (>= 861 px wide and >= 481 px tall) is byte-for-byte the previous layout.
+   Pattern: the stage (3D / Tactical 2D) keeps the top of the screen; each tab's panels become a normal-flow scroll area below it; a bottom tab bar replaces the segmented control. */
+.topbar__view { display: none; }
+.mtabs { display: none; }
+
+@media (max-width: 860px), (max-height: 480px) {
+  :root { --mtab-h: 56px; --safe-b: env(safe-area-inset-bottom, 0px); --safe-t: env(safe-area-inset-top, 0px); --safe-l: env(safe-area-inset-left, 0px); --safe-r: env(safe-area-inset-right, 0px); --stage-h: 34dvh; }
+  html, body, #root { overflow-x: hidden; max-width: 100%; }
+  html body { -webkit-text-size-adjust: 100%; }
+  html button, html .btn, html .icon-btn, html .pill, html .seg__item, html [role='tab'] { min-height: 44px; }
+  html .icon-btn { min-width: 44px; }
+  html input, html select, html textarea { font-size: 16px; }                       /* no iOS focus-zoom */
+
+  /* ---- top bar: one compact row (status + view mode + search); tabs move to the bottom ---- */
+  html .topbar { top: calc(6px + var(--safe-t)); left: calc(6px + var(--safe-l)); right: calc(6px + var(--safe-r)); grid-template-columns: minmax(0, 1fr) auto; gap: 6px; }
+  html .topbar__center { display: none; }
+  html .topbar__left { height: 52px; padding-left: 8px; gap: 8px; max-width: 100%; }
+  html .brand__word, html .status__sub, html .topbar__sep, html .hide-md, html .hide-sm { display: none; }
+  html .status { min-width: 0; min-height: 44px; }
+  html .brand { min-width: 44px; min-height: 44px; justify-content: center; }
+  html .status__name { max-width: 34vw; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  html .topbar__right { height: 52px; padding: 0 4px 0 8px; gap: 4px; }
+  html .topbar__right .vital { display: none; }
+  html .topbar__right .btn--primary span { display: none; }
+  html .topbar__right .btn--primary { min-width: 44px; justify-content: center; padding: 0 !important; }
+  html .topbar__view { display: inline-grid; }
+  html .popover { position: fixed; left: 8px; right: 8px; top: calc(64px + var(--safe-t)); width: auto; max-height: calc(100dvh - 140px); overflow-y: auto; }
+
+  /* ---- stage + bottom tab bar ---- */
+  html .stage { bottom: auto; height: calc(64px + var(--safe-t) + var(--stage-h)); }
+  html .mtabs { position: fixed; z-index: 60; left: 0; right: 0; bottom: 0; display: flex; align-items: stretch; gap: 6px; padding: 4px calc(6px + var(--safe-r)) calc(4px + var(--safe-b)) calc(6px + var(--safe-l)); background: rgba(11, 13, 17, 0.96); border-top: 1px solid var(--line); }
+  html .mtabs__row { flex: 1; display: grid; grid-template-columns: repeat(4, 1fr); gap: 2px; min-width: 0; }
+  html .mtabs__item { display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 2px; min-height: 48px; border-radius: 10px; color: var(--t3); font-size: 11px; font-weight: 560; }
+  html .mtabs__item[aria-selected='true'] { color: var(--accent); background: var(--accent-soft); }
+  html .mtabs__comms { display: flex; align-items: center; }
+  html .mtabs__comms .cm-launcher { min-height: 44px; min-width: 44px; }
+  html .mtabs__comms .cm-launcher span:not(.cm-badge) { display: none; }
+
+  /* ---- comms + viewer-mode bottom sheet ---- */
+  html .sheet { position: fixed; z-index: 70; left: 0; right: 0; bottom: calc(var(--mtab-h) + var(--safe-b)); display: flex; flex-direction: column; background: var(--panel, #12151b); border: 1px solid var(--line-2); border-bottom: 0; border-radius: 16px 16px 0 0; box-shadow: 0 -8px 30px rgba(0, 0, 0, 0.5); outline: none; }
+  html .sheet[data-state='peek'] { height: 38dvh; }
+  html .sheet[data-state='expanded'] { height: calc(100dvh - var(--mtab-h) - var(--safe-b) - 64px - var(--safe-t)); }
+  html .sheet__head { display: flex; align-items: center; gap: 4px; padding: 4px 6px 4px 16px; border-bottom: 1px solid var(--line); flex: none; }
+  html .sheet__head h2 { flex: 1; margin: 0; font-size: 14px; font-weight: 620; }
+  html .sheet__btn { width: 44px; height: 44px; display: grid; place-items: center; border-radius: 10px; color: var(--t2); }
+  html .sheet__body { flex: 1; min-height: 0; overflow: hidden; display: flex; }
+  html .sheet__body .cm-panel { width: 100%; height: 100%; }
+
+  /* ---- Dashboard: stage on top, panels scroll below ---- */
+  html .dash { inset: calc(64px + var(--safe-t) + var(--stage-h)) 0 calc(var(--mtab-h) + var(--safe-b)) 0; overflow-y: auto; display: flex; flex-direction: column; gap: 8px; padding: 8px 8px 12px; background: var(--bg, #0b0d11); pointer-events: auto; }
+  html .dash > .hs, html .dash > .dd, html .dash > .sb, html .dash > .ad { position: static !important; width: auto !important; max-width: none !important; max-height: none !important; inset: auto !important; transform: none !important; }
+  html .dash .hs { flex-wrap: wrap; }
+  html .dash .hs__cell { min-width: 0; flex: 1 1 40%; }
+  html .dash .hs__tip { display: none !important; }
+  html .dash .sb__bar { flex-wrap: wrap; justify-content: flex-start; }
+  html .dash .dd { overflow: visible; }
+  html .dash .dd__list { overflow: visible; max-height: none; }
+  html .ex-void, html .nogl { max-width: calc(100% - 24px); }
+
+  /* ---- Agents: list -> detail, no giant DAG on a phone ---- */
+  html .ag { top: calc(64px + var(--safe-t)); left: 0; right: 0; bottom: calc(var(--mtab-h) + var(--safe-b)); display: flex; flex-direction: column; gap: 8px; padding: 0 8px 8px; overflow-y: auto; pointer-events: auto; background: var(--bg, #0b0d11); }
+  html .ag > * { flex: none; width: auto; max-width: 100%; }
+  html .ag .ag-left { max-height: none; }
+  html .ag-centre { display: none !important; }                           /* the delegation graph needs a canvas; phones get the task list + inspector */
+  html .ag-groups { flex-wrap: wrap; }
+
+  /* ---- Map: robot roster and inspector as stacked panels under the stage; drive controls live in the inspector ---- */
+  html .map-tab-container { top: calc(64px + var(--safe-t) + var(--stage-h)) !important; bottom: calc(var(--mtab-h) + var(--safe-b)) !important; overflow-y: auto !important; pointer-events: auto !important; background: var(--bg, #0b0d11); display: flex; flex-direction: column; gap: 8px; padding: 8px; }
+  html .map-tab-container > div, html .map-leftcol, html .map-rightcol { position: static !important; inset: auto !important; width: 100% !important; height: auto !important; max-height: none !important; display: block !important; }
+  html .map-tab-container > div > div { height: auto !important; }
+  html .map-tab-container aside, html .map-tab-container .map-drawer-collapsed { width: 100% !important; max-width: none !important; height: auto !important; max-height: none !important; }
+  html .drivepad { position: fixed; z-index: 65; right: calc(8px + var(--safe-r)); top: calc(64px + var(--safe-t) + var(--stage-h) - 8px); transform: translateY(-100%); padding: 6px; border-radius: 16px; background: rgba(11, 13, 17, 0.92); border: 1px solid var(--line-2); touch-action: none; user-select: none; }
+  html .drivepad__status { max-width: 152px; font-size: 10px; line-height: 1.3; color: var(--t2); margin-bottom: 6px; }
+  html .drivepad[data-mode='live'] { border-color: var(--accent); }
+  html .drivepad[data-mode='preview'] { border-color: var(--fork, #a78bfa); }
+  html .drivepad__grid { display: grid; grid-template-columns: repeat(3, 48px); grid-auto-rows: 48px; gap: 4px; }
+  html .drivepad__btn { width: 48px; height: 48px; min-height: 48px; display: grid; place-items: center; border-radius: 14px; background: var(--panel-3, #1b2029); border: 1px solid var(--line-2); touch-action: none; -webkit-touch-callout: none; }
+  html .drivepad__btn:active:not(:disabled) { background: var(--accent-soft); border-color: var(--accent); }
+  html .drivepad__btn:disabled { opacity: 0.35; }
+
+  /* ---- Execution: single column, internal scroll ---- */
+  html .ex { top: calc(64px + var(--safe-t)); bottom: calc(var(--mtab-h) + var(--safe-b)); overflow-y: auto; pointer-events: auto; background: var(--bg, #0b0d11); display: flex; flex-direction: column; gap: 8px; padding: 8px; }
+  html .ex > * { position: static !important; inset: auto !important; transform: none !important; width: auto !important; max-width: 100% !important; max-height: none !important; }
+  html .ex-left, html .ex-right, html .ex-tl, html .ex-seq, html .ex-prompt, html .ex-state { position: static !important; inset: auto !important; transform: none !important; width: auto !important; max-width: 100% !important; max-height: none !important; }
+  html .ex-left, html .ex-right { height: auto !important; min-height: 0; }
+  html .ex-tl { height: 220px !important; flex: none; }
+  html .ex [style*='position: absolute'] { position: static !important; inset: auto !important; transform: none !important; }
+  html .ex .cm-dock { display: none; }
+  html .ex-frame { display: none; }
+  html .ex-state { white-space: normal; flex-wrap: wrap; }
+}
+
+/* short landscape phones: the stage and the panel share the width instead of the height */
+@media (max-height: 480px) and (orientation: landscape) {
+  :root { --stage-h: 0px; }
+  html .topbar__right .btn--primary { display: none; }
+  html .sheet[data-state='peek'] { height: 60dvh; }
+}

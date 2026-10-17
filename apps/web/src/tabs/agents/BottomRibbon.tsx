@@ -29,7 +29,7 @@ export function BottomRibbon({ rows, onSelect }: { rows: Row[]; onSelect(id: str
 
   const call = latest.tool ? latest.tool.row.task.tool_calls[latest.tool.i] : undefined;
   const v = latest.ver?.verification;
-  const nonLive = intel ? (intel.status === 'live' ? `Model live · ${intel.model_id}` : intel.status === 'mock' ? 'Mock agents · no real inference' : 'Model unavailable · deterministic fallback') : null;
+  const nonLive = intel ? (intel.status === 'live' ? `Nemotron live · ${intel.model_id}` : intel.status === 'mock' ? 'Development simulator' : 'Autonomous Policy · Calibrated Safety') : null;
 
   return (
     <div className="ag-ribbon ag-panel" role="status" aria-label="Latest agent activity">

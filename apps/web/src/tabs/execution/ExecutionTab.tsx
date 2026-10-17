@@ -49,10 +49,15 @@ import {
   runCommand,
 } from './controller';
 import { useOverviewFit } from '../dashboard/useOverviewFit';
+import { apiFetch } from './api';
 import './exec.css';
 
 import { useExecutionPanels } from './ExecutionPanelsStore';
 import { ScenarioLibrary } from './ScenarioLibrary';
+import { DodChips, DodRail, ScorecardHost } from '../../features/dod/Panels';
+import { CommunicationsDock } from '../../features/communications/CommunicationsPanel';
+import { CommunicationsLauncher } from '../../features/communications/Launcher';
+import { useCommunications } from '../../features/communications/communicationStore';
 
 const useExecMonitor = () => usePlayer.getState().monitor;
 
@@ -71,11 +76,12 @@ export function ExecutionTab() {
   const selRun = useExec((s) => s.runs.find((r) => r.run_id === s.selectedId));
   const stamp = useExec((s) => s.topoStamp);
   const panels = useExecutionPanels();
+  const commsOpen = useCommunications((s) => s.open);
   // a stopped run is a replay whatever chip is lit
   const eff = mode === 'live' && isReplayOnly(selRun) && selRun ? 'replay' : mode;
 
   return (
-    <div className="ex">
+    <div className="ex" data-comms={commsOpen ? 'open' : 'closed'} data-timeline={panels.timelinePanel ? 'open' : 'closed'}>
       {stamp?.source === 'unavailable' && selRun?.run_id === stamp.runId && (
         <div className="ex-void" role="status">
           <b>Topology unavailable for {stamp.runId}</b>
@@ -97,7 +103,9 @@ export function ExecutionTab() {
         </span>
 
         {/* Reversible Panel Toggles */}
-        <div style={{ display: 'flex', gap: 4, marginLeft: 12, borderLeft: '1px solid var(--line-2)', paddingLeft: 12 }}>
+        <div style={{ display: 'flex', gap: 4, marginLeft: 12, borderLeft: '1px solid var(--line-2)', paddingLeft: 12, alignItems: 'center' }}>
+          <CommunicationsLauncher />
+          <DodChips />
           <button
             className="chip"
             data-active={panels.scenarioLibrary}
@@ -156,6 +164,10 @@ export function ExecutionTab() {
       {panels.runsPanel && <RunsPanel />}
       {panels.runInspector && <RunInspectorPanel />}
       {panels.timelinePanel && <TimelinePanel />}
+
+      <DodRail />
+      <ScorecardHost />
+      <CommunicationsDock />
 
       {/* Notifications / Alerts */}
       {notice && (
@@ -281,7 +293,7 @@ function RunInspectorPanel() {
   useEffect(() => {
     let unmounted = false;
     if (run?.run_id) {
-      fetch(`/api/v1/runs/${run.run_id}/verdict`)
+      apiFetch(`/runs/${run.run_id}/verdict`)
         .then((r) => (r.ok ? r.json() : null))
         .then((d) => {
           if (!unmounted && d?.verdict) {

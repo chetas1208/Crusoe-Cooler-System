@@ -1,14 +1,17 @@
-import { useEffect, useRef, useState } from 'react';
+import { lazy, useEffect, useRef, useState } from 'react';
 import * as THREE from 'three';
 import { Canvas, useThree } from '@react-three/fiber';
 import { Environment, Lightformer } from '@react-three/drei';
 import { Scene, useView, useMapCamera } from '@loopkeeper/scene';
 import { useWorld } from '@loopkeeper/core/store';
 import { usePlayer } from '@loopkeeper/core/runs';
-import { AnchorProjector } from './anchors';
-import { BenchProbe, benchEnabled } from '../bench';
+import { AnchorProjector } from './AnchorProjector';
+import { benchEnabled } from '../bench/flag';
 import { AutoQuality } from './AutoQuality';
 import { useUi } from './store';
+import { FrameWatchdog } from '../features/visualization/FrameWatchdog';
+
+const BenchProbe = lazy(() => import('../bench').then((m) => ({ default: m.BenchProbe })));
 
 /** Pointer / wheel input → camera *goals* in the view store. The rig does the easing. */
 function CanvasInput() {
@@ -118,6 +121,12 @@ function DevHook() {
   return null;
 }
 
+/** Frame-time + context-loss watchdog (falls back to the Tactical 2D view; see features/visualization). */
+function Watch() {
+  const gl = useThree((s) => s.gl);
+  return <FrameWatchdog canvas={gl.domElement} />;
+}
+
 /** Procedural studio reflections for the glass pipes — no HDR download needed. */
 function Studio() {
   return (
@@ -173,6 +182,7 @@ export function Viewport() {
         <DevHook />
         <AutoQuality />
         <FrameGovernor />
+        <Watch />
         {benchEnabled && <BenchProbe />}
       </Canvas>
     </div>

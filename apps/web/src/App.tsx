@@ -1,12 +1,15 @@
-import { useEffect, useState } from 'react';
+import { Suspense, lazy, useEffect, useState } from 'react';
 import { startWorld, useWorld } from '@loopkeeper/core/store';
 import { createTransport } from './lib/transport';
-import { Viewport } from './ui/Viewport';
+import { ViewerHost } from './features/visualization/ViewerHost';
 import { Shell } from './ui/Shell';
 import { AuthGate } from './ui/AuthGate';
-import { BenchPanel, benchEnabled } from './bench';
+import { PhoneChrome } from './features/responsive/PhoneChrome';
+import { benchEnabled } from './bench/flag';
 import { useInterest } from './lib/useInterest';
-import { WifiOff, RefreshCw, Cpu } from 'lucide-react';
+import { WifiOff, Cpu } from 'lucide-react';
+
+const BenchPanel = lazy(() => import('./bench').then((m) => ({ default: m.BenchPanel })));
 
 export function App() {
   useInterest();
@@ -49,7 +52,7 @@ export function App() {
   return (
     <div className="app">
       <div className="stage">
-        {phase === 'ready' && <Viewport />}
+        {phase === 'ready' && <ViewerHost />}
         {phase === 'error' && (
           <div className="stage-error-overlay panel" style={{
             position: 'absolute',
@@ -118,8 +121,13 @@ export function App() {
         )}
       </div>
       <Shell />
+      <PhoneChrome />
       <AuthGate />
-      {benchEnabled && <BenchPanel />}
+      {benchEnabled && (
+        <Suspense fallback={null}>
+          <BenchPanel />
+        </Suspense>
+      )}
     </div>
   );
 }

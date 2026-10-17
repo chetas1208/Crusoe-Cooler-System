@@ -35,3 +35,6 @@ tunnel-credentials*.json
 # local scratch
 scratch_*.txt
 .hacp/
+
+# env template kept local only
+.env.example
