@@ -1,0 +1,3291 @@
+{
+  "interfaces": {
+    "Zone": {
+      "type_params": [],
+      "fields": {
+        "id": {
+          "optional": false,
+          "type": "EntityId"
+        },
+        "name": {
+          "optional": false,
+          "type": "string"
+        },
+        "rack_ids": {
+          "optional": false,
+          "type": "EntityId[]"
+        },
+        "anchor_xyz_m": {
+          "optional": false,
+          "type": "Vec3"
+        }
+      },
+      "source": "contracts"
+    },
+    "TopologyNode": {
+      "type_params": [],
+      "fields": {
+        "id": {
+          "optional": false,
+          "type": "EntityId"
+        },
+        "label": {
+          "optional": false,
+          "type": "string"
+        },
+        "loop": {
+          "optional": false,
+          "type": "LoopId"
+        },
+        "position_xyz_m": {
+          "optional": false,
+          "type": "Vec3"
+        }
+      },
+      "source": "contracts"
+    },
+    "PipeEdge": {
+      "type_params": [],
+      "fields": {
+        "id": {
+          "optional": false,
+          "type": "EntityId"
+        },
+        "label": {
+          "optional": false,
+          "type": "string"
+        },
+        "name": {
+          "optional": false,
+          "type": "string"
+        },
+        "loop": {
+          "optional": false,
+          "type": "LoopId"
+        },
+        "role": {
+          "optional": false,
+          "type": "PipeRole"
+        },
+        "zone_id": {
+          "optional": true,
+          "type": "EntityId"
+        },
+        "from": {
+          "optional": false,
+          "type": "EntityId"
+        },
+        "to": {
+          "optional": false,
+          "type": "EntityId"
+        },
+        "centerline_xyz_m": {
+          "optional": false,
+          "type": "Vec3[]"
+        },
+        "fillet_radius_m": {
+          "optional": false,
+          "type": "number"
+        },
+        "length_m": {
+          "optional": false,
+          "type": "number"
+        },
+        "diameter_mm": {
+          "optional": false,
+          "type": "number"
+        },
+        "clearance_mm": {
+          "optional": false,
+          "type": "number"
+        },
+        "robot_passable": {
+          "optional": false,
+          "type": "boolean"
+        },
+        "not_passable_reason": {
+          "optional": true,
+          "type": "string"
+        },
+        "access_port_ids": {
+          "optional": false,
+          "type": "EntityId[]"
+        }
+      },
+      "source": "contracts"
+    },
+    "Asset": {
+      "type_params": [],
+      "fields": {
+        "id": {
+          "optional": false,
+          "type": "EntityId"
+        },
+        "type": {
+          "optional": false,
+          "type": "AssetType"
+        },
+        "label": {
+          "optional": false,
+          "type": "string"
+        },
+        "name": {
+          "optional": false,
+          "type": "string"
+        },
+        "loop": {
+          "optional": true,
+          "type": "LoopId"
+        },
+        "zone_id": {
+          "optional": true,
+          "type": "EntityId"
+        },
+        "position_xyz_m": {
+          "optional": false,
+          "type": "Vec3"
+        },
+        "size_m": {
+          "optional": true,
+          "type": "Vec3"
+        },
+        "yaw_rad": {
+          "optional": true,
+          "type": "number"
+        },
+        "edge_id": {
+          "optional": true,
+          "type": "EntityId"
+        },
+        "s_m": {
+          "optional": true,
+          "type": "number"
+        },
+        "accessible_by": {
+          "optional": false,
+          "type": "Array<'inpipe' | 'outrig'>"
+        },
+        "service_xyz_m": {
+          "optional": true,
+          "type": "Vec3"
+        },
+        "spec": {
+          "optional": true,
+          "type": "Record<string, string | number>"
+        }
+      },
+      "source": "contracts"
+    },
+    "NavObstacle": {
+      "type_params": [],
+      "fields": {
+        "id": {
+          "optional": false,
+          "type": "EntityId"
+        },
+        "rect": {
+          "optional": false,
+          "type": "[number, number, number, number]"
+        },
+        "label": {
+          "optional": true,
+          "type": "string"
+        }
+      },
+      "source": "contracts"
+    },
+    "Topology": {
+      "type_params": [],
+      "fields": {
+        "facility": {
+          "optional": false,
+          "type": "{ id: string; name: string; label: 'Simulated facility'; config_version: string; topology_hash: string; bounds_min: Vec3; bounds_max: Vec3; interior_min: Vec3; interior_max: Vec3; wall_height_m: number; }",
+          "members": {
+            "id": {
+              "optional": false,
+              "type": "string"
+            },
+            "name": {
+              "optional": false,
+              "type": "string"
+            },
+            "label": {
+              "optional": false,
+              "type": "'Simulated facility'"
+            },
+            "config_version": {
+              "optional": false,
+              "type": "string"
+            },
+            "topology_hash": {
+              "optional": false,
+              "type": "string"
+            },
+            "bounds_min": {
+              "optional": false,
+              "type": "Vec3"
+            },
+            "bounds_max": {
+              "optional": false,
+              "type": "Vec3"
+            },
+            "interior_min": {
+              "optional": false,
+              "type": "Vec3"
+            },
+            "interior_max": {
+              "optional": false,
+              "type": "Vec3"
+            },
+            "wall_height_m": {
+              "optional": false,
+              "type": "number"
+            }
+          }
+        },
+        "expansion_bays": {
+          "optional": false,
+          "type": "Array<{ id: EntityId; position_xyz_m: Vec3; size_m: Vec3; yaw_rad: number }>",
+          "array": true,
+          "members": {
+            "id": {
+              "optional": false,
+              "type": "EntityId"
+            },
+            "position_xyz_m": {
+              "optional": false,
+              "type": "Vec3"
+            },
+            "size_m": {
+              "optional": false,
+              "type": "Vec3"
+            },
+            "yaw_rad": {
+              "optional": false,
+              "type": "number"
+            }
+          }
+        },
+        "zones": {
+          "optional": false,
+          "type": "Zone[]"
+        },
+        "nodes": {
+          "optional": false,
+          "type": "TopologyNode[]"
+        },
+        "edges": {
+          "optional": false,
+          "type": "PipeEdge[]"
+        },
+        "assets": {
+          "optional": false,
+          "type": "Asset[]"
+        },
+        "nav": {
+          "optional": false,
+          "type": "{ cell_m: number; obstacles: NavObstacle[]; dock_ids: EntityId[]; }",
+          "members": {
+            "cell_m": {
+              "optional": false,
+              "type": "number"
+            },
+            "obstacles": {
+              "optional": false,
+              "type": "NavObstacle[]"
+            },
+            "dock_ids": {
+              "optional": false,
+              "type": "EntityId[]"
+            }
+          }
+        },
+        "limits": {
+          "optional": false,
+          "type": "{ chip_limit_c: number; margin_warn_k: number; margin_crit_k: number; nominal_rack_kw: number; }",
+          "members": {
+            "chip_limit_c": {
+              "optional": false,
+              "type": "number"
+            },
+            "margin_warn_k": {
+              "optional": false,
+              "type": "number"
+            },
+            "margin_crit_k": {
+              "optional": false,
+              "type": "number"
+            },
+            "nominal_rack_kw": {
+              "optional": false,
+              "type": "number"
+            }
+          }
+        },
+        "site": {
+          "optional": true,
+          "type": "any"
+        },
+        "context_cabinets": {
+          "optional": true,
+          "type": "any[]"
+        },
+        "context_equipment": {
+          "optional": true,
+          "type": "any[]"
+        },
+        "fittings": {
+          "optional": true,
+          "type": "any[]"
+        },
+        "supports": {
+          "optional": true,
+          "type": "any[]"
+        },
+        "capacity": {
+          "optional": true,
+          "type": "any"
+        }
+      },
+      "source": "contracts"
+    },
+    "AssetState": {
+      "type_params": [],
+      "fields": {
+        "status": {
+          "optional": false,
+          "type": "AssetStatus"
+        },
+        "readings": {
+          "optional": false,
+          "type": "Record<string, number>"
+        },
+        "suspect": {
+          "optional": true,
+          "type": "string[]"
+        },
+        "fault": {
+          "optional": true,
+          "type": "{ occlusion?: number; location_s_m?: number; opening?: number; commanded_opening?: number; health?: number; leak_kg_s?: number; }",
+          "members": {
+            "occlusion": {
+              "optional": true,
+              "type": "number"
+            },
+            "location_s_m": {
+              "optional": true,
+              "type": "number"
+            },
+            "opening": {
+              "optional": true,
+              "type": "number"
+            },
+            "commanded_opening": {
+              "optional": true,
+              "type": "number"
+            },
+            "health": {
+              "optional": true,
+              "type": "number"
+            },
+            "leak_kg_s": {
+              "optional": true,
+              "type": "number"
+            }
+          }
+        },
+        "locked_by": {
+          "optional": true,
+          "type": "EntityId"
+        }
+      },
+      "source": "contracts"
+    },
+    "RobotPose": {
+      "type_params": [],
+      "fields": {
+        "position_xyz_m": {
+          "optional": false,
+          "type": "Vec3"
+        },
+        "yaw_rad": {
+          "optional": false,
+          "type": "number"
+        },
+        "speed_m_s": {
+          "optional": false,
+          "type": "number"
+        },
+        "segment_id": {
+          "optional": true,
+          "type": "EntityId"
+        },
+        "s_m": {
+          "optional": true,
+          "type": "number"
+        },
+        "heading_xyz": {
+          "optional": true,
+          "type": "Vec3"
+        },
+        "quaternion_xyzw": {
+          "optional": true,
+          "type": "[number, number, number, number]"
+        },
+        "frame_id": {
+          "optional": true,
+          "type": "string"
+        },
+        "linear_velocity_mps_xyz": {
+          "optional": true,
+          "type": "Vec3"
+        },
+        "covariance_or_quality": {
+          "optional": true,
+          "type": "string"
+        }
+      },
+      "source": "contracts"
+    },
+    "RobotFleetInfo": {
+      "type_params": [],
+      "fields": {
+        "group": {
+          "optional": false,
+          "type": "'internal' | 'external'"
+        },
+        "state": {
+          "optional": false,
+          "type": "string"
+        },
+        "dock_id": {
+          "optional": true,
+          "type": "EntityId"
+        },
+        "slot": {
+          "optional": true,
+          "type": "number"
+        }
+      },
+      "source": "contracts"
+    },
+    "Robot": {
+      "type_params": [],
+      "fields": {
+        "id": {
+          "optional": false,
+          "type": "EntityId"
+        },
+        "class": {
+          "optional": false,
+          "type": "RobotClass"
+        },
+        "name": {
+          "optional": false,
+          "type": "string"
+        },
+        "mode": {
+          "optional": false,
+          "type": "RobotMode"
+        },
+        "battery_pct": {
+          "optional": false,
+          "type": "number"
+        },
+        "mission_id": {
+          "optional": true,
+          "type": "EntityId"
+        },
+        "agent_task_id": {
+          "optional": true,
+          "type": "EntityId"
+        },
+        "tool": {
+          "optional": true,
+          "type": "string | null"
+        },
+        "home_id": {
+          "optional": false,
+          "type": "EntityId"
+        },
+        "pose": {
+          "optional": false,
+          "type": "RobotPose"
+        },
+        "fleet": {
+          "optional": true,
+          "type": "RobotFleetInfo"
+        },
+        "nav": {
+          "optional": true,
+          "type": "{ graph_id?: string; segment_id?: EntityId | null; s_m?: number | null; route_id?: string | null; floor_id?: string }",
+          "members": {
+            "graph_id": {
+              "optional": true,
+              "type": "string"
+            },
+            "segment_id": {
+              "optional": true,
+              "type": "EntityId | null"
+            },
+            "s_m": {
+              "optional": true,
+              "type": "number | null"
+            },
+            "route_id": {
+              "optional": true,
+              "type": "string | null"
+            },
+            "floor_id": {
+              "optional": true,
+              "type": "string"
+            }
+          }
+        },
+        "dims_m": {
+          "optional": true,
+          "type": "Vec3"
+        },
+        "clearance_m": {
+          "optional": true,
+          "type": "number"
+        },
+        "route_xyz_m": {
+          "optional": true,
+          "type": "Vec3[]"
+        },
+        "spec": {
+          "optional": false,
+          "type": "Record<string, string | number>"
+        },
+        "control": {
+          "optional": true,
+          "type": "RobotControlInfo"
+        },
+        "arm_joint_names": {
+          "optional": true,
+          "type": "string[]"
+        },
+        "arm_qpos_rad": {
+          "optional": true,
+          "type": "number[]"
+        },
+        "gripper_aperture_m": {
+          "optional": true,
+          "type": "number"
+        },
+        "held_object_id": {
+          "optional": true,
+          "type": "string | null"
+        },
+        "grip_force_N": {
+          "optional": true,
+          "type": "number"
+        },
+        "end_effector_pose": {
+          "optional": true,
+          "type": "{ pos_xyz: Vec3; quat_xyzw: [number, number, number, number] }",
+          "members": {
+            "pos_xyz": {
+              "optional": false,
+              "type": "Vec3"
+            },
+            "quat_xyzw": {
+              "optional": false,
+              "type": "[number, number, number, number]"
+            }
+          }
+        },
+        "contact_list": {
+          "optional": true,
+          "type": "string[]"
+        },
+        "payload_mass_kg": {
+          "optional": true,
+          "type": "number"
+        },
+        "deposit_fouling_pct": {
+          "optional": true,
+          "type": "number"
+        }
+      },
+      "source": "contracts"
+    },
+    "MissionStep": {
+      "type_params": [],
+      "fields": {
+        "id": {
+          "optional": false,
+          "type": "string"
+        },
+        "command": {
+          "optional": false,
+          "type": "string"
+        },
+        "label": {
+          "optional": false,
+          "type": "string"
+        },
+        "status": {
+          "optional": false,
+          "type": "'pending' | 'active' | 'done' | 'failed' | 'skipped'"
+        },
+        "started_tick": {
+          "optional": true,
+          "type": "number"
+        },
+        "ended_tick": {
+          "optional": true,
+          "type": "number"
+        },
+        "result": {
+          "optional": true,
+          "type": "string"
+        }
+      },
+      "source": "contracts"
+    },
+    "Mission": {
+      "type_params": [],
+      "fields": {
+        "id": {
+          "optional": false,
+          "type": "EntityId"
+        },
+        "incident_id": {
+          "optional": false,
+          "type": "EntityId"
+        },
+        "robot_id": {
+          "optional": false,
+          "type": "EntityId"
+        },
+        "kind": {
+          "optional": false,
+          "type": "'inspect' | 'clear' | 'service' | 'return'"
+        },
+        "title": {
+          "optional": false,
+          "type": "string"
+        },
+        "target_id": {
+          "optional": false,
+          "type": "EntityId"
+        },
+        "status": {
+          "optional": false,
+          "type": "RobotMode"
+        },
+        "progress": {
+          "optional": false,
+          "type": "number"
+        },
+        "steps": {
+          "optional": false,
+          "type": "MissionStep[]"
+        },
+        "route_xyz_m": {
+          "optional": true,
+          "type": "Vec3[]"
+        },
+        "route_segment_ids": {
+          "optional": true,
+          "type": "EntityId[]"
+        },
+        "opened_tick": {
+          "optional": false,
+          "type": "number"
+        },
+        "closed_tick": {
+          "optional": true,
+          "type": "number"
+        }
+      },
+      "source": "contracts"
+    },
+    "Hypothesis": {
+      "type_params": [],
+      "fields": {
+        "id": {
+          "optional": false,
+          "type": "string"
+        },
+        "cause": {
+          "optional": false,
+          "type": "FaultKind"
+        },
+        "label": {
+          "optional": false,
+          "type": "string"
+        },
+        "target_id": {
+          "optional": false,
+          "type": "EntityId"
+        },
+        "confidence": {
+          "optional": false,
+          "type": "number"
+        },
+        "status": {
+          "optional": false,
+          "type": "'candidate' | 'supported' | 'refuted' | 'confirmed'"
+        },
+        "evidence_for": {
+          "optional": false,
+          "type": "string[]"
+        },
+        "evidence_against": {
+          "optional": false,
+          "type": "string[]"
+        }
+      },
+      "source": "contracts"
+    },
+    "Evidence": {
+      "type_params": [],
+      "fields": {
+        "id": {
+          "optional": false,
+          "type": "string"
+        },
+        "kind": {
+          "optional": false,
+          "type": "'telemetry' | 'observation' | 'topology' | 'verification' | 'action'"
+        },
+        "summary": {
+          "optional": false,
+          "type": "string"
+        },
+        "asset_id": {
+          "optional": true,
+          "type": "EntityId"
+        },
+        "tick": {
+          "optional": false,
+          "type": "number"
+        },
+        "data": {
+          "optional": true,
+          "type": "Record<string, number | string>"
+        },
+        "tags": {
+          "optional": true,
+          "type": "string[]"
+        }
+      },
+      "source": "contracts"
+    },
+    "ApprovalRequest": {
+      "type_params": [],
+      "fields": {
+        "id": {
+          "optional": false,
+          "type": "string"
+        },
+        "incident_id": {
+          "optional": false,
+          "type": "EntityId"
+        },
+        "task_id": {
+          "optional": false,
+          "type": "string"
+        },
+        "action": {
+          "optional": false,
+          "type": "string"
+        },
+        "steps": {
+          "optional": false,
+          "type": "string[]"
+        },
+        "requested_tick": {
+          "optional": false,
+          "type": "number"
+        },
+        "auto_approve_at_s": {
+          "optional": false,
+          "type": "number | null"
+        },
+        "status": {
+          "optional": false,
+          "type": "'pending' | 'approved' | 'held' | 'expired'"
+        }
+      },
+      "source": "contracts"
+    },
+    "Incident": {
+      "type_params": [],
+      "fields": {
+        "id": {
+          "optional": false,
+          "type": "EntityId"
+        },
+        "opened_tick": {
+          "optional": false,
+          "type": "number"
+        },
+        "opened_at_s": {
+          "optional": false,
+          "type": "number"
+        },
+        "updated_tick": {
+          "optional": false,
+          "type": "number"
+        },
+        "severity": {
+          "optional": false,
+          "type": "Severity"
+        },
+        "status": {
+          "optional": false,
+          "type": "IncidentStatus"
+        },
+        "stage": {
+          "optional": false,
+          "type": "IncidentStage"
+        },
+        "stage_log": {
+          "optional": false,
+          "type": "Array<{ stage: IncidentStage; tick: number; outcome?: 'ok' | 'rejected' }>",
+          "array": true,
+          "members": {
+            "stage": {
+              "optional": false,
+              "type": "IncidentStage"
+            },
+            "tick": {
+              "optional": false,
+              "type": "number"
+            },
+            "outcome": {
+              "optional": true,
+              "type": "'ok' | 'rejected'"
+            }
+          }
+        },
+        "title": {
+          "optional": false,
+          "type": "string"
+        },
+        "summary": {
+          "optional": false,
+          "type": "string"
+        },
+        "cause": {
+          "optional": false,
+          "type": "FaultKind | 'unknown'"
+        },
+        "anchor": {
+          "optional": false,
+          "type": "{ entity_id: EntityId; position_xyz_m: Vec3 }",
+          "members": {
+            "entity_id": {
+              "optional": false,
+              "type": "EntityId"
+            },
+            "position_xyz_m": {
+              "optional": false,
+              "type": "Vec3"
+            }
+          }
+        },
+        "affected_asset_ids": {
+          "optional": false,
+          "type": "EntityId[]"
+        },
+        "hypotheses": {
+          "optional": false,
+          "type": "Hypothesis[]"
+        },
+        "evidence": {
+          "optional": false,
+          "type": "Evidence[]"
+        },
+        "mission_ids": {
+          "optional": false,
+          "type": "EntityId[]"
+        },
+        "task_ids": {
+          "optional": false,
+          "type": "string[]"
+        },
+        "approval": {
+          "optional": true,
+          "type": "ApprovalRequest"
+        },
+        "verification": {
+          "optional": true,
+          "type": "VerificationResult"
+        },
+        "attempts": {
+          "optional": false,
+          "type": "number"
+        },
+        "closed_tick": {
+          "optional": true,
+          "type": "number"
+        },
+        "close_reason": {
+          "optional": true,
+          "type": "string"
+        }
+      },
+      "source": "contracts"
+    },
+    "VerificationCheck": {
+      "type_params": [],
+      "fields": {
+        "id": {
+          "optional": false,
+          "type": "string"
+        },
+        "label": {
+          "optional": false,
+          "type": "string"
+        },
+        "unit": {
+          "optional": false,
+          "type": "string"
+        },
+        "before": {
+          "optional": false,
+          "type": "number"
+        },
+        "after": {
+          "optional": false,
+          "type": "number"
+        },
+        "target": {
+          "optional": false,
+          "type": "number"
+        },
+        "direction": {
+          "optional": false,
+          "type": "'min' | 'max'"
+        },
+        "pass": {
+          "optional": false,
+          "type": "boolean"
+        }
+      },
+      "source": "contracts"
+    },
+    "VerificationResult": {
+      "type_params": [],
+      "fields": {
+        "id": {
+          "optional": false,
+          "type": "string"
+        },
+        "incident_id": {
+          "optional": false,
+          "type": "EntityId"
+        },
+        "attempt": {
+          "optional": false,
+          "type": "number"
+        },
+        "status": {
+          "optional": false,
+          "type": "'pending' | 'verified' | 'rejected'"
+        },
+        "window_s": {
+          "optional": false,
+          "type": "number"
+        },
+        "elapsed_s": {
+          "optional": false,
+          "type": "number"
+        },
+        "progress": {
+          "optional": false,
+          "type": "number"
+        },
+        "checks": {
+          "optional": false,
+          "type": "VerificationCheck[]"
+        },
+        "confidence": {
+          "optional": false,
+          "type": "number"
+        },
+        "failed_reason": {
+          "optional": true,
+          "type": "string"
+        },
+        "started_tick": {
+          "optional": false,
+          "type": "number"
+        },
+        "completed_tick": {
+          "optional": true,
+          "type": "number"
+        }
+      },
+      "source": "contracts"
+    },
+    "ModelMeta": {
+      "type_params": [],
+      "fields": {
+        "provider": {
+          "optional": false,
+          "type": "'crusoe' | 'mock' | 'deterministic'"
+        },
+        "model_id": {
+          "optional": false,
+          "type": "string"
+        },
+        "latency_ms": {
+          "optional": true,
+          "type": "number"
+        },
+        "tokens_in": {
+          "optional": true,
+          "type": "number"
+        },
+        "tokens_out": {
+          "optional": true,
+          "type": "number"
+        },
+        "schema_version": {
+          "optional": false,
+          "type": "string"
+        },
+        "fallback": {
+          "optional": false,
+          "type": "boolean"
+        }
+      },
+      "source": "contracts"
+    },
+    "ToolCall": {
+      "type_params": [],
+      "fields": {
+        "id": {
+          "optional": false,
+          "type": "string"
+        },
+        "task_id": {
+          "optional": false,
+          "type": "string"
+        },
+        "name": {
+          "optional": false,
+          "type": "string"
+        },
+        "input": {
+          "optional": false,
+          "type": "Record<string, unknown>"
+        },
+        "output": {
+          "optional": true,
+          "type": "Record<string, unknown>"
+        },
+        "status": {
+          "optional": false,
+          "type": "'running' | 'ok' | 'error' | 'rejected'"
+        },
+        "tick": {
+          "optional": false,
+          "type": "number"
+        },
+        "latency_ms": {
+          "optional": true,
+          "type": "number"
+        }
+      },
+      "source": "contracts"
+    },
+    "AgentTask": {
+      "type_params": [],
+      "fields": {
+        "id": {
+          "optional": false,
+          "type": "string"
+        },
+        "incident_id": {
+          "optional": false,
+          "type": "EntityId"
+        },
+        "parent_id": {
+          "optional": true,
+          "type": "string"
+        },
+        "role": {
+          "optional": false,
+          "type": "AgentRole"
+        },
+        "kind": {
+          "optional": false,
+          "type": "string"
+        },
+        "title": {
+          "optional": false,
+          "type": "string"
+        },
+        "question": {
+          "optional": false,
+          "type": "string"
+        },
+        "status": {
+          "optional": false,
+          "type": "AgentTaskStatus"
+        },
+        "depth": {
+          "optional": false,
+          "type": "number"
+        },
+        "started_tick": {
+          "optional": false,
+          "type": "number"
+        },
+        "ended_tick": {
+          "optional": true,
+          "type": "number"
+        },
+        "summary": {
+          "optional": true,
+          "type": "string"
+        },
+        "outcome": {
+          "optional": true,
+          "type": "{ label: string; ok: boolean }",
+          "members": {
+            "label": {
+              "optional": false,
+              "type": "string"
+            },
+            "ok": {
+              "optional": false,
+              "type": "boolean"
+            }
+          }
+        },
+        "evidence_ids": {
+          "optional": false,
+          "type": "string[]"
+        },
+        "tool_calls": {
+          "optional": false,
+          "type": "ToolCall[]"
+        },
+        "model": {
+          "optional": false,
+          "type": "ModelMeta"
+        },
+        "caused_by": {
+          "optional": false,
+          "type": "string[]"
+        },
+        "robot_id": {
+          "optional": true,
+          "type": "EntityId"
+        },
+        "asset_ids": {
+          "optional": false,
+          "type": "EntityId[]"
+        }
+      },
+      "source": "contracts"
+    },
+    "EngineHealth": {
+      "type_params": [],
+      "fields": {
+        "status": {
+          "optional": false,
+          "type": "SimStatus"
+        },
+        "tick_rate_hz": {
+          "optional": false,
+          "type": "number"
+        },
+        "solver": {
+          "optional": false,
+          "type": "{ status: 'converged' | 'degraded' | 'failed'; residual: number }",
+          "members": {
+            "status": {
+              "optional": false,
+              "type": "'converged' | 'degraded' | 'failed'"
+            },
+            "residual": {
+              "optional": false,
+              "type": "number"
+            }
+          }
+        },
+        "database": {
+          "optional": false,
+          "type": "'ok' | 'unavailable' | 'n/a'"
+        },
+        "intelligence": {
+          "optional": false,
+          "type": "{ provider: 'crusoe' | 'mock' | 'deterministic'; model_id: string; status: 'live' | 'unavailable' | 'mock'; model_state?: string; fallback_active?: boolean; checkpointer?: string; last_latency_ms?: number; }",
+          "members": {
+            "provider": {
+              "optional": false,
+              "type": "'crusoe' | 'mock' | 'deterministic'"
+            },
+            "model_id": {
+              "optional": false,
+              "type": "string"
+            },
+            "status": {
+              "optional": false,
+              "type": "'live' | 'unavailable' | 'mock'"
+            },
+            "model_state": {
+              "optional": true,
+              "type": "string"
+            },
+            "fallback_active": {
+              "optional": true,
+              "type": "boolean"
+            },
+            "checkpointer": {
+              "optional": true,
+              "type": "string"
+            },
+            "last_latency_ms": {
+              "optional": true,
+              "type": "number"
+            }
+          }
+        },
+        "safe_automation_mode": {
+          "optional": false,
+          "type": "'autonomous' | 'supervised'"
+        },
+        "approval_window_s": {
+          "optional": false,
+          "type": "number"
+        },
+        "backend": {
+          "optional": false,
+          "type": "'mock' | 'live'"
+        },
+        "uptime_s": {
+          "optional": false,
+          "type": "number"
+        },
+        "seed": {
+          "optional": false,
+          "type": "number"
+        }
+      },
+      "source": "contracts"
+    },
+    "Kpis": {
+      "type_params": [],
+      "fields": {
+        "min_margin_k": {
+          "optional": false,
+          "type": "number"
+        },
+        "total_heat_kw": {
+          "optional": false,
+          "type": "number"
+        },
+        "tcs_flow_kg_s": {
+          "optional": false,
+          "type": "number"
+        },
+        "fws_flow_kg_s": {
+          "optional": false,
+          "type": "number"
+        },
+        "tcs_supply_c": {
+          "optional": false,
+          "type": "number"
+        },
+        "tcs_return_c": {
+          "optional": false,
+          "type": "number"
+        },
+        "open_incidents": {
+          "optional": false,
+          "type": "number"
+        },
+        "resolved_incidents": {
+          "optional": false,
+          "type": "number"
+        }
+      },
+      "source": "contracts"
+    },
+    "RigidObjectState": {
+      "type_params": [],
+      "fields": {
+        "id": {
+          "optional": false,
+          "type": "string"
+        },
+        "name": {
+          "optional": false,
+          "type": "string"
+        },
+        "mass_kg": {
+          "optional": false,
+          "type": "number"
+        },
+        "pos_xyz": {
+          "optional": false,
+          "type": "Vec3"
+        },
+        "quat_xyzw": {
+          "optional": false,
+          "type": "[number, number, number, number]"
+        },
+        "held_by_robot_id": {
+          "optional": true,
+          "type": "string | null"
+        },
+        "seated_in_fixture_id": {
+          "optional": true,
+          "type": "string | null"
+        }
+      },
+      "source": "contracts"
+    },
+    "MechanicalFixtureState": {
+      "type_params": [],
+      "fields": {
+        "id": {
+          "optional": false,
+          "type": "string"
+        },
+        "target_component_id": {
+          "optional": false,
+          "type": "string"
+        },
+        "is_isolated": {
+          "optional": false,
+          "type": "boolean"
+        },
+        "cartridge_installed": {
+          "optional": false,
+          "type": "boolean"
+        },
+        "mechanical_fit_pass": {
+          "optional": false,
+          "type": "boolean"
+        },
+        "pos_xyz": {
+          "optional": false,
+          "type": "Vec3"
+        }
+      },
+      "source": "contracts"
+    },
+    "WorldSnapshot": {
+      "type_params": [],
+      "fields": {
+        "facility_id": {
+          "optional": false,
+          "type": "string"
+        },
+        "version": {
+          "optional": false,
+          "type": "number"
+        },
+        "sim_tick": {
+          "optional": false,
+          "type": "number"
+        },
+        "sim_time_s": {
+          "optional": false,
+          "type": "number"
+        },
+        "sim_speed": {
+          "optional": false,
+          "type": "number"
+        },
+        "sim_status": {
+          "optional": false,
+          "type": "SimStatus"
+        },
+        "assets": {
+          "optional": false,
+          "type": "Record<EntityId, AssetState>"
+        },
+        "robots": {
+          "optional": false,
+          "type": "Record<EntityId, Robot>"
+        },
+        "missions": {
+          "optional": false,
+          "type": "Record<EntityId, Mission>"
+        },
+        "incidents": {
+          "optional": false,
+          "type": "Incident[]"
+        },
+        "health": {
+          "optional": false,
+          "type": "EngineHealth"
+        },
+        "kpis": {
+          "optional": false,
+          "type": "Kpis"
+        },
+        "last_seq": {
+          "optional": false,
+          "type": "number"
+        },
+        "rigid_objects": {
+          "optional": true,
+          "type": "Record<string, RigidObjectState>"
+        },
+        "mechanical_fixtures": {
+          "optional": true,
+          "type": "Record<string, MechanicalFixtureState>"
+        }
+      },
+      "source": "contracts"
+    },
+    "EventBase": {
+      "type_params": [
+        "T",
+        "P"
+      ],
+      "fields": {
+        "event_id": {
+          "optional": false,
+          "type": "string"
+        },
+        "seq": {
+          "optional": false,
+          "type": "number"
+        },
+        "sim_tick": {
+          "optional": false,
+          "type": "number"
+        },
+        "sim_time_s": {
+          "optional": false,
+          "type": "number"
+        },
+        "world_version": {
+          "optional": false,
+          "type": "number"
+        },
+        "type": {
+          "optional": false,
+          "type": "T"
+        },
+        "entity_id": {
+          "optional": false,
+          "type": "EntityId"
+        },
+        "facility_id": {
+          "optional": false,
+          "type": "string"
+        },
+        "ts": {
+          "optional": false,
+          "type": "string"
+        },
+        "payload": {
+          "optional": false,
+          "type": "P"
+        }
+      },
+      "source": "contracts"
+    },
+    "WorldDiffPayload": {
+      "type_params": [],
+      "fields": {
+        "assets": {
+          "optional": false,
+          "type": "Record<EntityId, Partial<AssetState>>"
+        },
+        "kpis": {
+          "optional": false,
+          "type": "Kpis"
+        },
+        "sim_speed": {
+          "optional": false,
+          "type": "number"
+        },
+        "sim_status": {
+          "optional": false,
+          "type": "SimStatus"
+        }
+      },
+      "source": "contracts"
+    },
+    "RobotPosePayload": {
+      "type_params": [],
+      "fields": {
+        "robot_id": {
+          "optional": false,
+          "type": "EntityId"
+        },
+        "pose": {
+          "optional": false,
+          "type": "RobotPose"
+        },
+        "battery_pct": {
+          "optional": false,
+          "type": "number"
+        },
+        "mode": {
+          "optional": false,
+          "type": "RobotMode"
+        },
+        "route_xyz_m": {
+          "optional": true,
+          "type": "Vec3[]"
+        },
+        "tool": {
+          "optional": true,
+          "type": "string | null"
+        },
+        "mission_id": {
+          "optional": true,
+          "type": "EntityId | null"
+        },
+        "agent_task_id": {
+          "optional": true,
+          "type": "EntityId | null"
+        },
+        "control": {
+          "optional": true,
+          "type": "RobotControlInfo"
+        },
+        "arm_joint_names": {
+          "optional": true,
+          "type": "string[]"
+        },
+        "arm_qpos_rad": {
+          "optional": true,
+          "type": "number[]"
+        },
+        "gripper_aperture_m": {
+          "optional": true,
+          "type": "number"
+        },
+        "held_object_id": {
+          "optional": true,
+          "type": "string | null"
+        },
+        "grip_force_N": {
+          "optional": true,
+          "type": "number"
+        },
+        "end_effector_pose": {
+          "optional": true,
+          "type": "{ pos_xyz: Vec3; quat_xyzw: [number, number, number, number] }",
+          "members": {
+            "pos_xyz": {
+              "optional": false,
+              "type": "Vec3"
+            },
+            "quat_xyzw": {
+              "optional": false,
+              "type": "[number, number, number, number]"
+            }
+          }
+        },
+        "contact_list": {
+          "optional": true,
+          "type": "string[]"
+        },
+        "payload_mass_kg": {
+          "optional": true,
+          "type": "number"
+        },
+        "deposit_fouling_pct": {
+          "optional": true,
+          "type": "number"
+        }
+      },
+      "source": "contracts"
+    },
+    "MissionTransitionPayload": {
+      "type_params": [],
+      "fields": {
+        "mission": {
+          "optional": false,
+          "type": "Mission"
+        },
+        "robot_mode": {
+          "optional": false,
+          "type": "RobotMode"
+        },
+        "tool": {
+          "optional": true,
+          "type": "string | null"
+        }
+      },
+      "source": "contracts"
+    },
+    "IncidentTrace": {
+      "type_params": [],
+      "fields": {
+        "incident_id": {
+          "optional": false,
+          "type": "EntityId"
+        },
+        "tasks": {
+          "optional": false,
+          "type": "AgentTask[]"
+        }
+      },
+      "source": "contracts"
+    },
+    "TelemetrySeries": {
+      "type_params": [],
+      "fields": {
+        "asset_id": {
+          "optional": false,
+          "type": "EntityId"
+        },
+        "metric": {
+          "optional": false,
+          "type": "string"
+        },
+        "unit": {
+          "optional": false,
+          "type": "string"
+        },
+        "points": {
+          "optional": false,
+          "type": "Array<[number, number]>"
+        }
+      },
+      "source": "contracts"
+    },
+    "CommandRequest": {
+      "type_params": [],
+      "fields": {
+        "command_id": {
+          "optional": false,
+          "type": "string"
+        },
+        "kind": {
+          "optional": false,
+          "type": "CommandKind"
+        },
+        "target_id": {
+          "optional": true,
+          "type": "EntityId"
+        },
+        "args": {
+          "optional": true,
+          "type": "Record<string, unknown>"
+        }
+      },
+      "source": "contracts"
+    },
+    "CommandAck": {
+      "type_params": [],
+      "fields": {
+        "command_id": {
+          "optional": false,
+          "type": "string"
+        },
+        "accepted": {
+          "optional": false,
+          "type": "boolean"
+        },
+        "reason": {
+          "optional": true,
+          "type": "string"
+        }
+      },
+      "source": "contracts"
+    },
+    "ReplayPage": {
+      "type_params": [],
+      "fields": {
+        "events": {
+          "optional": false,
+          "type": "StreamEvent[]"
+        },
+        "next_seq": {
+          "optional": false,
+          "type": "number | null"
+        }
+      },
+      "source": "contracts"
+    },
+    "ReadingMeta": {
+      "type_params": [],
+      "fields": {
+        "label": {
+          "optional": false,
+          "type": "string"
+        },
+        "unit": {
+          "optional": false,
+          "type": "string"
+        },
+        "decimals": {
+          "optional": false,
+          "type": "number"
+        }
+      },
+      "source": "contracts"
+    },
+    "ControlRefusal": {
+      "type_params": [],
+      "fields": {
+        "accepted": {
+          "optional": false,
+          "type": "false"
+        },
+        "code": {
+          "optional": false,
+          "type": "ControlErrorCode"
+        },
+        "reason": {
+          "optional": false,
+          "type": "string"
+        },
+        "holder": {
+          "optional": true,
+          "type": "string"
+        },
+        "current_world_version": {
+          "optional": true,
+          "type": "number"
+        },
+        "revoked_reason": {
+          "optional": true,
+          "type": "ControlReason"
+        }
+      },
+      "source": "control"
+    },
+    "JunctionExit": {
+      "type_params": [],
+      "fields": {
+        "segment_id": {
+          "optional": false,
+          "type": "EntityId"
+        },
+        "label": {
+          "optional": false,
+          "type": "string"
+        },
+        "passable": {
+          "optional": false,
+          "type": "boolean"
+        },
+        "reason": {
+          "optional": true,
+          "type": "string"
+        },
+        "bearing_deg": {
+          "optional": false,
+          "type": "number"
+        }
+      },
+      "source": "control"
+    },
+    "JunctionInfo": {
+      "type_params": [],
+      "fields": {
+        "node_id": {
+          "optional": false,
+          "type": "EntityId"
+        },
+        "node_label": {
+          "optional": false,
+          "type": "string"
+        },
+        "distance_m": {
+          "optional": false,
+          "type": "number"
+        },
+        "exits": {
+          "optional": false,
+          "type": "JunctionExit[]"
+        },
+        "selected": {
+          "optional": true,
+          "type": "EntityId | null"
+        }
+      },
+      "source": "control"
+    },
+    "ToolCapability": {
+      "type_params": [],
+      "fields": {
+        "id": {
+          "optional": false,
+          "type": "'lamp' | 'scan' | 'brush_clear'"
+        },
+        "label": {
+          "optional": false,
+          "type": "string"
+        },
+        "available": {
+          "optional": false,
+          "type": "boolean"
+        },
+        "reason": {
+          "optional": true,
+          "type": "string"
+        }
+      },
+      "source": "control"
+    },
+    "ScanResult": {
+      "type_params": [],
+      "fields": {
+        "tick": {
+          "optional": false,
+          "type": "number"
+        },
+        "segment_id": {
+          "optional": false,
+          "type": "EntityId"
+        },
+        "s_m": {
+          "optional": false,
+          "type": "number"
+        },
+        "occlusion_pct": {
+          "optional": false,
+          "type": "number"
+        },
+        "effective_bore_mm": {
+          "optional": false,
+          "type": "number"
+        },
+        "provenance": {
+          "optional": false,
+          "type": "'simulated'"
+        }
+      },
+      "source": "control"
+    },
+    "RobotControlInfo": {
+      "type_params": [],
+      "fields": {
+        "authority": {
+          "optional": false,
+          "type": "ControlAuthority"
+        },
+        "controller_state": {
+          "optional": false,
+          "type": "ControllerState"
+        },
+        "controllable": {
+          "optional": false,
+          "type": "boolean"
+        },
+        "uncontrollable_reason": {
+          "optional": true,
+          "type": "string"
+        },
+        "lease_id": {
+          "optional": true,
+          "type": "string"
+        },
+        "lease_epoch": {
+          "optional": false,
+          "type": "number"
+        },
+        "holder": {
+          "optional": true,
+          "type": "string"
+        },
+        "facing": {
+          "optional": false,
+          "type": "1 | -1"
+        },
+        "velocity_m_s": {
+          "optional": false,
+          "type": "number"
+        },
+        "lamp": {
+          "optional": false,
+          "type": "boolean"
+        },
+        "last_applied_seq": {
+          "optional": false,
+          "type": "number"
+        },
+        "last_reason": {
+          "optional": true,
+          "type": "ControlReason"
+        },
+        "next_node": {
+          "optional": true,
+          "type": "{ id: EntityId; label: string; distance_m: number }",
+          "members": {
+            "id": {
+              "optional": false,
+              "type": "EntityId"
+            },
+            "label": {
+              "optional": false,
+              "type": "string"
+            },
+            "distance_m": {
+              "optional": false,
+              "type": "number"
+            }
+          }
+        },
+        "junction": {
+          "optional": true,
+          "type": "JunctionInfo"
+        },
+        "tools": {
+          "optional": false,
+          "type": "ToolCapability[]"
+        },
+        "last_scan": {
+          "optional": true,
+          "type": "ScanResult"
+        },
+        "odometer_m": {
+          "optional": false,
+          "type": "number"
+        }
+      },
+      "source": "control"
+    },
+    "DriveLimits": {
+      "type_params": [],
+      "fields": {
+        "max_speed_m_s": {
+          "optional": false,
+          "type": "number"
+        },
+        "max_accel_m_s2": {
+          "optional": false,
+          "type": "number"
+        },
+        "intent_ttl_ms": {
+          "optional": false,
+          "type": "[number, number]"
+        },
+        "max_intent_rate_hz": {
+          "optional": false,
+          "type": "number"
+        }
+      },
+      "source": "control"
+    },
+    "LeaseRequest": {
+      "type_params": [],
+      "fields": {
+        "expected_world_version": {
+          "optional": false,
+          "type": "number"
+        },
+        "idempotency_key": {
+          "optional": false,
+          "type": "string"
+        },
+        "client_id": {
+          "optional": false,
+          "type": "string"
+        },
+        "topology_revision": {
+          "optional": false,
+          "type": "string"
+        }
+      },
+      "source": "control"
+    },
+    "LeaseGrant": {
+      "type_params": [],
+      "fields": {
+        "accepted": {
+          "optional": false,
+          "type": "true"
+        },
+        "robot_id": {
+          "optional": false,
+          "type": "EntityId"
+        },
+        "lease_id": {
+          "optional": false,
+          "type": "string"
+        },
+        "lease_epoch": {
+          "optional": false,
+          "type": "number"
+        },
+        "granted_world_version": {
+          "optional": false,
+          "type": "number"
+        },
+        "expires_in_ms": {
+          "optional": false,
+          "type": "number"
+        },
+        "heartbeat_interval_ms": {
+          "optional": false,
+          "type": "number"
+        },
+        "deadman_ms": {
+          "optional": false,
+          "type": "number"
+        },
+        "limits": {
+          "optional": false,
+          "type": "DriveLimits"
+        },
+        "topology_revision": {
+          "optional": false,
+          "type": "string"
+        },
+        "control": {
+          "optional": false,
+          "type": "RobotControlInfo"
+        }
+      },
+      "source": "control"
+    },
+    "HeartbeatRequest": {
+      "type_params": [],
+      "fields": {
+        "lease_id": {
+          "optional": false,
+          "type": "string"
+        },
+        "lease_epoch": {
+          "optional": false,
+          "type": "number"
+        }
+      },
+      "source": "control"
+    },
+    "DriveIntent": {
+      "type_params": [],
+      "fields": {
+        "lease_id": {
+          "optional": false,
+          "type": "string"
+        },
+        "lease_epoch": {
+          "optional": false,
+          "type": "number"
+        },
+        "command_seq": {
+          "optional": false,
+          "type": "number"
+        },
+        "idempotency_key": {
+          "optional": false,
+          "type": "string"
+        },
+        "topology_revision": {
+          "optional": false,
+          "type": "string"
+        },
+        "known_world_version": {
+          "optional": true,
+          "type": "number"
+        },
+        "throttle": {
+          "optional": false,
+          "type": "number"
+        },
+        "steer": {
+          "optional": false,
+          "type": "number"
+        },
+        "brake": {
+          "optional": false,
+          "type": "boolean"
+        },
+        "selected_exit_segment_id": {
+          "optional": true,
+          "type": "EntityId | null"
+        },
+        "branch": {
+          "optional": true,
+          "type": "string"
+        },
+        "graph_revision": {
+          "optional": true,
+          "type": "string"
+        },
+        "duration_ms": {
+          "optional": false,
+          "type": "number"
+        },
+        "tool": {
+          "optional": true,
+          "type": "ToolAction"
+        },
+        "action": {
+          "optional": true,
+          "type": "'joint_jog' | 'pick' | 'place' | 'clean_deposit' | string"
+        },
+        "joint_idx": {
+          "optional": true,
+          "type": "number"
+        },
+        "delta_rad": {
+          "optional": true,
+          "type": "number"
+        },
+        "gripper_aperture": {
+          "optional": true,
+          "type": "number"
+        },
+        "pick": {
+          "optional": true,
+          "type": "boolean"
+        },
+        "place": {
+          "optional": true,
+          "type": "boolean"
+        }
+      },
+      "source": "control"
+    },
+    "DriveAck": {
+      "type_params": [],
+      "fields": {
+        "accepted": {
+          "optional": false,
+          "type": "true"
+        },
+        "robot_id": {
+          "optional": false,
+          "type": "EntityId"
+        },
+        "lease_epoch": {
+          "optional": false,
+          "type": "number"
+        },
+        "applied_seq": {
+          "optional": false,
+          "type": "number"
+        },
+        "controller_state": {
+          "optional": false,
+          "type": "ControllerState"
+        },
+        "world_version": {
+          "optional": false,
+          "type": "number"
+        },
+        "pose": {
+          "optional": false,
+          "type": "{ segment_id: EntityId; s_m: number; speed_m_s: number; velocity_m_s: number; facing: 1 | -1; position_xyz_m: Vec3 }",
+          "members": {
+            "segment_id": {
+              "optional": false,
+              "type": "EntityId"
+            },
+            "s_m": {
+              "optional": false,
+              "type": "number"
+            },
+            "speed_m_s": {
+              "optional": false,
+              "type": "number"
+            },
+            "velocity_m_s": {
+              "optional": false,
+              "type": "number"
+            },
+            "facing": {
+              "optional": false,
+              "type": "1 | -1"
+            },
+            "position_xyz_m": {
+              "optional": false,
+              "type": "Vec3"
+            }
+          }
+        },
+        "junction": {
+          "optional": true,
+          "type": "JunctionInfo"
+        },
+        "next_node": {
+          "optional": true,
+          "type": "{ id: EntityId; label: string; distance_m: number }",
+          "members": {
+            "id": {
+              "optional": false,
+              "type": "EntityId"
+            },
+            "label": {
+              "optional": false,
+              "type": "string"
+            },
+            "distance_m": {
+              "optional": false,
+              "type": "number"
+            }
+          }
+        },
+        "odometer_m": {
+          "optional": false,
+          "type": "number"
+        }
+      },
+      "source": "control"
+    },
+    "ReleaseRequest": {
+      "type_params": [],
+      "fields": {
+        "lease_id": {
+          "optional": false,
+          "type": "string"
+        },
+        "lease_epoch": {
+          "optional": false,
+          "type": "number"
+        },
+        "idempotency_key": {
+          "optional": false,
+          "type": "string"
+        },
+        "reason": {
+          "optional": true,
+          "type": "ControlReason"
+        }
+      },
+      "source": "control"
+    },
+    "ReleaseAck": {
+      "type_params": [],
+      "fields": {
+        "accepted": {
+          "optional": false,
+          "type": "true"
+        },
+        "robot_id": {
+          "optional": false,
+          "type": "EntityId"
+        },
+        "controller_state": {
+          "optional": false,
+          "type": "ControllerState"
+        },
+        "resumed": {
+          "optional": false,
+          "type": "'mission' | 'return_to_port' | 'docked' | 'blocked' | 'none'"
+        },
+        "already_released": {
+          "optional": true,
+          "type": "boolean"
+        },
+        "control": {
+          "optional": false,
+          "type": "RobotControlInfo"
+        }
+      },
+      "source": "control"
+    },
+    "RobotControlPayload": {
+      "type_params": [],
+      "fields": {
+        "robot_id": {
+          "optional": false,
+          "type": "EntityId"
+        },
+        "event": {
+          "optional": false,
+          "type": "ControlEventKind"
+        },
+        "reason": {
+          "optional": true,
+          "type": "ControlReason | string"
+        },
+        "control": {
+          "optional": false,
+          "type": "RobotControlInfo"
+        },
+        "data": {
+          "optional": true,
+          "type": "Record<string, number | string>"
+        }
+      },
+      "source": "control"
+    },
+    "RunSummary": {
+      "type_params": [],
+      "fields": {
+        "run_id": {
+          "optional": false,
+          "type": "string"
+        },
+        "label": {
+          "optional": false,
+          "type": "string"
+        },
+        "kind": {
+          "optional": false,
+          "type": "RunKind"
+        },
+        "mode": {
+          "optional": false,
+          "type": "RunMode"
+        },
+        "state": {
+          "optional": false,
+          "type": "RunState"
+        },
+        "parent_run_id": {
+          "optional": false,
+          "type": "string | null"
+        },
+        "fork_tick": {
+          "optional": false,
+          "type": "number | null"
+        },
+        "fork_snapshot_id": {
+          "optional": false,
+          "type": "string | null"
+        },
+        "scenario_id": {
+          "optional": false,
+          "type": "string | null"
+        },
+        "facility_id": {
+          "optional": false,
+          "type": "string"
+        },
+        "seed": {
+          "optional": false,
+          "type": "number"
+        },
+        "topology_hash": {
+          "optional": false,
+          "type": "string"
+        },
+        "topology_version": {
+          "optional": true,
+          "type": "string | null"
+        },
+        "schema_version": {
+          "optional": false,
+          "type": "string"
+        },
+        "engine": {
+          "optional": false,
+          "type": "{ backend: 'mock' | 'live'; build: string }",
+          "members": {
+            "backend": {
+              "optional": false,
+              "type": "'mock' | 'live'"
+            },
+            "build": {
+              "optional": false,
+              "type": "string"
+            }
+          }
+        },
+        "created_at": {
+          "optional": false,
+          "type": "string"
+        },
+        "current_tick": {
+          "optional": false,
+          "type": "number"
+        },
+        "current_time_s": {
+          "optional": false,
+          "type": "number"
+        },
+        "first_tick": {
+          "optional": false,
+          "type": "number"
+        },
+        "recording": {
+          "optional": false,
+          "type": "{ frames: number; checkpoints: number; events: number; commands: number; approx_bytes: number }",
+          "members": {
+            "frames": {
+              "optional": false,
+              "type": "number"
+            },
+            "checkpoints": {
+              "optional": false,
+              "type": "number"
+            },
+            "events": {
+              "optional": false,
+              "type": "number"
+            },
+            "commands": {
+              "optional": false,
+              "type": "number"
+            },
+            "approx_bytes": {
+              "optional": false,
+              "type": "number"
+            }
+          }
+        },
+        "incidents": {
+          "optional": false,
+          "type": "{ opened: number; resolved: number }",
+          "members": {
+            "opened": {
+              "optional": false,
+              "type": "number"
+            },
+            "resolved": {
+              "optional": false,
+              "type": "number"
+            }
+          }
+        },
+        "children": {
+          "optional": false,
+          "type": "string[]"
+        },
+        "head_hash": {
+          "optional": false,
+          "type": "string | null"
+        }
+      },
+      "source": "runs"
+    },
+    "CheckpointInfo": {
+      "type_params": [],
+      "fields": {
+        "snapshot_id": {
+          "optional": false,
+          "type": "string"
+        },
+        "run_id": {
+          "optional": false,
+          "type": "string"
+        },
+        "tick": {
+          "optional": false,
+          "type": "number"
+        },
+        "sim_time_s": {
+          "optional": false,
+          "type": "number"
+        },
+        "hash": {
+          "optional": false,
+          "type": "string"
+        },
+        "hash_algo": {
+          "optional": false,
+          "type": "string"
+        },
+        "schema_version": {
+          "optional": false,
+          "type": "string"
+        },
+        "compatible": {
+          "optional": false,
+          "type": "boolean"
+        },
+        "reason": {
+          "optional": true,
+          "type": "string"
+        }
+      },
+      "source": "runs"
+    },
+    "CheckpointList": {
+      "type_params": [],
+      "fields": {
+        "run_id": {
+          "optional": false,
+          "type": "string"
+        },
+        "schema_version": {
+          "optional": false,
+          "type": "string"
+        },
+        "checkpoints": {
+          "optional": false,
+          "type": "CheckpointInfo[]"
+        }
+      },
+      "source": "runs"
+    },
+    "ReplayFrame": {
+      "type_params": [],
+      "fields": {
+        "tick": {
+          "optional": false,
+          "type": "number"
+        },
+        "sim_time_s": {
+          "optional": false,
+          "type": "number"
+        },
+        "sim_speed": {
+          "optional": false,
+          "type": "number"
+        },
+        "sim_status": {
+          "optional": false,
+          "type": "SimStatus"
+        },
+        "assets": {
+          "optional": false,
+          "type": "Record<string, AssetState>"
+        },
+        "robots": {
+          "optional": false,
+          "type": "Record<string, Robot>"
+        },
+        "kpis": {
+          "optional": false,
+          "type": "Kpis"
+        },
+        "incidents": {
+          "optional": false,
+          "type": "Incident[]"
+        },
+        "missions": {
+          "optional": false,
+          "type": "Record<string, Mission>"
+        },
+        "hash": {
+          "optional": true,
+          "type": "string"
+        },
+        "inherited": {
+          "optional": true,
+          "type": "boolean"
+        }
+      },
+      "source": "runs"
+    },
+    "RecordedCommand": {
+      "type_params": [],
+      "fields": {
+        "tick": {
+          "optional": false,
+          "type": "number"
+        },
+        "sim_time_s": {
+          "optional": false,
+          "type": "number"
+        },
+        "command_id": {
+          "optional": false,
+          "type": "string"
+        },
+        "kind": {
+          "optional": false,
+          "type": "string"
+        },
+        "target_id": {
+          "optional": true,
+          "type": "string"
+        },
+        "args": {
+          "optional": true,
+          "type": "Record<string, unknown>"
+        },
+        "accepted": {
+          "optional": false,
+          "type": "boolean"
+        },
+        "reason": {
+          "optional": true,
+          "type": "string"
+        },
+        "source": {
+          "optional": false,
+          "type": "'operator' | 'scenario'"
+        },
+        "run_id": {
+          "optional": false,
+          "type": "string"
+        }
+      },
+      "source": "runs"
+    },
+    "ReplayGap": {
+      "type_params": [],
+      "fields": {
+        "from_tick": {
+          "optional": false,
+          "type": "number"
+        },
+        "to_tick": {
+          "optional": false,
+          "type": "number"
+        },
+        "kind": {
+          "optional": false,
+          "type": "'not_recorded' | 'reduced_resolution'"
+        },
+        "reason": {
+          "optional": false,
+          "type": "string"
+        }
+      },
+      "source": "runs"
+    },
+    "ReplayWindow": {
+      "type_params": [],
+      "fields": {
+        "run_id": {
+          "optional": false,
+          "type": "string"
+        },
+        "schema_version": {
+          "optional": false,
+          "type": "string"
+        },
+        "start_tick": {
+          "optional": false,
+          "type": "number"
+        },
+        "end_tick": {
+          "optional": false,
+          "type": "number"
+        },
+        "stride": {
+          "optional": false,
+          "type": "number"
+        },
+        "recorded_from_tick": {
+          "optional": false,
+          "type": "number"
+        },
+        "recorded_to_tick": {
+          "optional": false,
+          "type": "number"
+        },
+        "frames": {
+          "optional": false,
+          "type": "ReplayFrame[]"
+        },
+        "events": {
+          "optional": false,
+          "type": "RecordedEvent[]"
+        },
+        "commands": {
+          "optional": false,
+          "type": "RecordedCommand[]"
+        },
+        "checkpoints": {
+          "optional": false,
+          "type": "CheckpointInfo[]"
+        },
+        "gaps": {
+          "optional": false,
+          "type": "ReplayGap[]"
+        },
+        "frozen_agent_decisions": {
+          "optional": false,
+          "type": "true"
+        }
+      },
+      "source": "runs"
+    },
+    "ForkRequest": {
+      "type_params": [],
+      "fields": {
+        "fork_tick": {
+          "optional": false,
+          "type": "number"
+        },
+        "expected_parent_hash": {
+          "optional": false,
+          "type": "string"
+        },
+        "chosen_snapshot_id": {
+          "optional": false,
+          "type": "string"
+        },
+        "label": {
+          "optional": true,
+          "type": "string"
+        }
+      },
+      "source": "runs"
+    },
+    "ForkResult": {
+      "type_params": [],
+      "fields": {
+        "run": {
+          "optional": false,
+          "type": "RunSummary"
+        },
+        "parent_run_id": {
+          "optional": false,
+          "type": "string"
+        },
+        "fork_tick": {
+          "optional": false,
+          "type": "number"
+        },
+        "parent_hash_before": {
+          "optional": false,
+          "type": "string"
+        },
+        "parent_hash_after": {
+          "optional": false,
+          "type": "string"
+        },
+        "restored_hash": {
+          "optional": false,
+          "type": "string"
+        },
+        "rng": {
+          "optional": false,
+          "type": "{ stream: 'new' | 'inherited'; note: string }",
+          "members": {
+            "stream": {
+              "optional": false,
+              "type": "'new' | 'inherited'"
+            },
+            "note": {
+              "optional": false,
+              "type": "string"
+            }
+          }
+        }
+      },
+      "source": "runs"
+    },
+    "ApiProblem": {
+      "type_params": [],
+      "fields": {
+        "code": {
+          "optional": false,
+          "type": "ApiProblemCode"
+        },
+        "message": {
+          "optional": false,
+          "type": "string"
+        },
+        "detail": {
+          "optional": true,
+          "type": "unknown"
+        }
+      },
+      "source": "runs"
+    },
+    "ScenarioFault": {
+      "type_params": [],
+      "fields": {
+        "kind": {
+          "optional": false,
+          "type": "ScenarioFaultKind"
+        },
+        "target_id": {
+          "optional": false,
+          "type": "string"
+        },
+        "onset_tick": {
+          "optional": false,
+          "type": "number"
+        },
+        "severity": {
+          "optional": false,
+          "type": "number"
+        },
+        "progression_s": {
+          "optional": false,
+          "type": "number"
+        }
+      },
+      "source": "runs"
+    },
+    "ScenarioSpec": {
+      "type_params": [],
+      "fields": {
+        "scenario_id": {
+          "optional": false,
+          "type": "string"
+        },
+        "title": {
+          "optional": false,
+          "type": "string"
+        },
+        "faults": {
+          "optional": false,
+          "type": "ScenarioFault[]"
+        },
+        "seed": {
+          "optional": false,
+          "type": "number"
+        },
+        "workload_factor": {
+          "optional": false,
+          "type": "number"
+        },
+        "sim_speed": {
+          "optional": false,
+          "type": "number"
+        },
+        "agent_policy": {
+          "optional": false,
+          "type": "'autonomous' | 'supervised'"
+        },
+        "approval_window_s": {
+          "optional": false,
+          "type": "number"
+        },
+        "background_faults": {
+          "optional": false,
+          "type": "boolean"
+        }
+      },
+      "source": "runs"
+    },
+    "ValidationIssue": {
+      "type_params": [],
+      "fields": {
+        "path": {
+          "optional": false,
+          "type": "string"
+        },
+        "severity": {
+          "optional": false,
+          "type": "IssueSeverity"
+        },
+        "message": {
+          "optional": false,
+          "type": "string"
+        },
+        "fix": {
+          "optional": true,
+          "type": "string"
+        }
+      },
+      "source": "runs"
+    },
+    "FieldSupport": {
+      "type_params": [],
+      "fields": {
+        "path": {
+          "optional": false,
+          "type": "string"
+        },
+        "applied": {
+          "optional": false,
+          "type": "boolean"
+        },
+        "note": {
+          "optional": false,
+          "type": "string"
+        }
+      },
+      "source": "runs"
+    },
+    "ScenarioValidation": {
+      "type_params": [],
+      "fields": {
+        "valid": {
+          "optional": false,
+          "type": "boolean"
+        },
+        "spec": {
+          "optional": false,
+          "type": "ScenarioSpec | null"
+        },
+        "issues": {
+          "optional": false,
+          "type": "ValidationIssue[]"
+        },
+        "support": {
+          "optional": false,
+          "type": "FieldSupport[]"
+        },
+        "interpreter": {
+          "optional": true,
+          "type": "{ provider: string; model_id: string; kind: 'rules' | 'model'; unresolved: string[] }",
+          "members": {
+            "provider": {
+              "optional": false,
+              "type": "string"
+            },
+            "model_id": {
+              "optional": false,
+              "type": "string"
+            },
+            "kind": {
+              "optional": false,
+              "type": "'rules' | 'model'"
+            },
+            "unresolved": {
+              "optional": false,
+              "type": "string[]"
+            }
+          }
+        },
+        "backend": {
+          "optional": false,
+          "type": "'mock' | 'live'"
+        }
+      },
+      "source": "runs"
+    },
+    "ScenarioValidateRequest": {
+      "type_params": [],
+      "fields": {
+        "spec": {
+          "optional": true,
+          "type": "unknown"
+        },
+        "text": {
+          "optional": true,
+          "type": "string"
+        }
+      },
+      "source": "runs"
+    },
+    "ModelStatus": {
+      "type_params": [],
+      "fields": {
+        "provider": {
+          "optional": false,
+          "type": "'crusoe' | 'mock' | 'deterministic'"
+        },
+        "model_id": {
+          "optional": false,
+          "type": "string"
+        },
+        "status": {
+          "optional": false,
+          "type": "'live' | 'unavailable' | 'mock'"
+        },
+        "scenario_text": {
+          "optional": false,
+          "type": "{ available: boolean; kind: 'model' | 'rules' | 'none'; reason?: string }",
+          "members": {
+            "available": {
+              "optional": false,
+              "type": "boolean"
+            },
+            "kind": {
+              "optional": false,
+              "type": "'model' | 'rules' | 'none'"
+            },
+            "reason": {
+              "optional": true,
+              "type": "string"
+            }
+          }
+        },
+        "last_checked_at": {
+          "optional": true,
+          "type": "string"
+        }
+      },
+      "source": "runs"
+    },
+    "StartEpisodeRequest": {
+      "type_params": [],
+      "fields": {
+        "scenario_id": {
+          "optional": false,
+          "type": "ScenarioId"
+        },
+        "seed": {
+          "optional": true,
+          "type": "number"
+        },
+        "duration_sim_s": {
+          "optional": true,
+          "type": "1800"
+        },
+        "mode": {
+          "optional": true,
+          "type": "'LIVE'"
+        },
+        "simulation_speed": {
+          "optional": true,
+          "type": "1 | 2 | 3"
+        },
+        "idempotency_key": {
+          "optional": true,
+          "type": "string"
+        }
+      },
+      "source": "runs"
+    },
+    "EpisodeClock": {
+      "type_params": [],
+      "fields": {
+        "run_id": {
+          "optional": false,
+          "type": "string"
+        },
+        "sim_elapsed_ns": {
+          "optional": false,
+          "type": "number"
+        },
+        "sim_duration_ns": {
+          "optional": true,
+          "type": "number"
+        },
+        "sim_tick": {
+          "optional": false,
+          "type": "number"
+        },
+        "tick_duration_ns": {
+          "optional": false,
+          "type": "number"
+        },
+        "committed_world_version": {
+          "optional": false,
+          "type": "number"
+        },
+        "speed_target": {
+          "optional": false,
+          "type": "1 | 2 | 3"
+        },
+        "speed_effective": {
+          "optional": false,
+          "type": "number"
+        },
+        "paused": {
+          "optional": false,
+          "type": "boolean"
+        },
+        "server_monotonic_sample_ns": {
+          "optional": false,
+          "type": "number"
+        },
+        "server_sent_at_unix_ms": {
+          "optional": false,
+          "type": "number"
+        },
+        "clock_seq": {
+          "optional": false,
+          "type": "number"
+        }
+      },
+      "source": "runs"
+    }
+  },
+  "aliases": {
+    "EntityId": "string",
+    "Vec3": "[number, number, number]",
+    "LoopId": "'fws' | 'tcs'",
+    "PipeRole": "'supply' | 'return'",
+    "AssetType": "| 'rack' | 'cdu' | 'pump' | 'valve' | 'strainer' | 'sensor' | 'port' | 'dock' | 'chiller'",
+    "SimStatus": "'running' | 'recovering' | 'degraded' | 'paused'",
+    "Severity": "'nominal' | 'watch' | 'warning' | 'critical'",
+    "AssetStatus": "Severity | 'offline' | 'isolated' | 'service'",
+    "RobotClass": "'inpipe' | 'outrig'",
+    "RobotMode": "| 'IDLE' | 'ASSIGNED' | 'ROUTE_PLANNING' | 'TRAVELING' | 'INSPECTING' | 'WORKING' | 'VERIFYING' | 'RETURNING' | 'DOCKED' | 'BLOCKED' | 'FAILED' | 'ABORTED' | 'NEEDS_CHARGE' | 'SAFE_HOLD'",
+    "IncidentStage": "| 'observed' | 'hypothesized' | 'investigated' | 'repaired' | 'verified'",
+    "IncidentStatus": "| 'open' | 'investigating' | 'awaiting_approval' | 'mitigating' | 'verifying' | 'replanning' | 'escalated' | 'resolved' | 'dismissed'",
+    "FaultKind": "| 'fouling' | 'strainer_blockage' | 'valve_stuck' | 'pump_degradation' | 'sensor_drift' | 'workload_spike' | 'leak'",
+    "AgentRole": "'sentinel' | 'inpipe' | 'outrig'",
+    "AgentTaskStatus": "| 'queued' | 'working' | 'blocked' | 'completed' | 'verified' | 'rejected' | 'failed'",
+    "EventType": "| 'snapshot' | 'world.diff' | 'robot.pose' | 'robot.control' | 'mission.transition' | 'incident.opened' | 'incident.updated' | 'incident.closed' | 'agent.task' | 'agent.tool' | 'verification.result' | 'engine.health' | 'heartbeat'",
+    "StreamEvent": "| EventBase<'snapshot', WorldSnapshot> | EventBase<'world.diff', WorldDiffPayload> | EventBase<'robot.pose', RobotPosePayload> | EventBase<'robot.control', RobotControlPayload> | EventBase<'mission.transition', MissionTransitionPayload> | EventBase<'incident.opened', { incident: Incident }> | EventBase<'incident.updated', { incident: Incident }> | EventBase<'incident.closed', { incident: Incident }> | EventBase<'agent.task', { task: AgentTask }> | EventBase<'agent.tool', { task_id: string; tool_call: ToolCall }> | EventBase<'verification.result', { verification: VerificationResult }> | EventBase<'engine.health', { health: EngineHealth }> | EventBase<'heartbeat', { server_ts: string }>",
+    "StreamEventOf": "Extract<StreamEvent, { type: T }>",
+    "CommandKind": "| 'approve_action' | 'hold_action' | 'set_sim_speed' | 'pause' | 'resume' | 'test.inject_fault'",
+    "ControlAuthority": "'AUTO' | 'HUMAN' | 'STOP'",
+    "ControllerState": "'AUTONOMOUS' | 'LEASE_PENDING' | 'MANUAL' | 'SAFE_HOLD'",
+    "ControlReason": "| 'operator_release' | 'deadman_timeout' | 'lease_expired' | 'client_hidden' | 'client_disconnect' | 'link_lost' | 'safety_interlock' | 'low_battery' | 'operator_stop' | 'safe_hold_timeout' | 'resume_blocked'",
+    "ControlErrorCode": "| 'unknown_robot' | 'not_controllable' | 'lease_held' | 'stale_world_version' | 'topology_changed' | 'bad_request' | 'no_lease' | 'stale_epoch' | 'stale_seq' | 'not_passable' | 'lease_revoked' | 'replay_readonly'",
+    "LeaseResponse": "LeaseGrant | ControlRefusal",
+    "HeartbeatResponse": "{ accepted: true; expires_in_ms: number; controller_state: ControllerState } | ControlRefusal",
+    "ToolAction": "'lamp_on' | 'lamp_off' | 'scan'",
+    "DriveResponse": "DriveAck | ControlRefusal",
+    "ReleaseResponse": "ReleaseAck | ControlRefusal",
+    "ControlEventKind": "| 'human.override' | 'agent.resumed' | 'safe_hold' | 'drive.rejected' | 'scan.result' | 'end_of_line'",
+    "RunKind": "'baseline' | 'scenario' | 'fork'",
+    "RunState": "'running' | 'paused' | 'stopped' | 'failed'",
+    "RunMode": "'LIVE' | 'FORK'",
+    "RecordedEvent": "StreamEvent",
+    "ApiProblemCode": "| 'not_found' | 'hash_mismatch' | 'checkpoint_missing' | 'checkpoint_incompatible' | 'cannot_reconstruct' | 'quota' | 'invalid' | 'model_unavailable' | 'unsupported' | 'read_only'",
+    "ScenarioFaultKind": "Exclude<FaultKind, never>",
+    "SupportStatus": "'supported' | 'planned'",
+    "IssueSeverity": "'error' | 'warning' | 'info'",
+    "ScenarioId": "'CR-01' | 'CR-02' | 'CR-03' | 'CR-04' | 'CR-05' | 'CR-06' | 'CR-07' | 'MD-01' | 'MD-02'"
+  },
+  "reading_meta": {
+    "flow_kg_s": {
+      "label": "Mass flow",
+      "unit": "kg/s",
+      "decimals": 2
+    },
+    "tcs_flow_kg_s": {
+      "label": "TCS flow",
+      "unit": "kg/s",
+      "decimals": 2
+    },
+    "fws_flow_kg_s": {
+      "label": "FWS flow",
+      "unit": "kg/s",
+      "decimals": 2
+    },
+    "strainer_dp_kpa": {
+      "label": "Strainer ΔP",
+      "unit": "kPa",
+      "decimals": 1
+    },
+    "dp_kpa": {
+      "label": "Pressure drop",
+      "unit": "kPa",
+      "decimals": 1
+    },
+    "velocity_m_s": {
+      "label": "Velocity",
+      "unit": "m/s",
+      "decimals": 2
+    },
+    "pressure_kpa": {
+      "label": "Pressure",
+      "unit": "kPa",
+      "decimals": 0
+    },
+    "t_in_c": {
+      "label": "Inlet temp",
+      "unit": "°C",
+      "decimals": 1
+    },
+    "t_out_c": {
+      "label": "Outlet temp",
+      "unit": "°C",
+      "decimals": 1
+    },
+    "t_chip_c": {
+      "label": "GPU junction",
+      "unit": "°C",
+      "decimals": 1
+    },
+    "margin_k": {
+      "label": "Thermal margin",
+      "unit": "K",
+      "decimals": 1
+    },
+    "power_kw": {
+      "label": "Rack load",
+      "unit": "kW",
+      "decimals": 0
+    },
+    "heat_duty_kw": {
+      "label": "Heat duty",
+      "unit": "kW",
+      "decimals": 0
+    },
+    "approach_k": {
+      "label": "HX approach",
+      "unit": "K",
+      "decimals": 1
+    },
+    "speed_pct": {
+      "label": "Speed",
+      "unit": "%",
+      "decimals": 0
+    },
+    "head_kpa": {
+      "label": "Head",
+      "unit": "kPa",
+      "decimals": 0
+    },
+    "vibration_mm_s": {
+      "label": "Vibration",
+      "unit": "mm/s",
+      "decimals": 2
+    },
+    "opening_pct": {
+      "label": "Opening",
+      "unit": "%",
+      "decimals": 0
+    },
+    "occlusion_pct": {
+      "label": "Bore blocked",
+      "unit": "%",
+      "decimals": 0
+    },
+    "fws_in_c": {
+      "label": "FWS supply",
+      "unit": "°C",
+      "decimals": 1
+    },
+    "fws_out_c": {
+      "label": "FWS return",
+      "unit": "°C",
+      "decimals": 1
+    },
+    "tcs_supply_c": {
+      "label": "TCS supply",
+      "unit": "°C",
+      "decimals": 1
+    },
+    "tcs_return_c": {
+      "label": "TCS return",
+      "unit": "°C",
+      "decimals": 1
+    }
+  },
+  "arrays": {
+    "SEVERITY_ORDER": [
+      "nominal",
+      "watch",
+      "warning",
+      "critical"
+    ],
+    "STAGES": [
+      "observed",
+      "hypothesized",
+      "investigated",
+      "repaired",
+      "verified"
+    ]
+  },
+  "alias_sources": {
+    "EntityId": "contracts",
+    "Vec3": "contracts",
+    "LoopId": "contracts",
+    "PipeRole": "contracts",
+    "AssetType": "contracts",
+    "SimStatus": "contracts",
+    "Severity": "contracts",
+    "AssetStatus": "contracts",
+    "RobotClass": "contracts",
+    "RobotMode": "contracts",
+    "IncidentStage": "contracts",
+    "IncidentStatus": "contracts",
+    "FaultKind": "contracts",
+    "AgentRole": "contracts",
+    "AgentTaskStatus": "contracts",
+    "EventType": "contracts",
+    "StreamEvent": "contracts",
+    "StreamEventOf": "contracts",
+    "CommandKind": "contracts",
+    "ControlAuthority": "control",
+    "ControllerState": "control",
+    "ControlReason": "control",
+    "ControlErrorCode": "control",
+    "LeaseResponse": "control",
+    "HeartbeatResponse": "control",
+    "ToolAction": "control",
+    "DriveResponse": "control",
+    "ReleaseResponse": "control",
+    "ControlEventKind": "control",
+    "RunKind": "runs",
+    "RunState": "runs",
+    "RunMode": "runs",
+    "RecordedEvent": "runs",
+    "ApiProblemCode": "runs",
+    "ScenarioFaultKind": "runs",
+    "SupportStatus": "runs",
+    "IssueSeverity": "runs",
+    "ScenarioId": "runs"
+  },
+  "http_status_for_code": {
+    "unknown_robot": 404,
+    "not_controllable": 409,
+    "lease_held": 409,
+    "stale_world_version": 409,
+    "topology_changed": 409,
+    "bad_request": 422,
+    "no_lease": 403,
+    "stale_epoch": 409,
+    "stale_seq": 409,
+    "not_passable": 409,
+    "lease_revoked": 409,
+    "replay_readonly": 403
+  }
+}
