@@ -96,5 +96,5 @@ The `ScenarioCompiler` (`backend/src/loopkeeper/scenarios/compiler.py`) acts as 
 
 ## 5. Dual Neon PostgreSQL Architecture
 
-- **`loopkeeper-control`**: Owns `runs`, `scenario_requests`, `scenario_interpretations`, and `scenario_jobs`. Migration 0006 applied cleanly.
-- **`loopkeeper-telemetry`**: Owns high-frequency frame timeseries, robot odometry snapshots, and physical metrics.
+- **`control-db`**: Owns `runs`, `scenario_requests`, `scenario_interpretations`, and `scenario_jobs`. Migration 0006 applied cleanly.
+- **`telemetry-db`**: Owns high-frequency frame timeseries, robot odometry snapshots, and physical metrics.

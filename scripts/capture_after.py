@@ -7,7 +7,7 @@ import sys
 import time
 from playwright.sync_api import sync_playwright
 
-AFTER_DIR = "/home/923873155/Crusoe_Project/artifacts/screenshots/after"
+AFTER_DIR = "/path/to/repo/artifacts/screenshots/after"
 os.makedirs(AFTER_DIR, exist_ok=True)
 
 RESOLUTIONS = [

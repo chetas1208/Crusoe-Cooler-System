@@ -22,7 +22,7 @@ Last updated 2026-10-17.
 - **Laya Router Warmup & Verification**:
   - Local `convaiinnovations/laya` checkpoint prewarmed on boot via `_get_router()` in `_laya_summary`, eliminating `(not loaded yet)` and reporting `laya_router` active and running in `GET /api/v1/intelligence/laya/status`.
 - **Dual Neon PostgreSQL & LangGraph Checkpointing**:
-  - Verified transactional control plane (`loopkeeper-control`) and telemetry time-series lake (`loopkeeper-telemetry`).
+  - Verified transactional control plane (`control-db`) and telemetry time-series lake (`telemetry-db`).
   - LangGraph `AsyncPostgresSaver` checkpoint persistence and recovery verified.
 - **Deployment & Process Supervision**:
   - Continuous background execution under `scripts/supervise.sh` on `nohup` for API server (port 8787) and Cloudflare tunnel (`https://your-tunnel.trycloudflare.com`).
@@ -45,7 +45,7 @@ Last updated 2026-10-17.
     - **Take LIVE Control**: Server-authoritative lease acquisition with collision deadman, heartbeats, and safe stop.
     - Prominent HUD warning banners and clean `Esc` key restoration of authoritative view.
 - **Neon Cloud PostgreSQL Persistence & Migrations**:
-  - Applied migration `0006_scenario_requests_v9.sql` on `loopkeeper-control` (`scenario_requests`, `scenario_interpretations`, `scenario_jobs`).
+  - Applied migration `0006_scenario_requests_v9.sql` on `control-db` (`scenario_requests`, `scenario_interpretations`, `scenario_jobs`).
   - Durable persistence of Laya triage, Crusoe proposals, compilation assumptions, latencies, and Definition of Done.
 - **Verification & Parity**:
   - 108/108 backend tests passing (`test_v9_scenario_requests.py` and `test_contract_parity.py`).
@@ -58,9 +58,9 @@ Last updated 2026-10-17.
 ## Done (2026-10-17 — Dual Neon Database Architecture & Coexistence)
 - **Dual Neon Cloud Database Coexistence**:
   - Provisioned and wired two distinct Neon PostgreSQL projects:
-    - `loopkeeper-control` (`flat-lake-30099482`): Dedicated Transactional Control Plane & Agent Checkpoints (`DATABASE_URL`).
-    - `loopkeeper-telemetry` (`telemetry-project`): High-Throughput Sensory Telemetry & Time-Series Lake (`TELEMETRY_DATABASE_URL`).
-    - `test-scratch` Branch (`br-sparkling-leaf-ar2xqgxs`): Isolated disposable branch on `loopkeeper-control` for CI/pytest test suites.
+    - `control-db` (`control-project`): Dedicated Transactional Control Plane & Agent Checkpoints (`DATABASE_URL`).
+    - `telemetry-db` (`telemetry-project`): High-Throughput Sensory Telemetry & Time-Series Lake (`TELEMETRY_DATABASE_URL`).
+    - `test-scratch` Branch (`br-xxxx`): Isolated disposable branch on `control-db` for CI/pytest test suites.
   - Multi-pool database engine implemented in `loopkeeper.storage.postgres.PostgresStorage`:
     - `commit(b: CommitBatch)` splits ACID control writes from high-frequency sensory writes (`sensor_samples`, `world_snapshots`, `world_events`).
     - Automated foreign-key mirror synchronization for `simulation_runs` and `facilities`.
@@ -89,7 +89,7 @@ Last updated 2026-10-17.
   - Completely reversible hide/collapse overlay system with close buttons (`×`), top status/icon rail, and keyboard `Esc` toggle without unmounting or terminating state.
   - Dynamic 3D visual overlays for coolant puddle polygons and fire exclusion perimeters (`HazardZones.tsx`).
 - **Database Persistence & Migrations**:
-  - Active Neon PostgreSQL project `telemetry-project` ("loopkeeper-v8") provisioned.
+  - Active Neon PostgreSQL project `telemetry-project` ("telemetry-db") provisioned.
   - Migration `0005_v8_scenarios.sql` applied cleanly (`hazard_zones`, `scenario_definitions`, `verification_results`, `camera_bookmarks`, `run_exports`).
 - **Testing & Verification**:
   - 5/5 V8 scenario integration tests passing (`tests/test_v8_scenarios.py`).

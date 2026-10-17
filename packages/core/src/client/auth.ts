@@ -18,6 +18,16 @@ function readStored(): string | null {
   }
 }
 
+/** Forget the saved token (e.g. when the backend origin changes). */
+export function clearAuthToken() {
+  memory = null;
+  try {
+    globalThis.localStorage?.removeItem(KEY);
+  } catch {
+    /* private mode */
+  }
+}
+
 export function getAuthToken(): string | null {
   return memory ?? readStored();
 }
@@ -51,8 +61,23 @@ export function subscribeAuth(cb: () => void) {
 }
 
 /** fetch + `Authorization: Bearer …` when a token is set; a 401/403-on-auth marks the session as needing a token. */
-export async function authFetch(input: string, init: RequestInit = {}): Promise<Response> {
+/** Bearer is attached only to the configured backend origin (lk.api) or the page's own origin — never an arbitrary URL. */
+function tokenFor(url: string): string | null {
   const token = getAuthToken();
+  if (!token) return null;
+  try {
+    const loc = (globalThis as { location?: { href: string; origin: string } }).location;
+    const target = new URL(url, loc?.href).origin;
+    const api = globalThis.localStorage?.getItem('lk.api');
+    const own = loc?.origin;
+    return target === own || (api && target === api) || /^https?:\/\/(localhost|127\.0\.0\.1)(:|\/|$)/.test(target) ? token : null;
+  } catch {
+    return null;
+  }
+}
+
+export async function authFetch(input: string, init: RequestInit = {}): Promise<Response> {
+  const token = tokenFor(input);
   const headers = new Headers(init.headers);
   if (token) headers.set('Authorization', `Bearer ${token}`);
   const res = await fetch(input, { ...init, headers });

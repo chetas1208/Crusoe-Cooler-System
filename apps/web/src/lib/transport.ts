@@ -1,19 +1,14 @@
-import { LiveTransport, type Transport } from '@loopkeeper/core/client';
+import { LiveTransport, clearAuthToken, type Transport } from '@loopkeeper/core/client';
 
 const API_KEY = 'lk.api';
-/** Hosts a runtime `?api=` link may point the app at. Anything else is ignored (a crafted link must not capture the token). */
-const ALLOWED_RUNTIME_HOSTS = [
-  /\.trycloudflare\.com$/i,
-  /\.vercel\.app$/i,
-  /\.ngrok-free\.app$/i,
-  /\.ngrok\.io$/i,
-  /\.railway\.app$/i,
-  /\.fly\.dev$/i,
-  /\.onrender\.com$/i,
-  /\.run\.app$/i,
-  /^localhost$/i,
-  /^127\.0\.0\.1$/
-];
+/**
+ * Hosts a runtime `?api=` link may point the app at. Deliberately narrow: shared hosting suffixes
+ * (*.vercel.app, *.railway.app, ...) are NOT accepted because anyone can register one, and a crafted link
+ * must not be able to aim the app (and its bearer token) at an attacker's server. Quick-tunnel hosts are
+ * random by design, so that single suffix stays; the bearer token is additionally bound to its own origin
+ * (see packages/core/src/client/auth.ts) and is never sent to a URL-supplied origin.
+ */
+const ALLOWED_RUNTIME_HOSTS = [/\.trycloudflare\.com$/i, /^localhost$/i, /^127\.0\.0\.1$/];
 
 function runtimeApiUrl(): string | undefined {
   try {
@@ -24,8 +19,13 @@ function runtimeApiUrl(): string | undefined {
       const u = new URL(q);
       const isCurrentHost = u.hostname === location.hostname;
       const okHost = isCurrentHost || ALLOWED_RUNTIME_HOSTS.some((re) => re.test(u.hostname));
-      const okScheme = u.protocol === 'https:' || u.protocol === 'http:';
-      if (okHost && okScheme) localStorage.setItem(API_KEY, u.origin);
+      const local = u.hostname === 'localhost' || u.hostname === '127.0.0.1';
+      const okScheme = u.protocol === 'https:' || (local && u.protocol === 'http:');
+      if (okHost && okScheme) {
+        // a different backend than the remembered one: forget any bearer token (it belongs to the old origin)
+        if (localStorage.getItem(API_KEY) && localStorage.getItem(API_KEY) !== u.origin) clearAuthToken();
+        localStorage.setItem(API_KEY, u.origin);
+      }
     }
     if (q) {
       const clean = new URL(location.href);

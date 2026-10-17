@@ -5,7 +5,7 @@ import sys
 import time
 from playwright.sync_api import sync_playwright
 
-OUT_DIR = "/home/923873155/Crusoe_Project/artifacts/validation_screenshots"
+OUT_DIR = "/path/to/repo/artifacts/validation_screenshots"
 os.makedirs(OUT_DIR, exist_ok=True)
 
 def capture():

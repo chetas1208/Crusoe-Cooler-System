@@ -4,7 +4,7 @@ import sys
 import time
 from playwright.sync_api import sync_playwright
 
-ARTIFACT_DIR = "/home/923873155/.gemini/antigravity-cli/brain/1205d87b-351e-4e87-a198-d513bea96829"
+ARTIFACT_DIR = "/home/user/.gemini/antigravity-cli/brain/1205d87b-351e-4e87-a198-d513bea96829"
 os.makedirs(ARTIFACT_DIR, exist_ok=True)
 
 def run():

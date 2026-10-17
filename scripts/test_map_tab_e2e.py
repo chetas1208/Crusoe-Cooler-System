@@ -5,7 +5,7 @@ import sys
 import time
 from playwright.sync_api import sync_playwright
 
-SCREENSHOT_DIR = "/home/923873155/Crusoe_Project/artifacts/e2e_screenshots"
+SCREENSHOT_DIR = "/path/to/repo/artifacts/e2e_screenshots"
 os.makedirs(SCREENSHOT_DIR, exist_ok=True)
 
 def pick_idle_outrig() -> str:

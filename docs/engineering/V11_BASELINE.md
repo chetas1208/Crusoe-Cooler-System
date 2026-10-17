@@ -22,7 +22,7 @@ This table documents each stage of the causal chain from human natural-language 
 | **8. Robot Motion** | `backend/src/loopkeeper/nav/` | Traffic & Route Graph | **REAL** | 8 OUTRIG rovers on 4 roads + 10 INPIPE crawlers in service pipes. Waypoint reservation, collision avoidance, and 0 LLM calls in motion loops. |
 | **9. Physical Intervention** | `backend/src/loopkeeper/robotics/` | Governed Tools (L0–L3) | **REAL** | Strainer cartridge swap (ΔP recovery from 42 kPa to 8 kPa) and ultrasonic rotary brush deposit removal (line resistance restoration). |
 | **10. Independent Verification** | `backend/src/loopkeeper/agents/verifier.py` | Layer-A Physics + SEN-05 | **REAL** | Deterministic check of frozen DoD invariants (flow $\ge 90\%$, temperature $\le 45^\circ\text{C}$ held for duration). Proposer cannot verify itself. |
-| **11. Persistence & Checkpoints** | `backend/src/loopkeeper/storage/postgres.py` | Dual Neon PostgreSQL | **REAL** | Control plane (`loopkeeper-control`) + Telemetry lake (`loopkeeper-telemetry`). LangGraph `AsyncPostgresSaver` checkpoint persistence and recovery. |
+| **11. Persistence & Checkpoints** | `backend/src/loopkeeper/storage/postgres.py` | Dual Neon PostgreSQL | **REAL** | Control plane (`control-db`) + Telemetry lake (`telemetry-db`). LangGraph `AsyncPostgresSaver` checkpoint persistence and recovery. |
 | **12. Replay & Visualization** | `apps/web/src/features/visualization/` | WebGL Three.js / R3F | **REAL** | Direct browser WebGL2 rendering. Event-backed replay queries historical snapshots without LLM re-invocation. Ghost Preview Drive operates with 0 backend mutation. |
 
 ---
@@ -31,7 +31,7 @@ This table documents each stage of the causal chain from human natural-language 
 
 - **OS / Runtime:** Linux x86_64, Python 3.11, Node v22.22.2, pnpm 9.
 - **Crusoe Managed Inference:** Endpoint reachable, catalog verified with 13 models, `CRUSOE_API_KEY` active.
-- **Neon Cloud PostgreSQL:** `loopkeeper-control` and `loopkeeper-telemetry` active, dual-DSN pooling, 37 schema tables verified.
+- **Neon Cloud PostgreSQL:** `control-db` and `telemetry-db` active, dual-DSN pooling, 37 schema tables verified.
 - **Frontend / Rendering:** Direct browser WebGL2 via Three.js / React Three Fiber.
 - **Cloudflare Tunnel:** `https://your-tunnel.trycloudflare.com` operational.
 - **Vercel Production:** `https://your-app.vercel.app` deployed and verified E2E.
