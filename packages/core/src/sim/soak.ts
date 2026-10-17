@@ -1,0 +1,16 @@
+import { Engine } from '../engine/engine';
+const seed = Number(process.argv[2] ?? 8);
+const secs = Number(process.argv[3] ?? 40000);
+const eng = new Engine({ seed, speed: 6 });
+const t0 = Date.now();
+eng.fastForward(secs);
+const incs = eng.incidents();
+const by: Record<string, number> = {};
+for (const i of incs) by[`${i.status}`] = (by[`${i.status}`] ?? 0) + 1;
+const causes: Record<string, number> = {};
+for (const i of incs) causes[i.cause] = (causes[i.cause] ?? 0) + 1;
+console.log(`seed ${seed}: ${secs}s sim in ${((Date.now() - t0) / 1000).toFixed(1)}s wall | incidents ${incs.length}`, by, causes);
+const open = incs.filter((i) => !i.closed_tick);
+for (const i of open) console.log('  still open:', i.id, i.status, i.stage, i.title);
+const snap = eng.snapshot();
+console.log('min margin', snap.kpis.min_margin_k.toFixed(1), 'tasks', eng.orch.tasks.size, 'missions', eng.orch.missions.size, 'events', snap.last_seq, 'json KB', (JSON.stringify(snap).length / 1024).toFixed(0));
