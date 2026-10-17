@@ -1,0 +1,35 @@
+[project]
+name = "loopkeeper-backend"
+version = "0.1.0"
+description = "LOOPKEEPER backend: authoritative simulation engine, agents and API"
+requires-python = ">=3.11,<3.14"
+dependencies = [
+  "numpy>=1.26",
+  "gymnasium>=0.29",
+  "pandapipes>=0.11",
+  "fastapi>=0.115",
+  "uvicorn[standard]>=0.30",
+  "pydantic>=2.7",
+  "openai>=1.40",
+  "langgraph>=0.2",
+  "langgraph-checkpoint-postgres>=2.0",
+  "psycopg[binary,pool]>=3.2",
+  "pyyaml>=6",
+  "httpx>=0.27",
+  "mujoco>=3.16.0",
+  # CompOpt (MIT, HPE): lumped chip/rack/coolant-loop thermal models, used behind physics/adapters/thermal_compopt.py
+  "compopt @ git+https://github.com/HewlettPackard/compopt.git@4d9bfdc10d9c4bc42f99339a1913de3f64abe1ed",
+]
+[project.optional-dependencies]
+# Laya System-1 triage (advisory only). Not required: without it the classifier uses its labelled rule fallback. Install with: uv sync --extra laya
+laya = ["laya==0.4.8", "torch>=2.0", "transformers>=4.48", "safetensors>=0.4"]
+[dependency-groups]
+dev = ["pytest>=8", "pytest-asyncio>=0.23"]
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+[tool.setuptools.packages.find]
+where = ["src"]
+[tool.pytest.ini_options]
+asyncio_mode = "auto"
+testpaths = ["tests"]
