@@ -74,7 +74,7 @@ def create_app(
                 await res
 
     app = FastAPI(
-        title="Cruso Cooler System API", version="1", openapi_url=f"{API_PREFIX}/openapi.json" if settings.expose_docs else None,
+        title="Crusoe Cooler System API", version="1", openapi_url=f"{API_PREFIX}/openapi.json" if settings.expose_docs else None,
         docs_url=f"{API_PREFIX}/docs" if settings.expose_docs else None, redoc_url=None,
         lifespan=lifespan,
     )
@@ -94,6 +94,7 @@ def create_app(
     from starlette.middleware.gzip import GZipMiddleware
     app.add_middleware(GZipMiddleware, minimum_size=2048, compresslevel=5)
 
+    from .routes_capabilities import router as capabilities_router; app.include_router(capabilities_router, prefix=API_PREFIX)  # V12 DRV-E: robot capabilities (BEFORE /robots/{robot_id})
     app.include_router(router, prefix=API_PREFIX)
     from .health_detail import router as health_detail_router; app.include_router(health_detail_router, prefix=API_PREFIX)  # V12 ops: GET /health/detail (agent W)
     app.include_router(dod_router, prefix=API_PREFIX)             # V11 Definition of Done + team graph

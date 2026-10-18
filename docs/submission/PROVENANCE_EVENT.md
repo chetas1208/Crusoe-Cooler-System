@@ -44,7 +44,7 @@ Until then the submission form uses the conservative reading (only V11, G5-G6, i
 | Single-writer engine, leases, replay/fork, robots, navigation, MuJoCo cell | yes (G2/G4) | no | G2/G4 |
 | Four-tab web console, 3D scene | yes (G1-G4) | direct 3D rendering and quality-tier watchdog (`fcefdad`, `28180da`) | G5 |
 | Crusoe client, Neon storage, LangGraph checkpointer, dual Neon | yes (G2, G4; checkpointer resume re-verified in V11 G0) | model tiers by decision kind, thinking off, seed, env aliases (`4bd79cf`, `2281771`) | G5, checklist G0 |
-| Laya classifier (advisory) | yes (first commit `746e0a4`) | held-out benchmark `eval/laya_bench.py`, `artifacts/v11/laya_eval.json` (48 labelled cases, 36 test) | G5 |
+| Laya classifier (advisory) | yes (first commit `746e0a4`) | held-out benchmark `eval/laya_bench.py`, `artifacts/v11/laya_eval.json` (151 hand-written cases, 48 held-out) | G5 |
 | Natural-language launcher, scenario compiler, nine scenarios | yes (V8/V9, G4; ambiguous) | prompt-status strip with real latencies (`3a48565`) | G4/G5 |
 | Five SENTINEL supervisors + INPIPE/OUTRIG mission agents (v5 baseline) | yes in earlier form | role differentiation, task DAG, bounds, team panel | `V11_BASELINE.md`, G5/G6 |
 | Executable Definition of Done: compiler, freeze, Layer A, SEN-05 Layer B, terminal states, loop/drift guards | no | `orchestration/dod.py`, `graphs/dod_nodes.py`, `api/routes_dod.py`, migration 0009, `tests/test_v11_dod.py` (built; lead verification of the live signature flow `[PENDING: lead]`) | G5/G6, `V11_DOD.md` |

@@ -2,8 +2,8 @@
 
 Last updated 2026-10-18.
 
-## Done (2026-10-18 — Cruso Cooler System: Safe Whole-Repository Rename)
-- **Safe Public Rebrand to Cruso Cooler System**:
+## Done (2026-10-18 — Crusoe Cooler System: Safe Whole-Repository Rename)
+- **Safe Public Rebrand to Crusoe Cooler System**:
   - Established canonical single source of truth for branding in `packages/core/src/brand.ts` (`PRODUCT_BRAND`).
   - Updated all user-facing surfaces across web console (`apps/web/index.html`, `TopBar.tsx`, design gallery), mobile companion (`app.json`, `BootOverlay.tsx`, `README.md`), documentation (`README.md`, `idea.md`), root package metadata, and FastAPI application title.
   - Preserved all external infrastructure partner identifiers (`Crusoe`, `CRUSOE_API_KEY`, Crusoe Managed Inference) and underlying machine contracts (Postgres tables, `@loopkeeper/*` package names, `loopkeeper.*` Python modules, and API route signatures).

@@ -68,6 +68,9 @@ class Settings:
     command_burst: int = 40
     drive_rate_per_s: float = 25.0         # /drive (<=250 ms intents -> 4 Hz nominal, headroom for retries)
     drive_burst: int = 50
+    mutate_rate_per_s: float = 2.0         # POST /runs, /fork, /state, /exports, /scenarios/validate, laya/classify: per principal (or client IP when anonymous)
+    mutate_burst: int = 20
+    ws_max_per_ip: int = 64                # concurrent WebSocket streams per client address
     ws_send_timeout_s: float = 10.0
     ws_catchup_page: int = 1000
     expose_docs: bool = True
@@ -100,5 +103,7 @@ class Settings:
             max_body_bytes=_int("LOOPKEEPER_MAX_BODY_BYTES", 65_536),
             command_rate_per_s=float(os.environ.get("LOOPKEEPER_COMMAND_RATE_PER_S", 20)),
             drive_rate_per_s=float(os.environ.get("LOOPKEEPER_DRIVE_RATE_PER_S", 25)),
+            mutate_rate_per_s=float(os.environ.get("LOOPKEEPER_MUTATE_RATE_PER_S", 2)),
+            ws_max_per_ip=_int("LOOPKEEPER_WS_MAX_PER_IP", 64),
             expose_docs=_bool("LOOPKEEPER_EXPOSE_DOCS", not prod),
         )

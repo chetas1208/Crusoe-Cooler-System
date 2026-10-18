@@ -9,14 +9,17 @@
  *
  * Rules this file enforces (backend.md §10):
  *  - input is enabled ONLY after the server accepted a lease; nothing is sent before that;
- *  - intents are sent at ≤ 20 Hz, sequence-numbered, with a 200 ms TTL — never per frame, never REST-per-keypress;
+ *  - intents are sent at ~8 Hz (DRIVE_HZ), sequence-numbered, with a 250 ms TTL, ONE request in flight at a time: a slow link or a
+ *    loaded server lowers the rate instead of building a backlog (stale intents are never queued; the next one carries the latest input);
+ *    manipulation commands (jog / gripper / pick / place / home / stow) wait in a tiny coalescing queue and ride the next free slot;
  *  - the pose shown is the server's; this module only reconciles readouts against drive acks;
  *  - blur / hidden tab / disconnect / lost acks → zero input, SAFE_STOP and a release request immediately;
  *  - after a stop, controls stay disabled until a NEW lease is granted.
  */
 import { create } from 'zustand';
 import type { DriveAck, DriveIntent, DriveLimits, ReleaseResponse, ToolAction } from '../contracts.control';
-import { REASON_LABEL, type StopReason } from './reasons';
+import { REASON_LABEL, plainRefusal, type PlainRefusal, type StopReason } from './reasons';
+import { ARM_HOME_POSE, ARM_STOW_POSE, clampJog, readManipulator, stepToward } from './arm';
 import { ControlNetworkError } from './client';
 import { getControlApi } from './registry';
 import { isLiveWorldSource, useReplay, useWorld } from '../store/world';
@@ -47,6 +50,11 @@ export interface ControlSessionState {
   notice: Notice | null;
   sent: number;
   refused: number;
+  /** why the last lease request was refused (kept until the next attempt), in the server's words plus a plain version */
+  refusal: { robotId: string; reason: string; plain: PlainRefusal; at: number } | null;
+  /** highest command_seq the server acknowledged as applied, and how many manipulation commands are still waiting to be sent */
+  appliedSeq: number;
+  manipPending: number;
   /** true once the server accepted a lease and until it is released */
   inputEnabled: boolean;
   /** the id the server sees as our principal */
@@ -79,6 +87,9 @@ const initial: ControlSessionState = {
   linkOk: true,
   stop: null,
   notice: null,
+  refusal: null,
+  appliedSeq: 0,
+  manipPending: 0,
   sent: 0,
   refused: 0,
   inputEnabled: false,
@@ -89,9 +100,13 @@ export const useControl = create<ControlSessionState>()(() => initial);
 
 /* ───────────────────────────── internals ───────────────────────────── */
 
-const DRIVE_HZ = 20; // 15..30 Hz band (backend drive bucket: 25/s incl. heartbeats)
-const INTENT_TTL_MS = 200;
+const DRIVE_HZ = 8; // 4..8 Hz: each intent is valid for 250 ms, so 8 Hz keeps the robot moving while a slow server only ever sees one request at a time
+const INTENT_TTL_MS = 250;
+/** a drive request that has not been answered by now is abandoned (its slot is freed); the link watchdog decides whether that is a lost link */
+const DRIVE_TIMEOUT_MS = 1000;
 const LINK_LOST_MS = 1000;
+/** the lease POST waits for the engine tick (and a loaded host): a 2.5 s client timeout abandoned leases the server then granted anyway */
+const LEASE_TIMEOUT_MS = 8000;
 
 let driveTimer: ReturnType<typeof setInterval> | null = null;
 let watchdog: ReturnType<typeof setInterval> | null = null;
@@ -101,7 +116,13 @@ let unsubWorld: (() => void) | null = null;
 let seq = 0;
 let inFlight = 0;
 let pendingTool: ToolAction | undefined;
-let pendingManipulation: Partial<DriveIntent> | undefined;
+/** manipulation commands waiting for a free drive slot; same-key commands coalesce (jogs add up, gripper / targets keep the latest) */
+interface Manip {
+  key: string;
+  fields: Partial<DriveIntent>;
+}
+const MAX_MANIP_QUEUE = 8;
+let manipQueue: Manip[] = [];
 let noticeId = 0;
 let abortGrant = false;
 let hbMs = 500;
@@ -121,6 +142,8 @@ function stopLoops() {
   if (watchdog) clearInterval(watchdog);
   if (hbTimer) clearInterval(hbTimer);
   driveTimer = watchdog = hbTimer = null;
+  manipQueue = [];
+  cancelArmGoto();
   unsubWorld?.();
   unsubWorld = null;
 }
@@ -156,17 +179,19 @@ async function takeControl(robotId: string) {
   abortGrant = false;
   seq = 0;
   releaseKey = null;
-  set({ state: 'LEASE_REQUESTED', robotId, leaseId: null, notice: null, stop: null, ack: null, exit: null, refused: 0, sent: 0, inputEnabled: false });
+  manipQueue = [];
+  set({ state: 'LEASE_REQUESTED', robotId, leaseId: null, notice: null, stop: null, refusal: null, ack: null, exit: null, refused: 0, sent: 0, appliedSeq: 0, manipPending: 0, inputEnabled: false });
   try {
     const r = await api.lease(robotId, {
       expected_world_version: w.version,
       idempotency_key: uuid(),
       client_id: s.clientId,
       topology_revision: w.topology.facility.topology_hash,
-    });
+    }, { timeoutMs: LEASE_TIMEOUT_MS });
     if (!r.accepted) {
-      set({ state: 'AUTONOMOUS', robotId: null });
-      note('error', r.reason);
+      const plain = plainRefusal(r.reason);
+      set({ state: 'AUTONOMOUS', robotId: null, refusal: { robotId, reason: r.reason, plain, at: Date.now() } });
+      note('error', plain.hint ? `${plain.text} ${plain.hint}` : plain.text);
       return;
     }
     if (abortGrant) {
@@ -182,7 +207,9 @@ async function takeControl(robotId: string) {
   } catch (err) {
     set({ state: 'AUTONOMOUS', robotId: null });
     const why = (err as { message?: string })?.message;
-    note('error', err instanceof ControlNetworkError ? 'The control service did not answer, so control was not granted.' : why ? `Control refused: ${why}` : 'Control request failed.');
+    const text = err instanceof ControlNetworkError ? 'The control service did not answer, so control was not granted.' : why ? `Control refused: ${why}` : 'Control request failed.';
+    set({ refusal: { robotId, reason: text, plain: { key: 'no_answer', text, dockable: false, retry: true }, at: Date.now() } });
+    note('error', text);
   }
 }
 
@@ -190,10 +217,19 @@ function startLoops(robotId: string) {
   stopLoops();
   driveTimer = setInterval(() => void sendDrive(robotId), 1000 / DRIVE_HZ);
   hbTimer = setInterval(() => void sendHeartbeat(robotId), hbMs);
+  let lastTick = Date.now();
   watchdog = setInterval(() => {
     const s = get();
+    const now = Date.now();
+    const gap = now - lastTick;
+    lastTick = now;
     if (!isManual(s.state)) return;
-    if (Date.now() - s.ackAt > LINK_LOST_MS) safeStop('link_lost');
+    // this page was not running for `gap` ms (a render stall, a throttled tab): answers may be queued behind us, so that time is not silence
+    if (gap > 350) {
+      set({ ackAt: s.ackAt + gap - 100 });
+      return;
+    }
+    if (now - s.ackAt > LINK_LOST_MS) safeStop('link_lost');
   }, 100);
   // server-side truth: if the lease disappears or the stream drops, stop at once
   unsubWorld = useWorld.subscribe((w, prev) => {
@@ -214,13 +250,20 @@ function startLoops(robotId: string) {
 
 /* ───────────────────────────── drive loop ───────────────────────────── */
 
+type ArmIntentExtras = Partial<DriveIntent> & { target_rad?: number };
+
 async function sendDrive(robotId: string) {
   const s = get();
   const api = getControlApi();
   if (!api || !isManual(s.state) || !s.leaseId) return;
-  if (inFlight >= 2) return; // never queue behind a slow link
+  // ONE request in flight: a slow link or a loaded server lowers the rate, it never builds a backlog. The next intent carries the newest input,
+  // so a skipped tick loses nothing but a stale sample. (Manipulation commands wait in manipQueue and take the next free slot.)
+  if (inFlight >= 1) return;
   const w = useWorld.getState();
   const outrig = w.robots[robotId]?.class === 'outrig';
+  const manip = manipQueue.shift();
+  if (manip) set({ manipPending: manipQueue.length });
+  const mf = (manip?.fields ?? {}) as ArmIntentExtras;
   const intent: DriveIntent = {
     lease_id: s.leaseId,
     lease_epoch: s.epoch,
@@ -237,21 +280,15 @@ async function sendDrive(robotId: string) {
     graph_revision: controlHooks.graphRevision() ?? undefined,
     duration_ms: INTENT_TTL_MS,
     tool: pendingTool,
-    action: pendingManipulation?.action,
-    joint_idx: pendingManipulation?.joint_idx,
-    delta_rad: pendingManipulation?.delta_rad,
-    gripper_aperture: pendingManipulation?.gripper_aperture,
-    pick: pendingManipulation?.pick,
-    place: pendingManipulation?.place,
+    ...mf,
   };
   const sentTool = pendingTool;
   pendingTool = undefined;
-  pendingManipulation = undefined;
   inFlight++;
   const t0 = performance.now();
   set({ sent: s.sent + 1 });
   try {
-    const r = await api.drive(robotId, intent);
+    const r = await api.drive(robotId, intent, { timeoutMs: DRIVE_TIMEOUT_MS });
     const now = Date.now();
     inFlight--;
     if (get().leaseId !== intent.lease_id || !isManual(get().state)) return;
@@ -263,20 +300,26 @@ async function sendDrive(robotId: string) {
         ack: r,
         ackAt: now,
         linkOk: true,
+        appliedSeq: Math.max(cur.appliedSeq, Number(r.applied_seq) || 0),
         rttMs: prev === null ? rtt : prev * 0.8 + rtt * 0.2,
         exit: r.junction ? cur.exit : null,
       });
       deriveManualState();
       // server-validated manipulation outcomes (arm / gripper / pick / place / brush) travel in the drive ack: show refusals and failures verbatim
       const m = (r as unknown as { manipulation?: Record<string, { reason?: string; ok?: boolean; message?: string; cartridge_seated?: boolean }> }).manipulation;
-      if (m?.rejected?.reason) note('warn', m.rejected.reason.replace(/^[a-z_]+:\s*/, (x) => x));
+      if (m?.rejected?.reason) note('warn', m.rejected.reason);
       else if (m?.pick && m.pick.ok === false && m.pick.message) note('warn', `Pick refused: ${m.pick.message}`);
       else if (m?.place && m.place.ok && m.place.cartridge_seated === false && m.place.message) note('warn', `Released: ${m.place.message}`);
+      else if (m?.plant_effect && m.plant_effect.ok === false && m.plant_effect.reason) note('info', m.plant_effect.reason.replace(/^[a-z_]+:\s*/, ''));
+      // the next waiting manipulation command goes out right away instead of sitting out the rest of the tick
+      if (manipQueue.length) queueMicrotask(() => void sendDrive(robotId));
       return;
     }
     // an out-of-order ack (two intents in flight) is benign: the newer intent already won; the real backend words it `command_seq_not_increasing`
     const staleSeq = r.code === 'stale_seq' || /command_seq_not_increasing|^lease_not_active/.test(r.reason);
-    set({ refused: staleSeq ? get().refused : get().refused + 1, ackAt: staleSeq ? get().ackAt : now });
+    // ANY answer from the server proves the link is alive (the watchdog is for silence): a robot still acquiring answers `lease_not_active` for
+    // as long as the engine tick takes (>1 s on a loaded host) and must not be mistaken for a lost link
+    set({ refused: staleSeq ? get().refused : get().refused + 1, ackAt: now });
     if (sentTool) pendingTool = undefined;
     if (r.code === 'lease_revoked' || r.code === 'no_lease' || r.code === 'stale_epoch') {
       safeStop(r.revoked_reason ?? 'link_lost', true, r.reason);
@@ -285,9 +328,17 @@ async function sendDrive(robotId: string) {
       controlHooks.onStaleGraph();
       note('warn', r.reason);
     } else if (/^lease_not_active/.test(r.reason)) {
-      // the robot is still acquiring (server holds the lease in LEASE_PENDING until it settles): keep the 20 Hz loop going, say nothing
+      // the robot is still acquiring (server holds the lease in LEASE_PENDING until it settles): keep the loop going, say nothing.
+      // The manipulation command that rode this intent was NOT applied: put it back at the front.
+      if (manip) {
+        manipQueue.unshift(manip);
+        set({ manipPending: manipQueue.length });
+      }
     } else if (!staleSeq) {
-      note('warn', r.reason);
+      const p = plainRefusal(r.reason);
+      note('warn', p.hint ? `${p.text} ${p.hint}` : p.text);
+      // battery ran out mid-session: the server ends the lease on its own; show why instead of looking dead
+      if (p.dockable) set({ refusal: { robotId, reason: r.reason, plain: p, at: Date.now() } });
     }
   } catch {
     inFlight--;
@@ -434,45 +485,78 @@ function tool(action: ToolAction) {
   if (get().inputEnabled) pendingTool = action;
 }
 
-function jogJoint(joint_idx: number, delta_rad: number) {
-  if (get().inputEnabled) {
-    pendingManipulation = { action: 'joint_jog', joint_idx, delta_rad };
-    const rId = get().robotId;
-    if (rId) void sendDrive(rId);
+/** Add a manipulation command to the queue (coalescing same-key commands) and try to send it now. */
+function enqueueManip(m: Manip) {
+  if (!get().inputEnabled) return;
+  const same = manipQueue.find((q) => q.key === m.key);
+  if (same) {
+    if (m.key.startsWith('jog')) same.fields = { ...same.fields, delta_rad: clampJog((same.fields.delta_rad ?? 0) + (m.fields.delta_rad ?? 0)) };
+    else same.fields = m.fields;
+  } else {
+    if (manipQueue.length >= MAX_MANIP_QUEUE) manipQueue.shift();
+    manipQueue.push(m);
   }
+  set({ manipPending: manipQueue.length });
+  const rId = get().robotId;
+  if (rId) void sendDrive(rId);
+}
+
+function jogJoint(joint_idx: number, delta_rad: number) {
+  cancelArmGoto();
+  enqueueManip({ key: `jog${joint_idx}`, fields: { action: 'joint_jog', joint_idx, delta_rad: clampJog(delta_rad) } });
 }
 
 function setGripper(aperture_m: number) {
-  if (get().inputEnabled) {
-    pendingManipulation = { gripper_aperture: aperture_m };
-    const rId = get().robotId;
-    if (rId) void sendDrive(rId);
-  }
+  enqueueManip({ key: 'grip', fields: { gripper_aperture: Math.max(0, Math.min(0.07, aperture_m)) } });
 }
 
 function pick() {
-  if (get().inputEnabled) {
-    pendingManipulation = { action: 'pick', pick: true };
-    const rId = get().robotId;
-    if (rId) void sendDrive(rId);
-  }
+  enqueueManip({ key: 'pick', fields: { action: 'pick', pick: true } });
 }
 
 function place() {
-  if (get().inputEnabled) {
-    pendingManipulation = { action: 'place', place: true };
-    const rId = get().robotId;
-    if (rId) void sendDrive(rId);
-  }
+  enqueueManip({ key: 'place', fields: { action: 'place', place: true } });
 }
 
 function cleanDeposit() {
-  if (get().inputEnabled) {
-    pendingManipulation = { action: 'clean_deposit' };
-    const rId = get().robotId;
-    if (rId) void sendDrive(rId);
-  }
+  enqueueManip({ key: 'clean', fields: { action: 'clean_deposit' } });
 }
+
+/* ───────── named arm poses (OUTRIG) ─────────
+ * With the V12 arm contract (robot.manipulator published) the server owns the pose and gets `arm_home` / `arm_stow`. Until then, and if the
+ * server refuses the named action, the UI walks the joints to the rest pose with bounded jogs (each is still validated server-side). */
+let gotoTimer: ReturnType<typeof setInterval> | null = null;
+
+function cancelArmGoto() {
+  if (gotoTimer) clearInterval(gotoTimer);
+  gotoTimer = null;
+}
+
+function armPose(kind: 'home' | 'stow') {
+  const rId = get().robotId;
+  if (!get().inputEnabled || !rId) return;
+  cancelArmGoto();
+  const view = () => readManipulator(useWorld.getState().robots[rId]);
+  if (view().source === 'manipulator') {
+    enqueueManip({ key: 'pose', fields: { action: kind === 'home' ? 'arm_home' : 'arm_stow' } });
+    return;
+  }
+  const target = kind === 'home' ? ARM_HOME_POSE : ARM_STOW_POSE;
+  let n = 0;
+  const step = () => {
+    const v = view();
+    const todo = stepToward(v.joints, target);
+    const gripDone = kind === 'home' || v.gripperM === null || v.gripperM < 0.012;
+    if (!get().inputEnabled || get().robotId !== rId || n++ > 60 || (todo.length === 0 && gripDone)) return cancelArmGoto();
+    for (const { idx, delta } of todo) enqueueManip({ key: `jog${idx}`, fields: { action: 'joint_jog', joint_idx: idx, delta_rad: delta } });
+    if (kind === 'stow' && !gripDone) enqueueManip({ key: 'grip', fields: { gripper_aperture: 0 } });
+  };
+  step();
+  gotoTimer = setInterval(step, 300);
+}
+
+const armHome = () => armPose('home');
+const armStow = () => armPose('stow');
 
 function say(tone: Notice['tone'], text: string) {
   note(tone, text);
@@ -490,6 +574,9 @@ export const controlActions = {
   pick,
   place,
   cleanDeposit,
+  armHome,
+  armStow,
+  cancelArmGoto,
   dismiss,
   say,
 };
@@ -503,6 +590,8 @@ export function resetControl() {
   seq = 0;
   inFlight = 0;
   pendingTool = undefined;
+  manipQueue = [];
+  cancelArmGoto();
   releasingLease = null;
   releaseKey = null;
   useControl.setState({ ...initial, clientId: get().clientId });

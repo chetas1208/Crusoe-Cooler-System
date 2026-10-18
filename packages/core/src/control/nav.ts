@@ -119,9 +119,9 @@ export class HttpNavApi {
     return `${this.base}/api/v1/runs/${encodeURIComponent(this.runId)}/${path}`;
   }
 
-  private async call(path: string, init?: RequestInit): Promise<{ status: number; json: Record<string, unknown> } | NavRefusal> {
+  private async call(path: string, init?: RequestInit, timeoutMs = this.timeoutMs): Promise<{ status: number; json: Record<string, unknown> } | NavRefusal> {
     const ctl = typeof AbortController !== 'undefined' ? new AbortController() : null;
-    const timer = ctl ? setTimeout(() => ctl.abort(), this.timeoutMs) : null;
+    const timer = ctl ? setTimeout(() => ctl.abort(), timeoutMs) : null;
     try {
       const res = await this.fetcher(this.url(path), {
         ...init,
@@ -158,8 +158,8 @@ export class HttpNavApi {
     };
   }
 
-  private async result<T>(path: string, init: RequestInit | undefined, pick: (j: Record<string, unknown>) => T): Promise<NavResult<T>> {
-    const r = await this.call(path, init);
+  private async result<T>(path: string, init: RequestInit | undefined, pick: (j: Record<string, unknown>) => T, timeoutMs?: number): Promise<NavResult<T>> {
+    const r = await this.call(path, init, timeoutMs);
     if ('reason' in r) return { ok: false, refusal: r };
     const { status, json } = r;
     if (status >= 400 || json.accepted === false || json.ok === false) return { ok: false, refusal: this.refusalOf(status, json) };
@@ -167,7 +167,8 @@ export class HttpNavApi {
   }
 
   graphs(kind: 'exterior' | 'interior'): Promise<NavResult<NavGraph>> {
-    return this.result(`navigation/graphs?kind=${kind}`, undefined, (j) => j as unknown as NavGraph);
+    // the graphs are the largest nav answers and the page may be stalled by rendering: a longer budget than a plan or a commit
+    return this.result(`navigation/graphs?kind=${kind}`, undefined, (j) => j as unknown as NavGraph, 20000);
   }
 
   reachability(robotId: string, targetId: string): Promise<NavResult<Reachability>> {

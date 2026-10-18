@@ -2,7 +2,7 @@
   "name": "loopkeeper",
   "private": true,
   "version": "0.1.0",
-  "description": "Cruso Cooler System — an autonomous physical-AI maintenance twin for liquid-cooled data centers (web + mobile frontends).",
+  "description": "Crusoe Cooler System — an autonomous physical-AI maintenance twin for liquid-cooled data centers (web + mobile frontends).",
   "packageManager": "pnpm@9.15.0",
   "scripts": {
     "build": "pnpm --filter @loopkeeper/web build",

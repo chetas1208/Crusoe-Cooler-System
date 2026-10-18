@@ -22,12 +22,12 @@ export function DriveLinkBar({ robotId }: { robotId: string }) {
   const road = !seg && robot ? nearestEdge(gExt, robot.pose.position_xyz_m[0], robot.pose.position_xyz_m[2]) : null;
   const cell = (k: string, v: string, warn = false) => (
     <span style={{ display: 'inline-flex', gap: 5, alignItems: 'baseline', whiteSpace: 'nowrap' }}>
-      <span style={{ color: 'var(--t3)', fontSize: 9, letterSpacing: '0.06em', textTransform: 'uppercase' }}>{k}</span>
+      <span style={{ color: 'var(--t3)', fontSize: 12, letterSpacing: '0.04em', textTransform: 'uppercase' }}>{k}</span>
       <b className="mono" style={{ fontWeight: 500, color: warn ? 'var(--warning)' : 'var(--t1)' }}>{v}</b>
     </span>
   );
   return (
-    <div className="hud-link panel" data-panel="drive-link" role="status" aria-label="Manual control link" style={{ pointerEvents: 'auto', display: 'flex', flexWrap: 'wrap', gap: '4px 16px', alignItems: 'center', justifyContent: 'center', padding: '5px 12px', margin: '0 auto 8px', maxWidth: 820, fontSize: 11, background: 'rgba(10,14,22,0.9)', borderRadius: 8, border: '1px solid rgba(255,255,255,0.1)' }}>
+    <div className="hud-link panel" data-panel="drive-link" role="status" aria-label="Manual control link" style={{ pointerEvents: 'auto', display: 'flex', flexWrap: 'wrap', gap: '4px 16px', alignItems: 'center', justifyContent: 'center', padding: '5px 12px', margin: '0 auto 8px', maxWidth: 820, fontSize: 12, background: 'rgba(10,14,22,0.9)', borderRadius: 8, border: '1px solid rgba(255,255,255,0.1)' }}>
       {cell('state', ctl.state.replace(/_/g, ' '), ctl.state === 'SAFE_HOLD')}
       {cell('lease', holder ? String(holder).slice(0, 14) : '—')}
       {cell('link', ctl.linkOk ? 'ok' : 'LOST', !ctl.linkOk)}

@@ -11,7 +11,26 @@ if TYPE_CHECKING:  # pragma: no cover
     from .core import Engine
 
 HOLD_TICKS = 2          # SAFE_HOLD dwell before reconciliation back to AUTONOMOUS
-MIN_MANUAL_BATTERY = 3.0
+MIN_MANUAL_BATTERY = 1.0   # manual drive is refused only when the pack is (nearly) empty: 1 % is ~30 s of driving. Every robot of a class uses this same rule.
+
+
+def battery_refusal(robot, docked_charging: bool) -> str:
+    """Plain-language reason (the `battery_depleted` prefix is the machine key the clients match on)."""
+    b = max(0.0, float(robot.battery))
+    where = ("It is charging at its dock now: try again in a minute." if docked_charging
+             else "It cannot drive itself home with an empty pack: send it to its dock and a recovery crew will bring it in, or pick another robot.")
+    return f"battery_depleted: {robot.id} has {b:.1f} % battery, manual drive needs at least {MIN_MANUAL_BATTERY:.0f} %. {where}"
+
+
+_LEASE_END_TEXT = {
+    "deadman_timeout": "the robot stopped because drive commands stopped arriving (dead-man timer)",
+    "lease_expired": "the control session timed out",
+    "operator_release": "control was released",
+    "client_disconnect": "the controlling browser disconnected",
+    "client_hidden": "the controlling tab was hidden",
+    "battery_depleted": "the battery ran out",
+    "engine_restart": "the simulator restarted",
+}
 
 
 class ControlManager:
@@ -22,6 +41,8 @@ class ControlManager:
         self.leases: dict[str, Json] = {}   # lease docs (include wall-clock fields; not part of the state hash)
         self.dirty: set = set()
         self._drive_emit: dict[str, float] = {}
+        self.stop_info: dict[str, Json] = {}   # per robot: why the last manual step did not move it (transient, not part of the state hash)
+        self.pending_dock: dict[str, str] = {}  # robot -> principal: "send to dock" asked while the robot was still under manual control
         for rid in eng.robots:
             self.ctl[rid] = self._blank()
 
@@ -75,12 +96,20 @@ class ControlManager:
         state = c["state"]
         robot = self.eng.robots.get(rid)
         controllable = bool(robot and robot.klass in ("inpipe", "outrig") and robot.mode not in ("WORKING", "FAILED", "VERIFYING"))
+        why_not = "robot is not drivable right now"
+        if robot and robot.klass not in ("inpipe", "outrig"):
+            why_not = "manual_control_not_supported: this robot type has no manual drive"
+        elif robot and robot.mode == "WORKING":
+            why_not = "robot_busy: a repair action is in progress"
+        if controllable and state == "AUTONOMOUS" and robot.battery < MIN_MANUAL_BATTERY:
+            controllable = False
+            why_not = battery_refusal(robot, robot.mode == "DOCKED")
         authority = "HUMAN" if state == "MANUAL" else ("STOP" if state == "SAFE_HOLD" else "AUTO")
         return {
             "authority": authority,
             "controller_state": state,
             "controllable": controllable,
-            "uncontrollable_reason": None if controllable else ("robot is not drivable right now"),
+            "uncontrollable_reason": None if controllable else why_not,
             "lease_id": c["lease_id"],
             "lease_epoch": float(c["epoch"]),
             "holder": c["principal_id"],
@@ -100,7 +129,9 @@ class ControlManager:
                 else None
             ),
             "next_node": None,
-            "junction": None,
+            "junction": (self.stop_info.get(rid) or {}).get("junction") if state == "MANUAL" else None,
+            "stopped_reason": (self.stop_info.get(rid) or {}).get("reason") if state == "MANUAL" else None,
+            "stopped_message": (self.stop_info.get(rid) or {}).get("message") if state == "MANUAL" else None,
             "tools": [{"id": "lamp", "label": "Lamp", "available": True}],
             "last_scan": None,
             "odometer_m": float(c.get("odometer_m", 0.0)),
@@ -125,15 +156,15 @@ class ControlManager:
             if lease and lease["principal_id"] == principal:  # idempotent re-acquire by the holder
                 self._renew(lease)
                 return True, "", self._ack(lease)
-            return False, "lease_conflict: robot is under manual control by another principal", {}
+            return False, "lease_conflict: another operator already holds this robot", {}
         if c["state"] == "SAFE_HOLD":
-            return False, "robot_in_safe_hold: retry after reconciliation", {}
+            return False, "robot_in_safe_hold: the robot is settling after the last session, retry in a moment", {}
         if robot.active and robot.active["type"] == "action" and robot.mode == "WORKING":
             return False, "robot_busy: a repair action is in progress", {}
-        if robot.battery <= MIN_MANUAL_BATTERY:
-            return False, "battery_depleted", {}
+        if robot.battery < MIN_MANUAL_BATTERY:
+            return False, battery_refusal(robot, robot.mode == "DOCKED"), {}
         if robot.klass == "inpipe" and robot.segment_id is None:
-            return False, "robot_signal_unavailable", {}
+            return False, "robot_signal_unavailable: this crawler is not inside a pipe segment", {}
         self.epochs[rid] = self.epochs.get(rid, 0) + 1
         lid = eng.forced_ids.get(cmd_id) or new_uuid()
         now = eng.wall_time()
@@ -145,6 +176,8 @@ class ControlManager:
         self.dirty.add(lid)
         c.update({"state": "LEASE_PENDING", "lease_id": lid, "principal_id": principal, "epoch": lease["epoch"],
                   "last_command_seq": 0, "intent": None, "junction": None, "hold_reason": None})
+        self.stop_info.pop(rid, None)
+        self.pending_dock.pop(rid, None)
         robot.held = True          # freeze the autonomous executor immediately (no teleporting, no overlap)
         robot.speed = 0.0
         robot.v = 0.0
@@ -176,7 +209,7 @@ class ControlManager:
             "state": self.ctl[rid]["state"],
             "granted_world_version": float(getattr(self.eng, "world_version", self.eng.tick)),
             "expires_in_ms": ttl * 1000.0,
-            "heartbeat_interval_ms": ttl * 1000.0 / 3.0,
+            "heartbeat_interval_ms": min(ttl * 1000.0 / 3.0, deadman * 1000.0 / 2.0),      # a client that heartbeats at this interval must never trip the deadman
             "deadman_ms": deadman * 1000.0,
             "limits": limits,
             "topology_revision": str(self.eng.topology_revision),
@@ -200,11 +233,12 @@ class ControlManager:
     def _live(self, lid: str, principal: str) -> tuple[Json | None, str]:
         lease = self.leases.get(lid)
         if not lease:
-            return None, "lease_unknown"
+            return None, "lease_unknown: there is no active control session (it may have timed out); take control again"
         if lease["status"] not in ("pending", "active"):
-            return None, f"lease_{lease['status']}"
+            end = lease.get("ended_reason") or lease["status"]
+            return None, f"lease_{lease['status']}: {_LEASE_END_TEXT.get(end, 'the control session has ended')}; take control again"
         if lease["principal_id"] != principal:
-            return None, "lease_unknown"       # do not reveal that it exists
+            return None, "lease_unknown: there is no active control session (it may have timed out); take control again"       # do not reveal that it exists
         return lease, ""
 
     def heartbeat(self, a: Json, principal: str) -> tuple[bool, str, Json]:
@@ -249,18 +283,18 @@ class ControlManager:
         if c["state"] != "MANUAL":
             return False, "lease_not_active: robot is still acquiring (retry)", {}
         if a.get("lease_epoch") is not None and a["lease_epoch"] != lease["epoch"]:
-            return False, "stale_lease_epoch", {}
+            return False, "stale_lease_epoch: this control session was replaced by a newer one; take control again", {}
         if a["command_seq"] <= c["last_command_seq"]:
-            return False, "command_seq_not_increasing", {}
+            return False, "command_seq_not_increasing: an older command arrived after a newer one (ignored)", {}
         if a["topology_revision"] != eng.topology_revision:
-            return False, "topology_revision_mismatch", {}
-        if robot.battery <= MIN_MANUAL_BATTERY:
-            return False, "battery_depleted", {}
+            return False, "topology_revision_mismatch: the facility layout changed; reload and try again", {}
+        if robot.battery < MIN_MANUAL_BATTERY:
+            return False, battery_refusal(robot, False), {}
         ex = a.get("selected_exit_segment_id")
         if ex and c["junction"] is not None and ex not in c["junction"]:
-            return False, "invalid_exit_segment", {}
+            return False, "invalid_exit_segment: that road is not an option at this junction", {}
         if ex and ex not in eng.graph.edges:
-            return False, "invalid_exit_segment", {}
+            return False, "invalid_exit_segment: unknown pipe segment", {}
         c["last_command_seq"] = a["command_seq"]
         lease["last_command_seq"] = a["command_seq"]
         lease["last_heartbeat"] = eng.wall_time()   # drive input also proves operator presence
@@ -279,66 +313,9 @@ class ControlManager:
             # used to overwrite robot.pos/yaw here from its own hard-coded frame (teleporting the rover to [12, 2, 0.15] through racks);
             # it must never write the authoritative pose. Only arm / gripper actuation below goes to MuJoCo.
 
-            arm_cmds = ("joint_idx" in a or a.get("action") in ("joint_jog", "pick", "place") or a.get("pick") or a.get("place")
-                        or "gripper_aperture" in a)
-            arm_ok = True
-            if arm_cmds:
-                arm_ok, why = eng.claim_workcell(rid)        # the nearest free service bay; crawlers have no 6-DOF arm
-                if not arm_ok:
-                    manipulation_ack["rejected"] = {"reason": why}
-            mjr = eng.bay_of(rid) or eng.mujoco_runtime
-            # Arm joint jogging
-            if arm_ok and (a.get("action") == "joint_jog" or "joint_idx" in a):
-                j_idx = int(a.get("joint_idx", 0))
-                d_rad = float(a.get("delta_rad", 0.05))
-                mjr.jog_joint(j_idx, d_rad)
-                manipulation_ack["joint_jog"] = {"joint": j_idx, "qpos": mjr.arm_qpos}
-
-            # Gripper aperture control
-            if arm_ok and "gripper_aperture" in a:
-                ap = float(a["gripper_aperture"])
-                mjr.set_gripper(ap)
-                manipulation_ack["gripper"] = ap
-
-            # Physical Grasp / Pick
-            if arm_ok and (a.get("action") == "pick" or a.get("pick")):
-                ok, msg = mjr.pick_cartridge()
-                manipulation_ack["pick"] = {"ok": ok, "message": msg, "held_object": mjr.held_object_id}
-                if ok:
-                    eng.emit_internal("robot.manipulation.pick", rid, {
-                        "robot_id": rid,
-                        "held_object_id": mjr.held_object_id,
-                        "verified_contact": True
-                    }, actor_type="operator", actor_id=principal)
-
-            # Physical Place / Release
-            if arm_ok and (a.get("action") == "place" or a.get("place")):
-                ok, msg = mjr.place_cartridge()
-                manipulation_ack["place"] = {
-                    "ok": ok,
-                    "message": msg,
-                    "cartridge_seated": mjr.repair_state.cartridge_installed,
-                    "mechanical_fit": mjr.repair_state.mechanical_fit_pass,
-                    "error_mm": mjr.repair_state.position_error_m * 1000.0
-                }
-                if ok:
-                    eng.emit_internal("robot.manipulation.place", rid, {
-                        "robot_id": rid,
-                        "cartridge_installed": mjr.repair_state.cartridge_installed,
-                        "mechanical_fit": mjr.repair_state.mechanical_fit_pass
-                    }, actor_type="operator", actor_id=principal)
-                    # If seated at fixture, commit plant repair and trigger verifier!
-                    if mjr.repair_state.cartridge_installed:
-                        res = eng.plant.apply({"kind": "replace_strainer", "target_id": mjr.bay_id, "args": {}})
-                        manipulation_ack["plant_effect"] = {"ok": bool(res.get("ok")), "reason": res.get("reason")}
-                        if res.get("ok"):
-                          eng.emit_internal("repair.strainer_replaced", mjr.bay_id, {
-                            "robot_id": rid,
-                            "target_id": mjr.bay_id,
-                            "cartridge_id": mjr.cartridge_state.id,
-                            "causal_effect": "occlusion_cleared_to_zero",
-                            "stabilization_window_s": 30.0
-                        }, actor_type="operator", actor_id=principal)
+            # Per-robot arm + gripper (engine/robots/manipulator.py): every OUTRIG has its own independent arm state; targets are set here and the
+            # arm moves on the engine tick. Crawlers get a plain refusal.
+            manipulation_ack.update(eng.manipulators.apply(rid, a, principal))
 
             # In-pipe deposit clearing tool action: crawlers only, on the pipe segment the crawler is actually inside
             if a.get("action") == "clean_deposit":
@@ -369,6 +346,9 @@ class ControlManager:
             "controller_state": c["state"],
             "world_version": float(getattr(eng, "world_version", eng.tick)),
             "pose": pose_data,
+            "stopped_reason": (self.stop_info.get(rid) or {}).get("reason"),
+            "stopped_message": (self.stop_info.get(rid) or {}).get("message"),
+            "junction": (self.stop_info.get(rid) or {}).get("junction"),
             "odometer_m": float(c.get("odometer_m", 0.0)),
             "lease_id": lease["lease_id"],
             "applies_from_tick": eng.tick + 1,
@@ -464,14 +444,95 @@ class ControlManager:
                                              steer=it["steer"] if it else 0.0,
                                              guard=(lambda p, y, _r=robot: eng.traffic.manual_ok(_r, p, y)) if robot.klass == "outrig" else None)
                 c["junction"] = info["junction"]
+                self._note_stop(rid, robot, info, moving_cmd=(it is not None and abs(it["throttle"]) > 0.05 and not brake))
                 robot.mode = "TRAVELING"
-                if robot.battery <= MIN_MANUAL_BATTERY:
+                if robot.battery < MIN_MANUAL_BATTERY:
                     self.end_lease(c["lease_id"], "battery_depleted")
             elif st == "SAFE_HOLD":
                 if eng.tick - (c["hold_since"] or 0) >= HOLD_TICKS:
                     c.update({"state": "AUTONOMOUS", "lease_id": None, "principal_id": None, "hold_since": None, "intent": None})
                     self._resume(rid)
+                    who = self.pending_dock.pop(rid, None)
+                    if who is not None:
+                        eng.missions.create({"robot_id": rid, "kind": "return", "target_id": robot.home_id, "title": f"Return {rid} to its dock"}, who,
+                                            f"dock-{rid}-{eng.tick}")
                     eng.emit_internal("robot.control", rid, {"robot_id": rid, "event": "resumed", "state": "AUTONOMOUS"}, actor_type="system")
+
+    # ---- why the robot is not moving / what the operator can choose ------------------------
+    _STOP_TEXT = {
+        "junction_select_exit": "Junction ahead: hold left or right to choose the road, then keep the throttle down.",
+        "dead_end": "Dead end: reverse to turn back.",
+        "obstacle": "Blocked by a rack, wall or another robot. Reverse or steer away.",
+        "wall": "Blocked by a wall or rack. Reverse or steer away.",
+        "off_graph": "The rover is off the driving lanes. Use the route panel to send it back to a road.",
+        "reverse_limit": "End of the lane behind the rover.",
+    }
+
+    def _note_stop(self, rid: str, robot, info: Json, moving_cmd: bool) -> None:
+        reason = info.get("stopped_reason")
+        if not reason or not moving_cmd:
+            self.stop_info.pop(rid, None)
+            return
+        self.stop_info[rid] = {"reason": reason, "message": self._STOP_TEXT.get(reason, reason), "junction": self._junction_info(rid, robot, info)}
+
+    def _junction_info(self, rid: str, robot, info: Json) -> Json | None:
+        """JunctionInfo wire shape for a stop at a junction (crawler: pipe exits; rover: legal road branches), else None."""
+        eng = self.eng
+        opts = info.get("junction")
+        if not opts:
+            return None
+        try:
+            if robot.klass == "outrig":
+                st = eng.navigation.tube.st.get(rid) or {}
+                e = eng.navigation.ext.edges.get(st.get("edge"))
+                node = (e["b"] if st.get("dir", 1) == 1 else e["a"]) if e else "junction"
+                branches = info.get("branches") or {}
+                bearing = {"left": -90.0, "straight": 0.0, "right": 90.0}
+                exits = [{"segment_id": branches[k], "label": k.capitalize(), "passable": True, "bearing_deg": bearing.get(k, 0.0)} for k in ("left", "straight", "right") if k in branches]
+                return {"node_id": node, "node_label": str(node), "distance_m": 0.0, "exits": exits, "selected": None}
+            seg = robot.segment_id
+            g = eng.graph
+            at_end = (robot.s_m or 0.0) > 0.5 * g.length(seg)
+            node = g.node_at(seg, at_end)
+            hx, hz = math.sin(robot.yaw), math.cos(robot.yaw)
+            exits = []
+            for o in opts:
+                e2 = g.edge(o)
+                node_start = e2["from"] == node
+                t = g.tangent(o, 0.0 if node_start else g.length(o))
+                tx, tz = (t[0], t[2]) if node_start else (-t[0], -t[2])
+                exits.append({"segment_id": o, "label": o, "passable": True,
+                              "bearing_deg": round(math.degrees(math.atan2(hx * tz - hz * tx, hx * tx + hz * tz)), 1)})
+            return {"node_id": node, "node_label": str(node), "distance_m": 0.0, "exits": exits, "selected": None}
+        except Exception:      # noqa: BLE001 - a hint for the operator must never break the control tick
+            return None
+
+    # ---- operator "send to dock" ---------------------------------------------------------
+    def send_to_dock(self, rid: str, principal: str, cmd_id: str) -> tuple[bool, str, Json]:
+        """Route the robot to its home dock (a normal `return` mission). Under manual control the lease is released first and the return starts
+        as soon as the robot is back under autonomous authority. A robot with an empty pack cannot drive: it is queued for recovery."""
+        eng = self.eng
+        robot = eng.robots.get(rid)
+        if not robot:
+            return False, "unknown_robot", {}
+        c = self.ctl[rid]
+        if eng.missions._at_home(robot) and c["state"] == "AUTONOMOUS":
+            if robot.active is None and robot.mode in ("IDLE", "NEEDS_CHARGE"):
+                robot.mode = "DOCKED"
+            return True, "", {"robot_id": rid, "result": "already_docked", "battery_pct": round(robot.battery, 1)}
+        if c["state"] in ("LEASE_PENDING", "MANUAL"):
+            lease = self.leases.get(c["lease_id"])
+            if lease and lease["principal_id"] != principal:
+                return False, "lease_conflict: another operator already holds this robot", {}
+            self.end_lease(c["lease_id"], "operator_release", cmd_id, actor="operator", actor_id=principal)
+            c = self.ctl[rid]
+        if c["state"] == "SAFE_HOLD":
+            self.pending_dock[rid] = principal
+            return True, "", {"robot_id": rid, "result": "queued_after_hold"}
+        ok, why, m = eng.missions.create({"robot_id": rid, "kind": "return", "target_id": robot.home_id, "title": f"Return {rid} to its dock"}, principal, cmd_id)
+        if not ok:
+            return False, why, {}
+        return True, "", {"robot_id": rid, "result": "returning", "mission_id": m["id"]}
 
     def _pick_exit(self, robot, options: list, steer: float) -> str | None:
         eng = self.eng

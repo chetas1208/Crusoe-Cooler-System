@@ -1,6 +1,6 @@
-# Cruso Cooler System — mobile
+# Crusoe Cooler System — mobile
 
-The on-call operator's companion for the Cruso Cooler System maintenance twin: a live 3D view of the simulated
+The on-call operator's companion for the Crusoe Cooler System maintenance twin: a live 3D view of the simulated
 liquid-cooled hall, the incident that needs attention right now, the agent trace behind it, and the robots
 doing the work. Built with Expo (SDK 57), Expo Router, React Native Reanimated and `@react-three/fiber/native`.
 

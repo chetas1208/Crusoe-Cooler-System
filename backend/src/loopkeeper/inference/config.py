@@ -115,6 +115,9 @@ class GatewayConfig:
             raise ValueError("base url must be https (http only for localhost)")
         if not u.hostname or u.username or u.password:
             raise ValueError("base url invalid")
+        if not local:
+            from ..intelligence.crusoe import reject_private_host
+            reject_private_host(u.hostname)
         return self.base_url.rstrip("/")
 
     def public(self) -> dict:

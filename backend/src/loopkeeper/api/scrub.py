@@ -23,7 +23,7 @@ _HIDDEN_REASONING_KEY = re.compile(
     re.I,
 )
 _SECRET_VALUE = re.compile(
-    r"(\bBearer\s+[A-Za-z0-9._~+/=-]{8,}|\b(sk|csk|crusoe|ghp|xox[abp])[-_][A-Za-z0-9_-]{16,}|"
+    r"(\bBearer\s+[A-Za-z0-9._~+/=-]{8,}|\b(sk|crusoe|ghp|xox[abp])[-_][A-Za-z0-9_-]{16,}|\bcsk[-_][A-Za-z0-9_-]{8,}|\bnpg_[A-Za-z0-9]{8,}|"
     r"postgres(ql)?(\+\w+)?://[^\s:@/]+:[^\s@/]+@)",
     re.I,
 )
@@ -35,7 +35,7 @@ def _key_blocked(key: str) -> bool:
     return bool(_SECRET_KEY.search(k) or _HIDDEN_REASONING_KEY.match(k))
 
 
-_VALUE_HINTS = ("bearer", "sk-", "sk_", "csk-", "csk_", "crusoe-", "crusoe_", "ghp-", "ghp_", "xox", "postgres")
+_VALUE_HINTS = ("bearer", "sk-", "sk_", "csk-", "csk_", "crusoe-", "crusoe_", "ghp-", "ghp_", "xox", "postgres", "npg_")
 
 
 def _maybe_secret(s: str) -> bool:

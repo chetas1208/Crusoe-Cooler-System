@@ -448,3 +448,73 @@ def test_ws_catch_up_streams_page_by_page_and_degrades_to_snapshot_when_too_long
             if m["type"] == "snapshot":
                 break
         assert len(seen) == 21 and seen[-1]["seq"] >= head                 # 2 pages replayed, then a snapshot instead of 4 more pages
+
+
+# ------------------------------------------------------------------ security audit follow-ups (S-06 / S-08 / S-10 / S-11 / S-13)
+def test_s06_viewer_cannot_steer_the_clock_operator_can():
+    from fastapi.testclient import TestClient
+    from loopkeeper.api import create_app
+    from support.fake_engine import FakeEngine, FakeRuntime
+    from support.fixtures import VIEWER, make_settings
+    app = create_app(FakeEngine(), agent_runtime=FakeRuntime(), settings=make_settings())
+    with TestClient(app) as c:
+        v = {"Authorization": f"Bearer {VIEWER}"}
+        for p, body in (("/speed", {"speed": 3}), ("/pause", {}), ("/play", {})):
+            assert c.post(f"/api/v1/runs/run_live{p}", headers=v, json=body).status_code == 403, p
+        assert c.post("/api/v1/runs/run_live/speed", headers=AUTH, json={"speed": 9}).status_code == 422       # operator passes the role check, then input validation
+
+
+def test_s08_mutating_routes_are_rate_limited_and_ws_is_capped_per_ip():
+    from fastapi.testclient import TestClient
+    from loopkeeper.api import create_app
+    from support.fake_engine import FakeEngine, FakeRuntime
+    from support.fixtures import make_settings
+    app = create_app(FakeEngine(), agent_runtime=FakeRuntime(), settings=make_settings(mutate_rate_per_s=0.01, mutate_burst=3, ws_max_per_ip=2))
+    with TestClient(app) as c:
+        codes = [c.post("/api/v1/intelligence/laya/classify", headers=AUTH, json={"x": 1}).status_code for _ in range(8)]
+        assert 429 in codes and codes.index(429) <= 3
+        r = c.post("/api/v1/runs/run_live/exports", headers=AUTH)
+        assert r.status_code == 429 and r.headers.get("retry-after")                          # same bucket: one budget for the expensive routes
+        assert c.get("/api/v1/world", headers=AUTH).status_code == 200                         # reads are not limited
+        from starlette.websockets import WebSocketDisconnect
+        with c.websocket_connect("/api/v1/stream", headers=AUTH) as a, c.websocket_connect("/api/v1/stream", headers=AUTH) as b:
+            a.receive_json(); b.receive_json()
+            with pytest.raises(WebSocketDisconnect):
+                with c.websocket_connect("/api/v1/stream", headers=AUTH):
+                    pass
+        with c.websocket_connect("/api/v1/stream", headers=AUTH) as d:                           # slots are released on close
+            assert d.receive_json()["type"] == "snapshot"
+
+
+@pytest.mark.parametrize("url", ["https://169.254.169.254/v1", "https://169.254.169.254.nip.io/v1", "https://10.0.0.5/v1", "https://metadata.google.internal/v1",
+                                 "https://[fd00::1]/v1", "https://2130706433/v1", "https://0x7f000001/v1", "https://169.254.169.254.example.com/v1"])
+def test_s10_both_model_configs_reject_private_and_metadata_hosts(url):
+    from loopkeeper.inference.config import GatewayConfig
+    from loopkeeper.intelligence.crusoe import IntelligenceConfig
+    with pytest.raises(ValueError):
+        IntelligenceConfig(api_key="k", base_url=url).validate_base_url()
+    with pytest.raises(ValueError):
+        GatewayConfig(base_url=url).validate_base_url()
+
+
+def test_s10_real_and_local_endpoints_still_accepted():
+    from loopkeeper.inference.config import GatewayConfig
+    from loopkeeper.intelligence.crusoe import IntelligenceConfig
+    for u in ("https://api.inference.crusoecloud.com/v1", "http://localhost:9000/v1", "http://127.0.0.1:9/v1"):
+        IntelligenceConfig(api_key="k", base_url=u).validate_base_url()
+        GatewayConfig(base_url=u).validate_base_url()
+
+
+def test_s11_scrub_masks_neon_and_short_csk_keys():
+    from loopkeeper.api.scrub import scrub
+    fake_neon = "npg_" + "AbCdEf123456xyz"
+    fake_csk = "csk-" + "abcdefgh"
+    out = scrub({"a": f"password is {fake_neon}", "b": f"key {fake_csk} here", "c": "plain text", "d": "csk-ab"})
+    assert "npg_" not in out["a"] and fake_csk not in out["b"] and out["c"] == "plain text" and out["d"] == "csk-ab"
+
+
+def test_s13_spa_responses_carry_a_csp_that_allows_the_api_and_websocket(anon):
+    r = anon.get("/")
+    csp = r.headers.get("content-security-policy", "")
+    assert "default-src 'self'" in csp and "frame-ancestors 'none'" in csp and "connect-src 'self' https: wss:" in csp and "object-src 'none'" in csp
+    assert anon.get("/api/v1/health/live").headers["content-security-policy"].startswith("default-src 'none'")      # the API itself stays locked down

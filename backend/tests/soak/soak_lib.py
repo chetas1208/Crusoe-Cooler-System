@@ -289,9 +289,7 @@ class Violation:
 # Violations that are already reported to their owner with a minimal reproducer (tests/soak/test_soak_contracts.py, docs/engineering/V12_SOAK_REPORT.md).
 # (invariant, regex over the detail, ledger id). A matching violation is listed under `known_violations` and does not fail a scenario, so one known
 # defect cannot mask every other invariant; when the owner fixes it the reproducer in test_soak_contracts.py XPASSes and the entry is deleted here.
-KNOWN_SIGNATURES: list[tuple[str, str, str]] = [
-    ("exceptions", r"cause='unknown' anchor='p_hs_[cde]'", "SOAK-03"),
-]
+KNOWN_SIGNATURES: list[tuple[str, str, str]] = []
 
 OWNERS = {"physics_halt": "K", "liveness": "M", "duplicate_repair": "M", "layer_b": "M", "growth": "M", "seq": "K", "spend": "I", "replay": "S",
           "durability": "K", "lease": "K", "unexpected_pause": "K", "exceptions": "M", "determinism": "S"}

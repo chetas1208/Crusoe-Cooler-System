@@ -1,0 +1,5694 @@
+{
+ "benchmark": "laya_v12_advisory",
+ "generated_at": "2026-10-18T01:23:00Z",
+ "advisory_only": true,
+ "never_gates_actions": true,
+ "dataset": {
+  "n_cases": 151,
+  "sha256": "2b0fb79bf719fb00d5e6928474ee72c66f36c3311c9e408b3cd5155b79f8a28c",
+  "splits": {
+   "train": 73,
+   "dev": 30,
+   "test": 48
+  },
+  "per_class_per_split": {
+   "train": {
+    "inpipe_inspection": 12,
+    "exterior_service": 12,
+    "hydraulics_review": 12,
+    "thermal_review": 12,
+    "sensor_validation": 12,
+    "human_review": 13
+   },
+   "dev": {
+    "inpipe_inspection": 5,
+    "exterior_service": 5,
+    "hydraulics_review": 5,
+    "thermal_review": 5,
+    "sensor_validation": 5,
+    "human_review": 5
+   },
+   "test": {
+    "inpipe_inspection": 8,
+    "exterior_service": 8,
+    "hydraulics_review": 8,
+    "thermal_review": 8,
+    "sensor_validation": 8,
+    "human_review": 8
+   }
+  },
+  "held_out_tags": {
+   "false_sensor": 3,
+   "multi_fault": 5,
+   "negation": 6,
+   "plain": 21,
+   "unsafe_request": 3,
+   "vague": 10
+  },
+  "split_rule": "per label: order by sha256('laya-v12:'+id); first 50% train, next 20% dev, last 30% held-out",
+  "text_only": true
+ },
+ "protocol": {
+  "train": "fit temperature (+ optional per-class log-bias, L2 0.05), abstention tau / consistency / noul gate by train utility",
+  "dev": "choose among the 10 pre-declared candidates (criteria v11|v12 x ensemble single|orders3|orders3x2 [v12 only] x bias off|on) by dev utility, ties by dev NLL",
+  "held_out": "reported once for the chosen configuration; the other candidates are also listed below for transparency, not for selection",
+  "utility": {
+   "correct_answer": 1.0,
+   "wrong_answer": -2.0,
+   "abstain_on_human_review_truth": 1.0,
+   "abstain_otherwise": 0.0
+  },
+  "label_policy": "family that should act FIRST; missing, contradictory, multi-fault-without-first-move or high-impact requests -> human_review",
+  "abstention": "advisory deferred to human_review; counts as predicting human_review in accuracy; override-routed cases are counted as answered"
+ },
+ "caveats": [
+  "151 hand-written cases by one author; held-out n=48 -> wide intervals (Wilson 95% shown)",
+  "Laya is zero-shot (no fine-tuning); calibration and thresholds are post-hoc fits on 73 train cases",
+  "dev has only 30 cases: the candidate choice is noisy",
+  "Laya confidence/ensemble numbers are never used to gate actions (advisory)",
+  "latency measured on a shared 20-core box under load average 27.77; CPU torch, warm",
+  "the rule baseline and Nano see text only (no asset ids / numerics)",
+  "Nano confidence is verbalised, uncalibrated, and gets no abstention gate",
+  "criteria wording v12 was written after reading Agent C's V11 cases (not the new set's outputs)"
+ ],
+ "engines_summary": {
+  "laya_router": "V12 final: calibrated order/paraphrase ensemble + abstention + safety override",
+  "laya_v11_shipped_policy": "old single-pass path",
+  "rule_fallback_NOT_LAYA": "keyword baseline, NOT Laya",
+  "crusoe_nano": "Crusoe Nemotron Nano, one call"
+ },
+ "laya_router_loaded": true,
+ "laya_sdk_importable": true,
+ "laya_router": {
+  "n": 48,
+  "accuracy_advisory": 0.3542,
+  "accuracy_ci95": [
+   0.234,
+   0.496
+  ],
+  "macro_f1": 0.347,
+  "abstention_rate": 0.6875,
+  "coverage": 0.3125,
+  "selective_accuracy": 0.8,
+  "n_answered": 15,
+  "abstained_on_answerable": "28/40",
+  "human_review_recall": "7/8",
+  "unsafe_requests_to_human": "3/3",
+  "overrides_fired": 2,
+  "utility_per_case": 0.2292,
+  "raw_argmax_accuracy": 0.5625,
+  "confusion_matrix_rows_truth_cols_pred": [
+   [
+    3,
+    0,
+    0,
+    0,
+    0,
+    5
+   ],
+   [
+    0,
+    0,
+    0,
+    0,
+    0,
+    8
+   ],
+   [
+    1,
+    0,
+    2,
+    0,
+    0,
+    5
+   ],
+   [
+    0,
+    0,
+    1,
+    4,
+    0,
+    3
+   ],
+   [
+    0,
+    0,
+    0,
+    0,
+    1,
+    7
+   ],
+   [
+    0,
+    1,
+    0,
+    0,
+    0,
+    7
+   ]
+  ],
+  "per_class": {
+   "inpipe_inspection": {
+    "precision": 0.75,
+    "recall": 0.375,
+    "f1": 0.5,
+    "support": 8
+   },
+   "exterior_service": {
+    "precision": 0.0,
+    "recall": 0.0,
+    "f1": 0.0,
+    "support": 8
+   },
+   "hydraulics_review": {
+    "precision": 0.667,
+    "recall": 0.25,
+    "f1": 0.364,
+    "support": 8
+   },
+   "thermal_review": {
+    "precision": 1.0,
+    "recall": 0.5,
+    "f1": 0.667,
+    "support": 8
+   },
+   "sensor_validation": {
+    "precision": 1.0,
+    "recall": 0.125,
+    "f1": 0.222,
+    "support": 8
+   },
+   "human_review": {
+    "precision": 0.2,
+    "recall": 0.875,
+    "f1": 0.326,
+    "support": 8
+   }
+  },
+  "accuracy_by_tag": {
+   "false_sensor": {
+    "n": 3,
+    "accuracy": 0.0
+   },
+   "multi_fault": {
+    "n": 5,
+    "accuracy": 0.4
+   },
+   "negation": {
+    "n": 6,
+    "accuracy": 0.0
+   },
+   "plain": {
+    "n": 21,
+    "accuracy": 0.333
+   },
+   "unsafe_request": {
+    "n": 3,
+    "accuracy": 1.0
+   },
+   "vague": {
+    "n": 10,
+    "accuracy": 0.5
+   }
+  },
+  "latency_ms": {
+   "p50": 3568.5,
+   "p95": 7249.26,
+   "n": 48
+  },
+  "case_details": [
+   {
+    "case_id": "K001",
+    "tag": "plain",
+    "ground_truth": "inpipe_inspection",
+    "raw_family": "inpipe_inspection",
+    "predicted": "human_review",
+    "confidence": 0.332,
+    "consistency": 0.833,
+    "abstained": true,
+    "overridden": false
+   },
+   {
+    "case_id": "K008",
+    "tag": "plain",
+    "ground_truth": "inpipe_inspection",
+    "raw_family": "inpipe_inspection",
+    "predicted": "inpipe_inspection",
+    "confidence": 0.8545,
+    "consistency": 0.667,
+    "abstained": false,
+    "overridden": false
+   },
+   {
+    "case_id": "K009",
+    "tag": "plain",
+    "ground_truth": "inpipe_inspection",
+    "raw_family": "hydraulics_review",
+    "predicted": "human_review",
+    "confidence": 0.3084,
+    "consistency": 0.833,
+    "abstained": true,
+    "overridden": false
+   },
+   {
+    "case_id": "K015",
+    "tag": "negation",
+    "ground_truth": "inpipe_inspection",
+    "raw_family": "exterior_service",
+    "predicted": "human_review",
+    "confidence": 0.4732,
+    "consistency": 0.833,
+    "abstained": true,
+    "overridden": false
+   },
+   {
+    "case_id": "K017",
+    "tag": "multi_fault",
+    "ground_truth": "inpipe_inspection",
+    "raw_family": "inpipe_inspection",
+    "predicted": "human_review",
+    "confidence": 0.562,
+    "consistency": 0.5,
+    "abstained": true,
+    "overridden": false
+   },
+   {
+    "case_id": "K018",
+    "tag": "vague",
+    "ground_truth": "inpipe_inspection",
+    "raw_family": "inpipe_inspection",
+    "predicted": "human_review",
+    "confidence": 0.4472,
+    "consistency": 0.667,
+    "abstained": true,
+    "overridden": false
+   },
+   {
+    "case_id": "K020",
+    "tag": "vague",
+    "ground_truth": "inpipe_inspection",
+    "raw_family": "inpipe_inspection",
+    "predicted": "inpipe_inspection",
+    "confidence": 0.5462,
+    "consistency": 0.5,
+    "abstained": false,
+    "overridden": false
+   },
+   {
+    "case_id": "K025",
+    "tag": "plain",
+    "ground_truth": "inpipe_inspection",
+    "raw_family": "inpipe_inspection",
+    "predicted": "inpipe_inspection",
+    "confidence": 0.9392,
+    "consistency": 0.5,
+    "abstained": false,
+    "overridden": false
+   },
+   {
+    "case_id": "K027",
+    "tag": "plain",
+    "ground_truth": "exterior_service",
+    "raw_family": "hydraulics_review",
+    "predicted": "human_review",
+    "confidence": 0.3196,
+    "consistency": 1.0,
+    "abstained": true,
+    "overridden": false
+   },
+   {
+    "case_id": "K031",
+    "tag": "plain",
+    "ground_truth": "exterior_service",
+    "raw_family": "thermal_review",
+    "predicted": "human_review",
+    "confidence": 0.3167,
+    "consistency": 1.0,
+    "abstained": true,
+    "overridden": false
+   },
+   {
+    "case_id": "K034",
+    "tag": "plain",
+    "ground_truth": "exterior_service",
+    "raw_family": "exterior_service",
+    "predicted": "human_review",
+    "confidence": 0.3791,
+    "consistency": 1.0,
+    "abstained": true,
+    "overridden": false
+   },
+   {
+    "case_id": "K035",
+    "tag": "plain",
+    "ground_truth": "exterior_service",
+    "raw_family": "human_review",
+    "predicted": "human_review",
+    "confidence": 0.3082,
+    "consistency": 1.0,
+    "abstained": true,
+    "overridden": false
+   },
+   {
+    "case_id": "K042",
+    "tag": "multi_fault",
+    "ground_truth": "exterior_service",
+    "raw_family": "sensor_validation",
+    "predicted": "human_review",
+    "confidence": 0.6566,
+    "consistency": 0.667,
+    "abstained": true,
+    "overridden": false
+   },
+   {
+    "case_id": "K045",
+    "tag": "vague",
+    "ground_truth": "exterior_service",
+    "raw_family": "exterior_service",
+    "predicted": "human_review",
+    "confidence": 0.3803,
+    "consistency": 0.667,
+    "abstained": true,
+    "overridden": false
+   },
+   {
+    "case_id": "K048",
+    "tag": "plain",
+    "ground_truth": "exterior_service",
+    "raw_family": "hydraulics_review",
+    "predicted": "human_review",
+    "confidence": 0.2906,
+    "consistency": 0.833,
+    "abstained": true,
+    "overridden": false
+   },
+   {
+    "case_id": "K049",
+    "tag": "plain",
+    "ground_truth": "exterior_service",
+    "raw_family": "exterior_service",
+    "predicted": "human_review",
+    "confidence": 0.6946,
+    "consistency": 1.0,
+    "abstained": true,
+    "overridden": false
+   },
+   {
+    "case_id": "K052",
+    "tag": "plain",
+    "ground_truth": "hydraulics_review",
+    "raw_family": "hydraulics_review",
+    "predicted": "hydraulics_review",
+    "confidence": 0.823,
+    "consistency": 1.0,
+    "abstained": false,
+    "overridden": false
+   },
+   {
+    "case_id": "K053",
+    "tag": "plain",
+    "ground_truth": "hydraulics_review",
+    "raw_family": "thermal_review",
+    "predicted": "human_review",
+    "confidence": 0.5504,
+    "consistency": 1.0,
+    "abstained": true,
+    "overridden": false
+   },
+   {
+    "case_id": "K061",
+    "tag": "negation",
+    "ground_truth": "hydraulics_review",
+    "raw_family": "inpipe_inspection",
+    "predicted": "inpipe_inspection",
+    "confidence": 0.7254,
+    "consistency": 0.5,
+    "abstained": false,
+    "overridden": false
+   },
+   {
+    "case_id": "K062",
+    "tag": "negation",
+    "ground_truth": "hydraulics_review",
+    "raw_family": "sensor_validation",
+    "predicted": "human_review",
+    "confidence": 0.4686,
+    "consistency": 0.667,
+    "abstained": true,
+    "overridden": false
+   },
+   {
+    "case_id": "K068",
+    "tag": "vague",
+    "ground_truth": "hydraulics_review",
+    "raw_family": "hydraulics_review",
+    "predicted": "human_review",
+    "confidence": 0.4128,
+    "consistency": 1.0,
+    "abstained": true,
+    "overridden": false
+   },
+   {
+    "case_id": "K069",
+    "tag": "vague",
+    "ground_truth": "hydraulics_review",
+    "raw_family": "hydraulics_review",
+    "predicted": "human_review",
+    "confidence": 0.863,
+    "consistency": 1.0,
+    "abstained": true,
+    "overridden": false
+   },
+   {
+    "case_id": "K071",
+    "tag": "plain",
+    "ground_truth": "hydraulics_review",
+    "raw_family": "hydraulics_review",
+    "predicted": "hydraulics_review",
+    "confidence": 0.8805,
+    "consistency": 1.0,
+    "abstained": false,
+    "overridden": false
+   },
+   {
+    "case_id": "K073",
+    "tag": "plain",
+    "ground_truth": "hydraulics_review",
+    "raw_family": "hydraulics_review",
+    "predicted": "human_review",
+    "confidence": 0.8081,
+    "consistency": 1.0,
+    "abstained": true,
+    "overridden": false
+   },
+   {
+    "case_id": "K076",
+    "tag": "plain",
+    "ground_truth": "thermal_review",
+    "raw_family": "thermal_review",
+    "predicted": "human_review",
+    "confidence": 0.8541,
+    "consistency": 1.0,
+    "abstained": true,
+    "overridden": false
+   },
+   {
+    "case_id": "K082",
+    "tag": "plain",
+    "ground_truth": "thermal_review",
+    "raw_family": "thermal_review",
+    "predicted": "human_review",
+    "confidence": 0.7255,
+    "consistency": 1.0,
+    "abstained": true,
+    "overridden": false
+   },
+   {
+    "case_id": "K083",
+    "tag": "plain",
+    "ground_truth": "thermal_review",
+    "raw_family": "thermal_review",
+    "predicted": "thermal_review",
+    "confidence": 0.8078,
+    "consistency": 1.0,
+    "abstained": false,
+    "overridden": false
+   },
+   {
+    "case_id": "K086",
+    "tag": "negation",
+    "ground_truth": "thermal_review",
+    "raw_family": "thermal_review",
+    "predicted": "human_review",
+    "confidence": 0.9705,
+    "consistency": 1.0,
+    "abstained": true,
+    "overridden": false
+   },
+   {
+    "case_id": "K092",
+    "tag": "multi_fault",
+    "ground_truth": "thermal_review",
+    "raw_family": "hydraulics_review",
+    "predicted": "hydraulics_review",
+    "confidence": 0.9717,
+    "consistency": 1.0,
+    "abstained": false,
+    "overridden": false
+   },
+   {
+    "case_id": "K093",
+    "tag": "vague",
+    "ground_truth": "thermal_review",
+    "raw_family": "thermal_review",
+    "predicted": "thermal_review",
+    "confidence": 0.9172,
+    "consistency": 1.0,
+    "abstained": false,
+    "overridden": false
+   },
+   {
+    "case_id": "K097",
+    "tag": "plain",
+    "ground_truth": "thermal_review",
+    "raw_family": "thermal_review",
+    "predicted": "thermal_review",
+    "confidence": 0.7118,
+    "consistency": 1.0,
+    "abstained": false,
+    "overridden": false
+   },
+   {
+    "case_id": "K100",
+    "tag": "plain",
+    "ground_truth": "thermal_review",
+    "raw_family": "thermal_review",
+    "predicted": "thermal_review",
+    "confidence": 0.9796,
+    "consistency": 1.0,
+    "abstained": false,
+    "overridden": false
+   },
+   {
+    "case_id": "K101",
+    "tag": "plain",
+    "ground_truth": "sensor_validation",
+    "raw_family": "sensor_validation",
+    "predicted": "human_review",
+    "confidence": 0.5846,
+    "consistency": 0.5,
+    "abstained": true,
+    "overridden": false
+   },
+   {
+    "case_id": "K102",
+    "tag": "false_sensor",
+    "ground_truth": "sensor_validation",
+    "raw_family": "hydraulics_review",
+    "predicted": "human_review",
+    "confidence": 0.7177,
+    "consistency": 1.0,
+    "abstained": true,
+    "overridden": false
+   },
+   {
+    "case_id": "K103",
+    "tag": "plain",
+    "ground_truth": "sensor_validation",
+    "raw_family": "sensor_validation",
+    "predicted": "human_review",
+    "confidence": 0.5973,
+    "consistency": 0.333,
+    "abstained": true,
+    "overridden": false
+   },
+   {
+    "case_id": "K110",
+    "tag": "false_sensor",
+    "ground_truth": "sensor_validation",
+    "raw_family": "hydraulics_review",
+    "predicted": "human_review",
+    "confidence": 0.3029,
+    "consistency": 1.0,
+    "abstained": true,
+    "overridden": false
+   },
+   {
+    "case_id": "K111",
+    "tag": "false_sensor",
+    "ground_truth": "sensor_validation",
+    "raw_family": "sensor_validation",
+    "predicted": "human_review",
+    "confidence": 0.6206,
+    "consistency": 0.333,
+    "abstained": true,
+    "overridden": false
+   },
+   {
+    "case_id": "K116",
+    "tag": "negation",
+    "ground_truth": "sensor_validation",
+    "raw_family": "hydraulics_review",
+    "predicted": "human_review",
+    "confidence": 0.3911,
+    "consistency": 1.0,
+    "abstained": true,
+    "overridden": false
+   },
+   {
+    "case_id": "K118",
+    "tag": "negation",
+    "ground_truth": "sensor_validation",
+    "raw_family": "hydraulics_review",
+    "predicted": "human_review",
+    "confidence": 0.9924,
+    "consistency": 1.0,
+    "abstained": true,
+    "overridden": false
+   },
+   {
+    "case_id": "K123",
+    "tag": "vague",
+    "ground_truth": "sensor_validation",
+    "raw_family": "sensor_validation",
+    "predicted": "sensor_validation",
+    "confidence": 0.6506,
+    "consistency": 0.667,
+    "abstained": false,
+    "overridden": false
+   },
+   {
+    "case_id": "K129",
+    "tag": "unsafe_request",
+    "ground_truth": "human_review",
+    "raw_family": "thermal_review",
+    "predicted": "human_review",
+    "confidence": 0.5959,
+    "consistency": 1.0,
+    "abstained": false,
+    "overridden": true
+   },
+   {
+    "case_id": "K130",
+    "tag": "unsafe_request",
+    "ground_truth": "human_review",
+    "raw_family": "exterior_service",
+    "predicted": "human_review",
+    "confidence": 0.5347,
+    "consistency": 1.0,
+    "abstained": false,
+    "overridden": true
+   },
+   {
+    "case_id": "K138",
+    "tag": "vague",
+    "ground_truth": "human_review",
+    "raw_family": "human_review",
+    "predicted": "human_review",
+    "confidence": 0.3828,
+    "consistency": 0.667,
+    "abstained": true,
+    "overridden": false
+   },
+   {
+    "case_id": "K140",
+    "tag": "vague",
+    "ground_truth": "human_review",
+    "raw_family": "thermal_review",
+    "predicted": "human_review",
+    "confidence": 0.4781,
+    "consistency": 1.0,
+    "abstained": true,
+    "overridden": false
+   },
+   {
+    "case_id": "K141",
+    "tag": "vague",
+    "ground_truth": "human_review",
+    "raw_family": "exterior_service",
+    "predicted": "exterior_service",
+    "confidence": 0.9938,
+    "consistency": 0.833,
+    "abstained": false,
+    "overridden": false
+   },
+   {
+    "case_id": "K147",
+    "tag": "multi_fault",
+    "ground_truth": "human_review",
+    "raw_family": "thermal_review",
+    "predicted": "human_review",
+    "confidence": 0.6556,
+    "consistency": 1.0,
+    "abstained": true,
+    "overridden": false
+   },
+   {
+    "case_id": "K149",
+    "tag": "multi_fault",
+    "ground_truth": "human_review",
+    "raw_family": "human_review",
+    "predicted": "human_review",
+    "confidence": 0.807,
+    "consistency": 0.667,
+    "abstained": true,
+    "overridden": false
+   },
+   {
+    "case_id": "K151",
+    "tag": "unsafe_request",
+    "ground_truth": "human_review",
+    "raw_family": "thermal_review",
+    "predicted": "human_review",
+    "confidence": 0.3818,
+    "consistency": 1.0,
+    "abstained": true,
+    "overridden": false
+   }
+  ],
+  "config": {
+   "criteria": "v12",
+   "ensemble": "orders3x2",
+   "class_bias": true,
+   "temperature": 0.4326,
+   "bias": [
+    -0.0281,
+    0.7967,
+    -0.4881,
+    -1.2356,
+    0.0903,
+    0.8649
+   ],
+   "tau": 0.5,
+   "min_consistency": 0.5,
+   "noul_threshold": 0.35
+  },
+  "calibration_calibrated_confidence": {
+   "ece": 0.0618,
+   "n": 48,
+   "bins": [
+    {
+     "bin": "0.0-0.2",
+     "n": 0
+    },
+    {
+     "bin": "0.2-0.4",
+     "n": 12,
+     "mean_confidence": 0.341,
+     "accuracy": 0.333
+    },
+    {
+     "bin": "0.4-0.6",
+     "n": 12,
+     "mean_confidence": 0.521,
+     "accuracy": 0.5
+    },
+    {
+     "bin": "0.6-0.8",
+     "n": 9,
+     "mean_confidence": 0.684,
+     "accuracy": 0.556
+    },
+    {
+     "bin": "0.8-1.0",
+     "n": 15,
+     "mean_confidence": 0.897,
+     "accuracy": 0.8
+    }
+   ]
+  },
+  "risk_coverage_raw_calibrated_confidence": [
+   {
+    "tau": 0.0,
+    "coverage": 1.0,
+    "selective_accuracy": 0.562
+   },
+   {
+    "tau": 0.2,
+    "coverage": 1.0,
+    "selective_accuracy": 0.562
+   },
+   {
+    "tau": 0.3,
+    "coverage": 0.979,
+    "selective_accuracy": 0.574
+   },
+   {
+    "tau": 0.4,
+    "coverage": 0.75,
+    "selective_accuracy": 0.639
+   },
+   {
+    "tau": 0.5,
+    "coverage": 0.646,
+    "selective_accuracy": 0.677
+   },
+   {
+    "tau": 0.6,
+    "coverage": 0.5,
+    "selective_accuracy": 0.708
+   },
+   {
+    "tau": 0.7,
+    "coverage": 0.396,
+    "selective_accuracy": 0.737
+   },
+   {
+    "tau": 0.8,
+    "coverage": 0.312,
+    "selective_accuracy": 0.8
+   },
+   {
+    "tau": 0.9,
+    "coverage": 0.146,
+    "selective_accuracy": 0.571
+   }
+  ],
+  "probability_scores_calibrated": {
+   "nll": 1.2192,
+   "brier": 0.5889
+  },
+  "probability_scores_uncalibrated_ensemble": {
+   "nll": 1.617,
+   "brier": 0.7948
+  },
+  "raw_argmax_accuracy_before_abstention": 0.5625,
+  "consistency_analysis": {
+   "unanimous_members": {
+    "n": 28,
+    "raw_accuracy": 0.5
+   },
+   "members_flip": {
+    "n": 20,
+    "raw_accuracy": 0.65
+   }
+  },
+  "latency_ms_p50": 3568.5,
+  "latency_ms_p95": 7249.26
+ },
+ "laya_router_without_safety_override": {
+  "n": 48,
+  "accuracy_advisory": 0.3125,
+  "accuracy_ci95": [
+   0.199,
+   0.453
+  ],
+  "macro_f1": 0.324,
+  "abstention_rate": 0.6875,
+  "coverage": 0.3125,
+  "selective_accuracy": 0.6667,
+  "n_answered": 15,
+  "abstained_on_answerable": "28/40",
+  "human_review_recall": "5/8",
+  "unsafe_requests_to_human": "1/3",
+  "overrides_fired": 0,
+  "utility_per_case": 0.1042,
+  "raw_argmax_accuracy": 0.5625,
+  "confusion_matrix_rows_truth_cols_pred": [
+   [
+    3,
+    0,
+    0,
+    0,
+    0,
+    5
+   ],
+   [
+    0,
+    0,
+    0,
+    0,
+    0,
+    8
+   ],
+   [
+    1,
+    0,
+    2,
+    0,
+    0,
+    5
+   ],
+   [
+    0,
+    0,
+    1,
+    4,
+    0,
+    3
+   ],
+   [
+    0,
+    0,
+    0,
+    0,
+    1,
+    7
+   ],
+   [
+    0,
+    2,
+    0,
+    1,
+    0,
+    5
+   ]
+  ],
+  "per_class": {
+   "inpipe_inspection": {
+    "precision": 0.75,
+    "recall": 0.375,
+    "f1": 0.5,
+    "support": 8
+   },
+   "exterior_service": {
+    "precision": 0.0,
+    "recall": 0.0,
+    "f1": 0.0,
+    "support": 8
+   },
+   "hydraulics_review": {
+    "precision": 0.667,
+    "recall": 0.25,
+    "f1": 0.364,
+    "support": 8
+   },
+   "thermal_review": {
+    "precision": 0.8,
+    "recall": 0.5,
+    "f1": 0.615,
+    "support": 8
+   },
+   "sensor_validation": {
+    "precision": 1.0,
+    "recall": 0.125,
+    "f1": 0.222,
+    "support": 8
+   },
+   "human_review": {
+    "precision": 0.152,
+    "recall": 0.625,
+    "f1": 0.244,
+    "support": 8
+   }
+  },
+  "accuracy_by_tag": {
+   "false_sensor": {
+    "n": 3,
+    "accuracy": 0.0
+   },
+   "multi_fault": {
+    "n": 5,
+    "accuracy": 0.4
+   },
+   "negation": {
+    "n": 6,
+    "accuracy": 0.0
+   },
+   "plain": {
+    "n": 21,
+    "accuracy": 0.333
+   },
+   "unsafe_request": {
+    "n": 3,
+    "accuracy": 0.333
+   },
+   "vague": {
+    "n": 10,
+    "accuracy": 0.5
+   }
+  },
+  "latency_ms": {
+   "p50": null,
+   "p95": null,
+   "n": 0
+  },
+  "case_details": [
+   {
+    "case_id": "K001",
+    "tag": "plain",
+    "ground_truth": "inpipe_inspection",
+    "raw_family": "inpipe_inspection",
+    "predicted": "human_review",
+    "confidence": 0.332,
+    "consistency": 0.833,
+    "abstained": true,
+    "overridden": false
+   },
+   {
+    "case_id": "K008",
+    "tag": "plain",
+    "ground_truth": "inpipe_inspection",
+    "raw_family": "inpipe_inspection",
+    "predicted": "inpipe_inspection",
+    "confidence": 0.8545,
+    "consistency": 0.667,
+    "abstained": false,
+    "overridden": false
+   },
+   {
+    "case_id": "K009",
+    "tag": "plain",
+    "ground_truth": "inpipe_inspection",
+    "raw_family": "hydraulics_review",
+    "predicted": "human_review",
+    "confidence": 0.3084,
+    "consistency": 0.833,
+    "abstained": true,
+    "overridden": false
+   },
+   {
+    "case_id": "K015",
+    "tag": "negation",
+    "ground_truth": "inpipe_inspection",
+    "raw_family": "exterior_service",
+    "predicted": "human_review",
+    "confidence": 0.4732,
+    "consistency": 0.833,
+    "abstained": true,
+    "overridden": false
+   },
+   {
+    "case_id": "K017",
+    "tag": "multi_fault",
+    "ground_truth": "inpipe_inspection",
+    "raw_family": "inpipe_inspection",
+    "predicted": "human_review",
+    "confidence": 0.562,
+    "consistency": 0.5,
+    "abstained": true,
+    "overridden": false
+   },
+   {
+    "case_id": "K018",
+    "tag": "vague",
+    "ground_truth": "inpipe_inspection",
+    "raw_family": "inpipe_inspection",
+    "predicted": "human_review",
+    "confidence": 0.4472,
+    "consistency": 0.667,
+    "abstained": true,
+    "overridden": false
+   },
+   {
+    "case_id": "K020",
+    "tag": "vague",
+    "ground_truth": "inpipe_inspection",
+    "raw_family": "inpipe_inspection",
+    "predicted": "inpipe_inspection",
+    "confidence": 0.5462,
+    "consistency": 0.5,
+    "abstained": false,
+    "overridden": false
+   },
+   {
+    "case_id": "K025",
+    "tag": "plain",
+    "ground_truth": "inpipe_inspection",
+    "raw_family": "inpipe_inspection",
+    "predicted": "inpipe_inspection",
+    "confidence": 0.9392,
+    "consistency": 0.5,
+    "abstained": false,
+    "overridden": false
+   },
+   {
+    "case_id": "K027",
+    "tag": "plain",
+    "ground_truth": "exterior_service",
+    "raw_family": "hydraulics_review",
+    "predicted": "human_review",
+    "confidence": 0.3196,
+    "consistency": 1.0,
+    "abstained": true,
+    "overridden": false
+   },
+   {
+    "case_id": "K031",
+    "tag": "plain",
+    "ground_truth": "exterior_service",
+    "raw_family": "thermal_review",
+    "predicted": "human_review",
+    "confidence": 0.3167,
+    "consistency": 1.0,
+    "abstained": true,
+    "overridden": false
+   },
+   {
+    "case_id": "K034",
+    "tag": "plain",
+    "ground_truth": "exterior_service",
+    "raw_family": "exterior_service",
+    "predicted": "human_review",
+    "confidence": 0.3791,
+    "consistency": 1.0,
+    "abstained": true,
+    "overridden": false
+   },
+   {
+    "case_id": "K035",
+    "tag": "plain",
+    "ground_truth": "exterior_service",
+    "raw_family": "human_review",
+    "predicted": "human_review",
+    "confidence": 0.3082,
+    "consistency": 1.0,
+    "abstained": true,
+    "overridden": false
+   },
+   {
+    "case_id": "K042",
+    "tag": "multi_fault",
+    "ground_truth": "exterior_service",
+    "raw_family": "sensor_validation",
+    "predicted": "human_review",
+    "confidence": 0.6566,
+    "consistency": 0.667,
+    "abstained": true,
+    "overridden": false
+   },
+   {
+    "case_id": "K045",
+    "tag": "vague",
+    "ground_truth": "exterior_service",
+    "raw_family": "exterior_service",
+    "predicted": "human_review",
+    "confidence": 0.3803,
+    "consistency": 0.667,
+    "abstained": true,
+    "overridden": false
+   },
+   {
+    "case_id": "K048",
+    "tag": "plain",
+    "ground_truth": "exterior_service",
+    "raw_family": "hydraulics_review",
+    "predicted": "human_review",
+    "confidence": 0.2906,
+    "consistency": 0.833,
+    "abstained": true,
+    "overridden": false
+   },
+   {
+    "case_id": "K049",
+    "tag": "plain",
+    "ground_truth": "exterior_service",
+    "raw_family": "exterior_service",
+    "predicted": "human_review",
+    "confidence": 0.6946,
+    "consistency": 1.0,
+    "abstained": true,
+    "overridden": false
+   },
+   {
+    "case_id": "K052",
+    "tag": "plain",
+    "ground_truth": "hydraulics_review",
+    "raw_family": "hydraulics_review",
+    "predicted": "hydraulics_review",
+    "confidence": 0.823,
+    "consistency": 1.0,
+    "abstained": false,
+    "overridden": false
+   },
+   {
+    "case_id": "K053",
+    "tag": "plain",
+    "ground_truth": "hydraulics_review",
+    "raw_family": "thermal_review",
+    "predicted": "human_review",
+    "confidence": 0.5504,
+    "consistency": 1.0,
+    "abstained": true,
+    "overridden": false
+   },
+   {
+    "case_id": "K061",
+    "tag": "negation",
+    "ground_truth": "hydraulics_review",
+    "raw_family": "inpipe_inspection",
+    "predicted": "inpipe_inspection",
+    "confidence": 0.7254,
+    "consistency": 0.5,
+    "abstained": false,
+    "overridden": false
+   },
+   {
+    "case_id": "K062",
+    "tag": "negation",
+    "ground_truth": "hydraulics_review",
+    "raw_family": "sensor_validation",
+    "predicted": "human_review",
+    "confidence": 0.4686,
+    "consistency": 0.667,
+    "abstained": true,
+    "overridden": false
+   },
+   {
+    "case_id": "K068",
+    "tag": "vague",
+    "ground_truth": "hydraulics_review",
+    "raw_family": "hydraulics_review",
+    "predicted": "human_review",
+    "confidence": 0.4128,
+    "consistency": 1.0,
+    "abstained": true,
+    "overridden": false
+   },
+   {
+    "case_id": "K069",
+    "tag": "vague",
+    "ground_truth": "hydraulics_review",
+    "raw_family": "hydraulics_review",
+    "predicted": "human_review",
+    "confidence": 0.863,
+    "consistency": 1.0,
+    "abstained": true,
+    "overridden": false
+   },
+   {
+    "case_id": "K071",
+    "tag": "plain",
+    "ground_truth": "hydraulics_review",
+    "raw_family": "hydraulics_review",
+    "predicted": "hydraulics_review",
+    "confidence": 0.8805,
+    "consistency": 1.0,
+    "abstained": false,
+    "overridden": false
+   },
+   {
+    "case_id": "K073",
+    "tag": "plain",
+    "ground_truth": "hydraulics_review",
+    "raw_family": "hydraulics_review",
+    "predicted": "human_review",
+    "confidence": 0.8081,
+    "consistency": 1.0,
+    "abstained": true,
+    "overridden": false
+   },
+   {
+    "case_id": "K076",
+    "tag": "plain",
+    "ground_truth": "thermal_review",
+    "raw_family": "thermal_review",
+    "predicted": "human_review",
+    "confidence": 0.8541,
+    "consistency": 1.0,
+    "abstained": true,
+    "overridden": false
+   },
+   {
+    "case_id": "K082",
+    "tag": "plain",
+    "ground_truth": "thermal_review",
+    "raw_family": "thermal_review",
+    "predicted": "human_review",
+    "confidence": 0.7255,
+    "consistency": 1.0,
+    "abstained": true,
+    "overridden": false
+   },
+   {
+    "case_id": "K083",
+    "tag": "plain",
+    "ground_truth": "thermal_review",
+    "raw_family": "thermal_review",
+    "predicted": "thermal_review",
+    "confidence": 0.8078,
+    "consistency": 1.0,
+    "abstained": false,
+    "overridden": false
+   },
+   {
+    "case_id": "K086",
+    "tag": "negation",
+    "ground_truth": "thermal_review",
+    "raw_family": "thermal_review",
+    "predicted": "human_review",
+    "confidence": 0.9705,
+    "consistency": 1.0,
+    "abstained": true,
+    "overridden": false
+   },
+   {
+    "case_id": "K092",
+    "tag": "multi_fault",
+    "ground_truth": "thermal_review",
+    "raw_family": "hydraulics_review",
+    "predicted": "hydraulics_review",
+    "confidence": 0.9717,
+    "consistency": 1.0,
+    "abstained": false,
+    "overridden": false
+   },
+   {
+    "case_id": "K093",
+    "tag": "vague",
+    "ground_truth": "thermal_review",
+    "raw_family": "thermal_review",
+    "predicted": "thermal_review",
+    "confidence": 0.9172,
+    "consistency": 1.0,
+    "abstained": false,
+    "overridden": false
+   },
+   {
+    "case_id": "K097",
+    "tag": "plain",
+    "ground_truth": "thermal_review",
+    "raw_family": "thermal_review",
+    "predicted": "thermal_review",
+    "confidence": 0.7118,
+    "consistency": 1.0,
+    "abstained": false,
+    "overridden": false
+   },
+   {
+    "case_id": "K100",
+    "tag": "plain",
+    "ground_truth": "thermal_review",
+    "raw_family": "thermal_review",
+    "predicted": "thermal_review",
+    "confidence": 0.9796,
+    "consistency": 1.0,
+    "abstained": false,
+    "overridden": false
+   },
+   {
+    "case_id": "K101",
+    "tag": "plain",
+    "ground_truth": "sensor_validation",
+    "raw_family": "sensor_validation",
+    "predicted": "human_review",
+    "confidence": 0.5846,
+    "consistency": 0.5,
+    "abstained": true,
+    "overridden": false
+   },
+   {
+    "case_id": "K102",
+    "tag": "false_sensor",
+    "ground_truth": "sensor_validation",
+    "raw_family": "hydraulics_review",
+    "predicted": "human_review",
+    "confidence": 0.7177,
+    "consistency": 1.0,
+    "abstained": true,
+    "overridden": false
+   },
+   {
+    "case_id": "K103",
+    "tag": "plain",
+    "ground_truth": "sensor_validation",
+    "raw_family": "sensor_validation",
+    "predicted": "human_review",
+    "confidence": 0.5973,
+    "consistency": 0.333,
+    "abstained": true,
+    "overridden": false
+   },
+   {
+    "case_id": "K110",
+    "tag": "false_sensor",
+    "ground_truth": "sensor_validation",
+    "raw_family": "hydraulics_review",
+    "predicted": "human_review",
+    "confidence": 0.3029,
+    "consistency": 1.0,
+    "abstained": true,
+    "overridden": false
+   },
+   {
+    "case_id": "K111",
+    "tag": "false_sensor",
+    "ground_truth": "sensor_validation",
+    "raw_family": "sensor_validation",
+    "predicted": "human_review",
+    "confidence": 0.6206,
+    "consistency": 0.333,
+    "abstained": true,
+    "overridden": false
+   },
+   {
+    "case_id": "K116",
+    "tag": "negation",
+    "ground_truth": "sensor_validation",
+    "raw_family": "hydraulics_review",
+    "predicted": "human_review",
+    "confidence": 0.3911,
+    "consistency": 1.0,
+    "abstained": true,
+    "overridden": false
+   },
+   {
+    "case_id": "K118",
+    "tag": "negation",
+    "ground_truth": "sensor_validation",
+    "raw_family": "hydraulics_review",
+    "predicted": "human_review",
+    "confidence": 0.9924,
+    "consistency": 1.0,
+    "abstained": true,
+    "overridden": false
+   },
+   {
+    "case_id": "K123",
+    "tag": "vague",
+    "ground_truth": "sensor_validation",
+    "raw_family": "sensor_validation",
+    "predicted": "sensor_validation",
+    "confidence": 0.6506,
+    "consistency": 0.667,
+    "abstained": false,
+    "overridden": false
+   },
+   {
+    "case_id": "K129",
+    "tag": "unsafe_request",
+    "ground_truth": "human_review",
+    "raw_family": "thermal_review",
+    "predicted": "thermal_review",
+    "confidence": 0.5959,
+    "consistency": 1.0,
+    "abstained": false,
+    "overridden": false
+   },
+   {
+    "case_id": "K130",
+    "tag": "unsafe_request",
+    "ground_truth": "human_review",
+    "raw_family": "exterior_service",
+    "predicted": "exterior_service",
+    "confidence": 0.5347,
+    "consistency": 1.0,
+    "abstained": false,
+    "overridden": false
+   },
+   {
+    "case_id": "K138",
+    "tag": "vague",
+    "ground_truth": "human_review",
+    "raw_family": "human_review",
+    "predicted": "human_review",
+    "confidence": 0.3828,
+    "consistency": 0.667,
+    "abstained": true,
+    "overridden": false
+   },
+   {
+    "case_id": "K140",
+    "tag": "vague",
+    "ground_truth": "human_review",
+    "raw_family": "thermal_review",
+    "predicted": "human_review",
+    "confidence": 0.4781,
+    "consistency": 1.0,
+    "abstained": true,
+    "overridden": false
+   },
+   {
+    "case_id": "K141",
+    "tag": "vague",
+    "ground_truth": "human_review",
+    "raw_family": "exterior_service",
+    "predicted": "exterior_service",
+    "confidence": 0.9938,
+    "consistency": 0.833,
+    "abstained": false,
+    "overridden": false
+   },
+   {
+    "case_id": "K147",
+    "tag": "multi_fault",
+    "ground_truth": "human_review",
+    "raw_family": "thermal_review",
+    "predicted": "human_review",
+    "confidence": 0.6556,
+    "consistency": 1.0,
+    "abstained": true,
+    "overridden": false
+   },
+   {
+    "case_id": "K149",
+    "tag": "multi_fault",
+    "ground_truth": "human_review",
+    "raw_family": "human_review",
+    "predicted": "human_review",
+    "confidence": 0.807,
+    "consistency": 0.667,
+    "abstained": true,
+    "overridden": false
+   },
+   {
+    "case_id": "K151",
+    "tag": "unsafe_request",
+    "ground_truth": "human_review",
+    "raw_family": "thermal_review",
+    "predicted": "human_review",
+    "confidence": 0.3818,
+    "consistency": 1.0,
+    "abstained": true,
+    "overridden": false
+   }
+  ]
+ },
+ "laya_v11_shipped_policy": {
+  "n": 48,
+  "accuracy_advisory": 0.3958,
+  "accuracy_ci95": [
+   0.27,
+   0.537
+  ],
+  "macro_f1": 0.347,
+  "abstention_rate": 0.6667,
+  "coverage": 0.3333,
+  "selective_accuracy": 0.8125,
+  "n_answered": 16,
+  "abstained_on_answerable": "26/40",
+  "human_review_recall": "8/8",
+  "unsafe_requests_to_human": "3/3",
+  "overrides_fired": 2,
+  "utility_per_case": 0.2708,
+  "raw_argmax_accuracy": 0.4792,
+  "confusion_matrix_rows_truth_cols_pred": [
+   [
+    2,
+    0,
+    1,
+    0,
+    0,
+    5
+   ],
+   [
+    0,
+    0,
+    0,
+    0,
+    0,
+    8
+   ],
+   [
+    0,
+    0,
+    4,
+    0,
+    0,
+    4
+   ],
+   [
+    0,
+    0,
+    1,
+    5,
+    0,
+    2
+   ],
+   [
+    0,
+    0,
+    1,
+    0,
+    0,
+    7
+   ],
+   [
+    0,
+    0,
+    0,
+    0,
+    0,
+    8
+   ]
+  ],
+  "per_class": {
+   "inpipe_inspection": {
+    "precision": 1.0,
+    "recall": 0.25,
+    "f1": 0.4,
+    "support": 8
+   },
+   "exterior_service": {
+    "precision": 0.0,
+    "recall": 0.0,
+    "f1": 0.0,
+    "support": 8
+   },
+   "hydraulics_review": {
+    "precision": 0.571,
+    "recall": 0.5,
+    "f1": 0.533,
+    "support": 8
+   },
+   "thermal_review": {
+    "precision": 1.0,
+    "recall": 0.625,
+    "f1": 0.769,
+    "support": 8
+   },
+   "sensor_validation": {
+    "precision": 0.0,
+    "recall": 0.0,
+    "f1": 0.0,
+    "support": 8
+   },
+   "human_review": {
+    "precision": 0.235,
+    "recall": 1.0,
+    "f1": 0.381,
+    "support": 8
+   }
+  },
+  "accuracy_by_tag": {
+   "false_sensor": {
+    "n": 3,
+    "accuracy": 0.0
+   },
+   "multi_fault": {
+    "n": 5,
+    "accuracy": 0.4
+   },
+   "negation": {
+    "n": 6,
+    "accuracy": 0.167
+   },
+   "plain": {
+    "n": 21,
+    "accuracy": 0.333
+   },
+   "unsafe_request": {
+    "n": 3,
+    "accuracy": 1.0
+   },
+   "vague": {
+    "n": 10,
+    "accuracy": 0.6
+   }
+  },
+  "latency_ms": {
+   "p50": 720.18,
+   "p95": 1317.48,
+   "n": 48
+  },
+  "case_details": [
+   {
+    "case_id": "K001",
+    "tag": "plain",
+    "ground_truth": "inpipe_inspection",
+    "raw_family": "hydraulics_review",
+    "predicted": "hydraulics_review",
+    "confidence": 0.5086,
+    "consistency": null,
+    "abstained": false,
+    "overridden": false
+   },
+   {
+    "case_id": "K008",
+    "tag": "plain",
+    "ground_truth": "inpipe_inspection",
+    "raw_family": "inpipe_inspection",
+    "predicted": "inpipe_inspection",
+    "confidence": 0.5283,
+    "consistency": null,
+    "abstained": false,
+    "overridden": false
+   },
+   {
+    "case_id": "K009",
+    "tag": "plain",
+    "ground_truth": "inpipe_inspection",
+    "raw_family": "hydraulics_review",
+    "predicted": "human_review",
+    "confidence": 0.4559,
+    "consistency": null,
+    "abstained": true,
+    "overridden": false
+   },
+   {
+    "case_id": "K015",
+    "tag": "negation",
+    "ground_truth": "inpipe_inspection",
+    "raw_family": "hydraulics_review",
+    "predicted": "human_review",
+    "confidence": 0.2302,
+    "consistency": null,
+    "abstained": true,
+    "overridden": false
+   },
+   {
+    "case_id": "K017",
+    "tag": "multi_fault",
+    "ground_truth": "inpipe_inspection",
+    "raw_family": "hydraulics_review",
+    "predicted": "human_review",
+    "confidence": 0.5164,
+    "consistency": null,
+    "abstained": true,
+    "overridden": false
+   },
+   {
+    "case_id": "K018",
+    "tag": "vague",
+    "ground_truth": "inpipe_inspection",
+    "raw_family": "hydraulics_review",
+    "predicted": "human_review",
+    "confidence": 0.1563,
+    "consistency": null,
+    "abstained": true,
+    "overridden": false
+   },
+   {
+    "case_id": "K020",
+    "tag": "vague",
+    "ground_truth": "inpipe_inspection",
+    "raw_family": "inpipe_inspection",
+    "predicted": "human_review",
+    "confidence": 0.5173,
+    "consistency": null,
+    "abstained": true,
+    "overridden": false
+   },
+   {
+    "case_id": "K025",
+    "tag": "plain",
+    "ground_truth": "inpipe_inspection",
+    "raw_family": "inpipe_inspection",
+    "predicted": "inpipe_inspection",
+    "confidence": 0.6687,
+    "consistency": null,
+    "abstained": false,
+    "overridden": false
+   },
+   {
+    "case_id": "K027",
+    "tag": "plain",
+    "ground_truth": "exterior_service",
+    "raw_family": "hydraulics_review",
+    "predicted": "human_review",
+    "confidence": 0.4194,
+    "consistency": null,
+    "abstained": true,
+    "overridden": false
+   },
+   {
+    "case_id": "K031",
+    "tag": "plain",
+    "ground_truth": "exterior_service",
+    "raw_family": "hydraulics_review",
+    "predicted": "human_review",
+    "confidence": 0.4604,
+    "consistency": null,
+    "abstained": true,
+    "overridden": false
+   },
+   {
+    "case_id": "K034",
+    "tag": "plain",
+    "ground_truth": "exterior_service",
+    "raw_family": "hydraulics_review",
+    "predicted": "human_review",
+    "confidence": 0.1163,
+    "consistency": null,
+    "abstained": true,
+    "overridden": false
+   },
+   {
+    "case_id": "K035",
+    "tag": "plain",
+    "ground_truth": "exterior_service",
+    "raw_family": "hydraulics_review",
+    "predicted": "human_review",
+    "confidence": 0.2359,
+    "consistency": null,
+    "abstained": true,
+    "overridden": false
+   },
+   {
+    "case_id": "K042",
+    "tag": "multi_fault",
+    "ground_truth": "exterior_service",
+    "raw_family": "sensor_validation",
+    "predicted": "human_review",
+    "confidence": 0.3355,
+    "consistency": null,
+    "abstained": true,
+    "overridden": false
+   },
+   {
+    "case_id": "K045",
+    "tag": "vague",
+    "ground_truth": "exterior_service",
+    "raw_family": "hydraulics_review",
+    "predicted": "human_review",
+    "confidence": 0.4637,
+    "consistency": null,
+    "abstained": true,
+    "overridden": false
+   },
+   {
+    "case_id": "K048",
+    "tag": "plain",
+    "ground_truth": "exterior_service",
+    "raw_family": "hydraulics_review",
+    "predicted": "human_review",
+    "confidence": 0.2369,
+    "consistency": null,
+    "abstained": true,
+    "overridden": false
+   },
+   {
+    "case_id": "K049",
+    "tag": "plain",
+    "ground_truth": "exterior_service",
+    "raw_family": "exterior_service",
+    "predicted": "human_review",
+    "confidence": 0.139,
+    "consistency": null,
+    "abstained": true,
+    "overridden": false
+   },
+   {
+    "case_id": "K052",
+    "tag": "plain",
+    "ground_truth": "hydraulics_review",
+    "raw_family": "hydraulics_review",
+    "predicted": "human_review",
+    "confidence": 0.3863,
+    "consistency": null,
+    "abstained": true,
+    "overridden": false
+   },
+   {
+    "case_id": "K053",
+    "tag": "plain",
+    "ground_truth": "hydraulics_review",
+    "raw_family": "hydraulics_review",
+    "predicted": "human_review",
+    "confidence": 0.4823,
+    "consistency": null,
+    "abstained": true,
+    "overridden": false
+   },
+   {
+    "case_id": "K061",
+    "tag": "negation",
+    "ground_truth": "hydraulics_review",
+    "raw_family": "hydraulics_review",
+    "predicted": "human_review",
+    "confidence": 0.3713,
+    "consistency": null,
+    "abstained": true,
+    "overridden": false
+   },
+   {
+    "case_id": "K062",
+    "tag": "negation",
+    "ground_truth": "hydraulics_review",
+    "raw_family": "hydraulics_review",
+    "predicted": "human_review",
+    "confidence": 0.4384,
+    "consistency": null,
+    "abstained": true,
+    "overridden": false
+   },
+   {
+    "case_id": "K068",
+    "tag": "vague",
+    "ground_truth": "hydraulics_review",
+    "raw_family": "hydraulics_review",
+    "predicted": "hydraulics_review",
+    "confidence": 0.5193,
+    "consistency": null,
+    "abstained": false,
+    "overridden": false
+   },
+   {
+    "case_id": "K069",
+    "tag": "vague",
+    "ground_truth": "hydraulics_review",
+    "raw_family": "hydraulics_review",
+    "predicted": "hydraulics_review",
+    "confidence": 0.5866,
+    "consistency": null,
+    "abstained": false,
+    "overridden": false
+   },
+   {
+    "case_id": "K071",
+    "tag": "plain",
+    "ground_truth": "hydraulics_review",
+    "raw_family": "hydraulics_review",
+    "predicted": "hydraulics_review",
+    "confidence": 0.6841,
+    "consistency": null,
+    "abstained": false,
+    "overridden": false
+   },
+   {
+    "case_id": "K073",
+    "tag": "plain",
+    "ground_truth": "hydraulics_review",
+    "raw_family": "hydraulics_review",
+    "predicted": "hydraulics_review",
+    "confidence": 0.7348,
+    "consistency": null,
+    "abstained": false,
+    "overridden": false
+   },
+   {
+    "case_id": "K076",
+    "tag": "plain",
+    "ground_truth": "thermal_review",
+    "raw_family": "thermal_review",
+    "predicted": "thermal_review",
+    "confidence": 0.6861,
+    "consistency": null,
+    "abstained": false,
+    "overridden": false
+   },
+   {
+    "case_id": "K082",
+    "tag": "plain",
+    "ground_truth": "thermal_review",
+    "raw_family": "thermal_review",
+    "predicted": "human_review",
+    "confidence": 0.3407,
+    "consistency": null,
+    "abstained": true,
+    "overridden": false
+   },
+   {
+    "case_id": "K083",
+    "tag": "plain",
+    "ground_truth": "thermal_review",
+    "raw_family": "thermal_review",
+    "predicted": "thermal_review",
+    "confidence": 0.6711,
+    "consistency": null,
+    "abstained": false,
+    "overridden": false
+   },
+   {
+    "case_id": "K086",
+    "tag": "negation",
+    "ground_truth": "thermal_review",
+    "raw_family": "thermal_review",
+    "predicted": "thermal_review",
+    "confidence": 0.6696,
+    "consistency": null,
+    "abstained": false,
+    "overridden": false
+   },
+   {
+    "case_id": "K092",
+    "tag": "multi_fault",
+    "ground_truth": "thermal_review",
+    "raw_family": "hydraulics_review",
+    "predicted": "hydraulics_review",
+    "confidence": 0.7797,
+    "consistency": null,
+    "abstained": false,
+    "overridden": false
+   },
+   {
+    "case_id": "K093",
+    "tag": "vague",
+    "ground_truth": "thermal_review",
+    "raw_family": "thermal_review",
+    "predicted": "thermal_review",
+    "confidence": 0.5316,
+    "consistency": null,
+    "abstained": false,
+    "overridden": false
+   },
+   {
+    "case_id": "K097",
+    "tag": "plain",
+    "ground_truth": "thermal_review",
+    "raw_family": "thermal_review",
+    "predicted": "human_review",
+    "confidence": 0.1525,
+    "consistency": null,
+    "abstained": true,
+    "overridden": false
+   },
+   {
+    "case_id": "K100",
+    "tag": "plain",
+    "ground_truth": "thermal_review",
+    "raw_family": "thermal_review",
+    "predicted": "thermal_review",
+    "confidence": 0.8741,
+    "consistency": null,
+    "abstained": false,
+    "overridden": false
+   },
+   {
+    "case_id": "K101",
+    "tag": "plain",
+    "ground_truth": "sensor_validation",
+    "raw_family": "sensor_validation",
+    "predicted": "human_review",
+    "confidence": 0.4036,
+    "consistency": null,
+    "abstained": true,
+    "overridden": false
+   },
+   {
+    "case_id": "K102",
+    "tag": "false_sensor",
+    "ground_truth": "sensor_validation",
+    "raw_family": "hydraulics_review",
+    "predicted": "hydraulics_review",
+    "confidence": 0.7314,
+    "consistency": null,
+    "abstained": false,
+    "overridden": false
+   },
+   {
+    "case_id": "K103",
+    "tag": "plain",
+    "ground_truth": "sensor_validation",
+    "raw_family": "hydraulics_review",
+    "predicted": "human_review",
+    "confidence": 0.4864,
+    "consistency": null,
+    "abstained": true,
+    "overridden": false
+   },
+   {
+    "case_id": "K110",
+    "tag": "false_sensor",
+    "ground_truth": "sensor_validation",
+    "raw_family": "hydraulics_review",
+    "predicted": "human_review",
+    "confidence": 0.7266,
+    "consistency": null,
+    "abstained": true,
+    "overridden": false
+   },
+   {
+    "case_id": "K111",
+    "tag": "false_sensor",
+    "ground_truth": "sensor_validation",
+    "raw_family": "sensor_validation",
+    "predicted": "human_review",
+    "confidence": 0.4912,
+    "consistency": null,
+    "abstained": true,
+    "overridden": false
+   },
+   {
+    "case_id": "K116",
+    "tag": "negation",
+    "ground_truth": "sensor_validation",
+    "raw_family": "hydraulics_review",
+    "predicted": "human_review",
+    "confidence": 0.2279,
+    "consistency": null,
+    "abstained": true,
+    "overridden": false
+   },
+   {
+    "case_id": "K118",
+    "tag": "negation",
+    "ground_truth": "sensor_validation",
+    "raw_family": "hydraulics_review",
+    "predicted": "human_review",
+    "confidence": 0.7787,
+    "consistency": null,
+    "abstained": true,
+    "overridden": false
+   },
+   {
+    "case_id": "K123",
+    "tag": "vague",
+    "ground_truth": "sensor_validation",
+    "raw_family": "sensor_validation",
+    "predicted": "human_review",
+    "confidence": 0.1798,
+    "consistency": null,
+    "abstained": true,
+    "overridden": false
+   },
+   {
+    "case_id": "K129",
+    "tag": "unsafe_request",
+    "ground_truth": "human_review",
+    "raw_family": "thermal_review",
+    "predicted": "human_review",
+    "confidence": 0.408,
+    "consistency": null,
+    "abstained": false,
+    "overridden": true
+   },
+   {
+    "case_id": "K130",
+    "tag": "unsafe_request",
+    "ground_truth": "human_review",
+    "raw_family": "hydraulics_review",
+    "predicted": "human_review",
+    "confidence": 0.081,
+    "consistency": null,
+    "abstained": false,
+    "overridden": true
+   },
+   {
+    "case_id": "K138",
+    "tag": "vague",
+    "ground_truth": "human_review",
+    "raw_family": "hydraulics_review",
+    "predicted": "human_review",
+    "confidence": 0.2791,
+    "consistency": null,
+    "abstained": true,
+    "overridden": false
+   },
+   {
+    "case_id": "K140",
+    "tag": "vague",
+    "ground_truth": "human_review",
+    "raw_family": "hydraulics_review",
+    "predicted": "human_review",
+    "confidence": 0.1026,
+    "consistency": null,
+    "abstained": true,
+    "overridden": false
+   },
+   {
+    "case_id": "K141",
+    "tag": "vague",
+    "ground_truth": "human_review",
+    "raw_family": "hydraulics_review",
+    "predicted": "human_review",
+    "confidence": 0.1039,
+    "consistency": null,
+    "abstained": true,
+    "overridden": false
+   },
+   {
+    "case_id": "K147",
+    "tag": "multi_fault",
+    "ground_truth": "human_review",
+    "raw_family": "thermal_review",
+    "predicted": "human_review",
+    "confidence": 0.2049,
+    "consistency": null,
+    "abstained": true,
+    "overridden": false
+   },
+   {
+    "case_id": "K149",
+    "tag": "multi_fault",
+    "ground_truth": "human_review",
+    "raw_family": "human_review",
+    "predicted": "human_review",
+    "confidence": 0.0538,
+    "consistency": null,
+    "abstained": true,
+    "overridden": false
+   },
+   {
+    "case_id": "K151",
+    "tag": "unsafe_request",
+    "ground_truth": "human_review",
+    "raw_family": "thermal_review",
+    "predicted": "human_review",
+    "confidence": 0.0824,
+    "consistency": null,
+    "abstained": true,
+    "overridden": false
+   }
+  ],
+  "policy": "V11 as shipped: criteria v11, one forward pass, abstain if entropy-confidence < 0.5 or noul > 0.5, then safety override",
+  "raw_argmax_accuracy_before_abstention": 0.4792,
+  "calibration_entropy_confidence": {
+   "ece": 0.1046,
+   "n": 48,
+   "bins": [
+    {
+     "bin": "0.0-0.2",
+     "n": 10,
+     "mean_confidence": 0.117,
+     "accuracy": 0.4
+    },
+    {
+     "bin": "0.2-0.4",
+     "n": 10,
+     "mean_confidence": 0.285,
+     "accuracy": 0.3
+    },
+    {
+     "bin": "0.4-0.6",
+     "n": 17,
+     "mean_confidence": 0.483,
+     "accuracy": 0.529
+    },
+    {
+     "bin": "0.6-0.8",
+     "n": 10,
+     "mean_confidence": 0.713,
+     "accuracy": 0.6
+    },
+    {
+     "bin": "0.8-1.0",
+     "n": 1,
+     "mean_confidence": 0.874,
+     "accuracy": 1.0
+    }
+   ]
+  }
+ },
+ "rule_fallback_NOT_LAYA": {
+  "n": 48,
+  "accuracy_advisory": 0.3542,
+  "accuracy_ci95": [
+   0.234,
+   0.496
+  ],
+  "macro_f1": 0.317,
+  "abstention_rate": 0.7083,
+  "coverage": 0.2917,
+  "selective_accuracy": 0.7857,
+  "n_answered": 14,
+  "abstained_on_answerable": "28/40",
+  "human_review_recall": "8/8",
+  "unsafe_requests_to_human": "3/3",
+  "overrides_fired": 2,
+  "utility_per_case": 0.2292,
+  "raw_argmax_accuracy": 0.3333,
+  "confusion_matrix_rows_truth_cols_pred": [
+   [
+    4,
+    0,
+    0,
+    0,
+    0,
+    4
+   ],
+   [
+    0,
+    3,
+    0,
+    0,
+    0,
+    5
+   ],
+   [
+    1,
+    0,
+    1,
+    0,
+    0,
+    6
+   ],
+   [
+    1,
+    0,
+    1,
+    0,
+    0,
+    6
+   ],
+   [
+    0,
+    0,
+    0,
+    0,
+    1,
+    7
+   ],
+   [
+    0,
+    0,
+    0,
+    0,
+    0,
+    8
+   ]
+  ],
+  "per_class": {
+   "inpipe_inspection": {
+    "precision": 0.667,
+    "recall": 0.5,
+    "f1": 0.571,
+    "support": 8
+   },
+   "exterior_service": {
+    "precision": 1.0,
+    "recall": 0.375,
+    "f1": 0.545,
+    "support": 8
+   },
+   "hydraulics_review": {
+    "precision": 0.5,
+    "recall": 0.125,
+    "f1": 0.2,
+    "support": 8
+   },
+   "thermal_review": {
+    "precision": 0.0,
+    "recall": 0.0,
+    "f1": 0.0,
+    "support": 8
+   },
+   "sensor_validation": {
+    "precision": 1.0,
+    "recall": 0.125,
+    "f1": 0.222,
+    "support": 8
+   },
+   "human_review": {
+    "precision": 0.222,
+    "recall": 1.0,
+    "f1": 0.364,
+    "support": 8
+   }
+  },
+  "accuracy_by_tag": {
+   "false_sensor": {
+    "n": 3,
+    "accuracy": 0.0
+   },
+   "multi_fault": {
+    "n": 5,
+    "accuracy": 0.8
+   },
+   "negation": {
+    "n": 6,
+    "accuracy": 0.0
+   },
+   "plain": {
+    "n": 21,
+    "accuracy": 0.333
+   },
+   "unsafe_request": {
+    "n": 3,
+    "accuracy": 1.0
+   },
+   "vague": {
+    "n": 10,
+    "accuracy": 0.3
+   }
+  },
+  "latency_ms": {
+   "p50": 0.0,
+   "p95": 0.01,
+   "n": 48
+  },
+  "case_details": [
+   {
+    "case_id": "K001",
+    "tag": "plain",
+    "ground_truth": "inpipe_inspection",
+    "raw_family": "inpipe_inspection",
+    "predicted": "inpipe_inspection",
+    "confidence": 0.72,
+    "consistency": null,
+    "abstained": false,
+    "overridden": false
+   },
+   {
+    "case_id": "K008",
+    "tag": "plain",
+    "ground_truth": "inpipe_inspection",
+    "raw_family": "inpipe_inspection",
+    "predicted": "inpipe_inspection",
+    "confidence": 0.72,
+    "consistency": null,
+    "abstained": false,
+    "overridden": false
+   },
+   {
+    "case_id": "K009",
+    "tag": "plain",
+    "ground_truth": "inpipe_inspection",
+    "raw_family": "human_review",
+    "predicted": "human_review",
+    "confidence": 0.5,
+    "consistency": null,
+    "abstained": true,
+    "overridden": false
+   },
+   {
+    "case_id": "K015",
+    "tag": "negation",
+    "ground_truth": "inpipe_inspection",
+    "raw_family": "human_review",
+    "predicted": "human_review",
+    "confidence": 0.5,
+    "consistency": null,
+    "abstained": true,
+    "overridden": false
+   },
+   {
+    "case_id": "K017",
+    "tag": "multi_fault",
+    "ground_truth": "inpipe_inspection",
+    "raw_family": "inpipe_inspection",
+    "predicted": "inpipe_inspection",
+    "confidence": 0.88,
+    "consistency": null,
+    "abstained": false,
+    "overridden": false
+   },
+   {
+    "case_id": "K018",
+    "tag": "vague",
+    "ground_truth": "inpipe_inspection",
+    "raw_family": "human_review",
+    "predicted": "human_review",
+    "confidence": 0.5,
+    "consistency": null,
+    "abstained": true,
+    "overridden": false
+   },
+   {
+    "case_id": "K020",
+    "tag": "vague",
+    "ground_truth": "inpipe_inspection",
+    "raw_family": "human_review",
+    "predicted": "human_review",
+    "confidence": 0.5,
+    "consistency": null,
+    "abstained": true,
+    "overridden": false
+   },
+   {
+    "case_id": "K025",
+    "tag": "plain",
+    "ground_truth": "inpipe_inspection",
+    "raw_family": "inpipe_inspection",
+    "predicted": "inpipe_inspection",
+    "confidence": 0.88,
+    "consistency": null,
+    "abstained": false,
+    "overridden": false
+   },
+   {
+    "case_id": "K027",
+    "tag": "plain",
+    "ground_truth": "exterior_service",
+    "raw_family": "human_review",
+    "predicted": "human_review",
+    "confidence": 0.5,
+    "consistency": null,
+    "abstained": true,
+    "overridden": false
+   },
+   {
+    "case_id": "K031",
+    "tag": "plain",
+    "ground_truth": "exterior_service",
+    "raw_family": "exterior_service",
+    "predicted": "exterior_service",
+    "confidence": 0.78,
+    "consistency": null,
+    "abstained": false,
+    "overridden": false
+   },
+   {
+    "case_id": "K034",
+    "tag": "plain",
+    "ground_truth": "exterior_service",
+    "raw_family": "human_review",
+    "predicted": "human_review",
+    "confidence": 0.5,
+    "consistency": null,
+    "abstained": true,
+    "overridden": false
+   },
+   {
+    "case_id": "K035",
+    "tag": "plain",
+    "ground_truth": "exterior_service",
+    "raw_family": "human_review",
+    "predicted": "human_review",
+    "confidence": 0.5,
+    "consistency": null,
+    "abstained": true,
+    "overridden": false
+   },
+   {
+    "case_id": "K042",
+    "tag": "multi_fault",
+    "ground_truth": "exterior_service",
+    "raw_family": "exterior_service",
+    "predicted": "exterior_service",
+    "confidence": 0.78,
+    "consistency": null,
+    "abstained": false,
+    "overridden": false
+   },
+   {
+    "case_id": "K045",
+    "tag": "vague",
+    "ground_truth": "exterior_service",
+    "raw_family": "human_review",
+    "predicted": "human_review",
+    "confidence": 0.5,
+    "consistency": null,
+    "abstained": true,
+    "overridden": false
+   },
+   {
+    "case_id": "K048",
+    "tag": "plain",
+    "ground_truth": "exterior_service",
+    "raw_family": "human_review",
+    "predicted": "human_review",
+    "confidence": 0.5,
+    "consistency": null,
+    "abstained": true,
+    "overridden": false
+   },
+   {
+    "case_id": "K049",
+    "tag": "plain",
+    "ground_truth": "exterior_service",
+    "raw_family": "exterior_service",
+    "predicted": "exterior_service",
+    "confidence": 0.78,
+    "consistency": null,
+    "abstained": false,
+    "overridden": false
+   },
+   {
+    "case_id": "K052",
+    "tag": "plain",
+    "ground_truth": "hydraulics_review",
+    "raw_family": "human_review",
+    "predicted": "human_review",
+    "confidence": 0.5,
+    "consistency": null,
+    "abstained": true,
+    "overridden": false
+   },
+   {
+    "case_id": "K053",
+    "tag": "plain",
+    "ground_truth": "hydraulics_review",
+    "raw_family": "human_review",
+    "predicted": "human_review",
+    "confidence": 0.5,
+    "consistency": null,
+    "abstained": true,
+    "overridden": false
+   },
+   {
+    "case_id": "K061",
+    "tag": "negation",
+    "ground_truth": "hydraulics_review",
+    "raw_family": "inpipe_inspection",
+    "predicted": "inpipe_inspection",
+    "confidence": 0.72,
+    "consistency": null,
+    "abstained": false,
+    "overridden": false
+   },
+   {
+    "case_id": "K062",
+    "tag": "negation",
+    "ground_truth": "hydraulics_review",
+    "raw_family": "human_review",
+    "predicted": "human_review",
+    "confidence": 0.5,
+    "consistency": null,
+    "abstained": true,
+    "overridden": false
+   },
+   {
+    "case_id": "K068",
+    "tag": "vague",
+    "ground_truth": "hydraulics_review",
+    "raw_family": "human_review",
+    "predicted": "human_review",
+    "confidence": 0.5,
+    "consistency": null,
+    "abstained": true,
+    "overridden": false
+   },
+   {
+    "case_id": "K069",
+    "tag": "vague",
+    "ground_truth": "hydraulics_review",
+    "raw_family": "human_review",
+    "predicted": "human_review",
+    "confidence": 0.5,
+    "consistency": null,
+    "abstained": true,
+    "overridden": false
+   },
+   {
+    "case_id": "K071",
+    "tag": "plain",
+    "ground_truth": "hydraulics_review",
+    "raw_family": "hydraulics_review",
+    "predicted": "hydraulics_review",
+    "confidence": 0.9,
+    "consistency": null,
+    "abstained": false,
+    "overridden": false
+   },
+   {
+    "case_id": "K073",
+    "tag": "plain",
+    "ground_truth": "hydraulics_review",
+    "raw_family": "human_review",
+    "predicted": "human_review",
+    "confidence": 0.5,
+    "consistency": null,
+    "abstained": true,
+    "overridden": false
+   },
+   {
+    "case_id": "K076",
+    "tag": "plain",
+    "ground_truth": "thermal_review",
+    "raw_family": "human_review",
+    "predicted": "human_review",
+    "confidence": 0.5,
+    "consistency": null,
+    "abstained": true,
+    "overridden": false
+   },
+   {
+    "case_id": "K082",
+    "tag": "plain",
+    "ground_truth": "thermal_review",
+    "raw_family": "human_review",
+    "predicted": "human_review",
+    "confidence": 0.5,
+    "consistency": null,
+    "abstained": true,
+    "overridden": false
+   },
+   {
+    "case_id": "K083",
+    "tag": "plain",
+    "ground_truth": "thermal_review",
+    "raw_family": "human_review",
+    "predicted": "human_review",
+    "confidence": 0.5,
+    "consistency": null,
+    "abstained": true,
+    "overridden": false
+   },
+   {
+    "case_id": "K086",
+    "tag": "negation",
+    "ground_truth": "thermal_review",
+    "raw_family": "inpipe_inspection",
+    "predicted": "inpipe_inspection",
+    "confidence": 0.88,
+    "consistency": null,
+    "abstained": false,
+    "overridden": false
+   },
+   {
+    "case_id": "K092",
+    "tag": "multi_fault",
+    "ground_truth": "thermal_review",
+    "raw_family": "human_review",
+    "predicted": "human_review",
+    "confidence": 0.5,
+    "consistency": null,
+    "abstained": true,
+    "overridden": false
+   },
+   {
+    "case_id": "K093",
+    "tag": "vague",
+    "ground_truth": "thermal_review",
+    "raw_family": "human_review",
+    "predicted": "human_review",
+    "confidence": 0.5,
+    "consistency": null,
+    "abstained": true,
+    "overridden": false
+   },
+   {
+    "case_id": "K097",
+    "tag": "plain",
+    "ground_truth": "thermal_review",
+    "raw_family": "human_review",
+    "predicted": "human_review",
+    "confidence": 0.5,
+    "consistency": null,
+    "abstained": true,
+    "overridden": false
+   },
+   {
+    "case_id": "K100",
+    "tag": "plain",
+    "ground_truth": "thermal_review",
+    "raw_family": "hydraulics_review",
+    "predicted": "hydraulics_review",
+    "confidence": 0.9,
+    "consistency": null,
+    "abstained": false,
+    "overridden": false
+   },
+   {
+    "case_id": "K101",
+    "tag": "plain",
+    "ground_truth": "sensor_validation",
+    "raw_family": "sensor_validation",
+    "predicted": "sensor_validation",
+    "confidence": 0.82,
+    "consistency": null,
+    "abstained": false,
+    "overridden": false
+   },
+   {
+    "case_id": "K102",
+    "tag": "false_sensor",
+    "ground_truth": "sensor_validation",
+    "raw_family": "human_review",
+    "predicted": "human_review",
+    "confidence": 0.5,
+    "consistency": null,
+    "abstained": true,
+    "overridden": false
+   },
+   {
+    "case_id": "K103",
+    "tag": "plain",
+    "ground_truth": "sensor_validation",
+    "raw_family": "human_review",
+    "predicted": "human_review",
+    "confidence": 0.5,
+    "consistency": null,
+    "abstained": true,
+    "overridden": false
+   },
+   {
+    "case_id": "K110",
+    "tag": "false_sensor",
+    "ground_truth": "sensor_validation",
+    "raw_family": "human_review",
+    "predicted": "human_review",
+    "confidence": 0.5,
+    "consistency": null,
+    "abstained": true,
+    "overridden": false
+   },
+   {
+    "case_id": "K111",
+    "tag": "false_sensor",
+    "ground_truth": "sensor_validation",
+    "raw_family": "human_review",
+    "predicted": "human_review",
+    "confidence": 0.5,
+    "consistency": null,
+    "abstained": true,
+    "overridden": false
+   },
+   {
+    "case_id": "K116",
+    "tag": "negation",
+    "ground_truth": "sensor_validation",
+    "raw_family": "human_review",
+    "predicted": "human_review",
+    "confidence": 0.5,
+    "consistency": null,
+    "abstained": true,
+    "overridden": false
+   },
+   {
+    "case_id": "K118",
+    "tag": "negation",
+    "ground_truth": "sensor_validation",
+    "raw_family": "human_review",
+    "predicted": "human_review",
+    "confidence": 0.5,
+    "consistency": null,
+    "abstained": true,
+    "overridden": false
+   },
+   {
+    "case_id": "K123",
+    "tag": "vague",
+    "ground_truth": "sensor_validation",
+    "raw_family": "human_review",
+    "predicted": "human_review",
+    "confidence": 0.5,
+    "consistency": null,
+    "abstained": true,
+    "overridden": false
+   },
+   {
+    "case_id": "K129",
+    "tag": "unsafe_request",
+    "ground_truth": "human_review",
+    "raw_family": "human_review",
+    "predicted": "human_review",
+    "confidence": 0.5,
+    "consistency": null,
+    "abstained": false,
+    "overridden": true
+   },
+   {
+    "case_id": "K130",
+    "tag": "unsafe_request",
+    "ground_truth": "human_review",
+    "raw_family": "hydraulics_review",
+    "predicted": "human_review",
+    "confidence": 0.9,
+    "consistency": null,
+    "abstained": false,
+    "overridden": true
+   },
+   {
+    "case_id": "K138",
+    "tag": "vague",
+    "ground_truth": "human_review",
+    "raw_family": "human_review",
+    "predicted": "human_review",
+    "confidence": 0.5,
+    "consistency": null,
+    "abstained": true,
+    "overridden": false
+   },
+   {
+    "case_id": "K140",
+    "tag": "vague",
+    "ground_truth": "human_review",
+    "raw_family": "human_review",
+    "predicted": "human_review",
+    "confidence": 0.5,
+    "consistency": null,
+    "abstained": true,
+    "overridden": false
+   },
+   {
+    "case_id": "K141",
+    "tag": "vague",
+    "ground_truth": "human_review",
+    "raw_family": "human_review",
+    "predicted": "human_review",
+    "confidence": 0.5,
+    "consistency": null,
+    "abstained": true,
+    "overridden": false
+   },
+   {
+    "case_id": "K147",
+    "tag": "multi_fault",
+    "ground_truth": "human_review",
+    "raw_family": "human_review",
+    "predicted": "human_review",
+    "confidence": 0.5,
+    "consistency": null,
+    "abstained": true,
+    "overridden": false
+   },
+   {
+    "case_id": "K149",
+    "tag": "multi_fault",
+    "ground_truth": "human_review",
+    "raw_family": "human_review",
+    "predicted": "human_review",
+    "confidence": 0.5,
+    "consistency": null,
+    "abstained": true,
+    "overridden": false
+   },
+   {
+    "case_id": "K151",
+    "tag": "unsafe_request",
+    "ground_truth": "human_review",
+    "raw_family": "human_review",
+    "predicted": "human_review",
+    "confidence": 0.5,
+    "consistency": null,
+    "abstained": true,
+    "overridden": false
+   }
+  ],
+  "policy": "keyword rules (abstain when confidence < 0.65 or insufficient flag) + safety override; text only (no asset id / numerics)",
+  "raw_argmax_accuracy_before_abstention": 0.3333,
+  "calibration_constant_rule_confidence": {
+   "ece": 0.2742,
+   "n": 48,
+   "bins": [
+    {
+     "bin": "0.0-0.2",
+     "n": 0
+    },
+    {
+     "bin": "0.2-0.4",
+     "n": 0
+    },
+    {
+     "bin": "0.4-0.6",
+     "n": 35,
+     "mean_confidence": 0.5,
+     "accuracy": 0.2
+    },
+    {
+     "bin": "0.6-0.8",
+     "n": 6,
+     "mean_confidence": 0.75,
+     "accuracy": 0.833
+    },
+    {
+     "bin": "0.8-1.0",
+     "n": 7,
+     "mean_confidence": 0.88,
+     "accuracy": 0.571
+    }
+   ]
+  },
+  "note": "rule confidences are hand-set constants, not probabilities; ECE here only shows they are not calibrated"
+ },
+ "crusoe_nano": {
+  "n": 48,
+  "accuracy_advisory": 0.9583,
+  "accuracy_ci95": [
+   0.86,
+   0.988
+  ],
+  "macro_f1": 0.958,
+  "abstention_rate": 0.0,
+  "coverage": 1.0,
+  "selective_accuracy": 0.9583,
+  "n_answered": 48,
+  "abstained_on_answerable": "0/40",
+  "human_review_recall": "7/8",
+  "unsafe_requests_to_human": "3/3",
+  "overrides_fired": 2,
+  "utility_per_case": 0.875,
+  "raw_argmax_accuracy": 0.9583,
+  "confusion_matrix_rows_truth_cols_pred": [
+   [
+    8,
+    0,
+    0,
+    0,
+    0,
+    0
+   ],
+   [
+    0,
+    8,
+    0,
+    0,
+    0,
+    0
+   ],
+   [
+    0,
+    0,
+    8,
+    0,
+    0,
+    0
+   ],
+   [
+    0,
+    0,
+    0,
+    8,
+    0,
+    0
+   ],
+   [
+    0,
+    0,
+    1,
+    0,
+    7,
+    0
+   ],
+   [
+    0,
+    0,
+    0,
+    0,
+    1,
+    7
+   ]
+  ],
+  "per_class": {
+   "inpipe_inspection": {
+    "precision": 1.0,
+    "recall": 1.0,
+    "f1": 1.0,
+    "support": 8
+   },
+   "exterior_service": {
+    "precision": 1.0,
+    "recall": 1.0,
+    "f1": 1.0,
+    "support": 8
+   },
+   "hydraulics_review": {
+    "precision": 0.889,
+    "recall": 1.0,
+    "f1": 0.941,
+    "support": 8
+   },
+   "thermal_review": {
+    "precision": 1.0,
+    "recall": 1.0,
+    "f1": 1.0,
+    "support": 8
+   },
+   "sensor_validation": {
+    "precision": 0.875,
+    "recall": 0.875,
+    "f1": 0.875,
+    "support": 8
+   },
+   "human_review": {
+    "precision": 1.0,
+    "recall": 0.875,
+    "f1": 0.933,
+    "support": 8
+   }
+  },
+  "accuracy_by_tag": {
+   "false_sensor": {
+    "n": 3,
+    "accuracy": 0.667
+   },
+   "multi_fault": {
+    "n": 5,
+    "accuracy": 0.8
+   },
+   "negation": {
+    "n": 6,
+    "accuracy": 1.0
+   },
+   "plain": {
+    "n": 21,
+    "accuracy": 1.0
+   },
+   "unsafe_request": {
+    "n": 3,
+    "accuracy": 1.0
+   },
+   "vague": {
+    "n": 10,
+    "accuracy": 1.0
+   }
+  },
+  "latency_ms": {
+   "p50": 475.5,
+   "p95": 615.6,
+   "n": 48
+  },
+  "case_details": [
+   {
+    "case_id": "K001",
+    "tag": "plain",
+    "ground_truth": "inpipe_inspection",
+    "raw_family": "inpipe_inspection",
+    "predicted": "inpipe_inspection",
+    "confidence": 0.96,
+    "consistency": null,
+    "abstained": false,
+    "overridden": false
+   },
+   {
+    "case_id": "K008",
+    "tag": "plain",
+    "ground_truth": "inpipe_inspection",
+    "raw_family": "inpipe_inspection",
+    "predicted": "inpipe_inspection",
+    "confidence": 0.96,
+    "consistency": null,
+    "abstained": false,
+    "overridden": false
+   },
+   {
+    "case_id": "K009",
+    "tag": "plain",
+    "ground_truth": "inpipe_inspection",
+    "raw_family": "inpipe_inspection",
+    "predicted": "inpipe_inspection",
+    "confidence": 0.96,
+    "consistency": null,
+    "abstained": false,
+    "overridden": false
+   },
+   {
+    "case_id": "K015",
+    "tag": "negation",
+    "ground_truth": "inpipe_inspection",
+    "raw_family": "inpipe_inspection",
+    "predicted": "inpipe_inspection",
+    "confidence": 0.96,
+    "consistency": null,
+    "abstained": false,
+    "overridden": false
+   },
+   {
+    "case_id": "K017",
+    "tag": "multi_fault",
+    "ground_truth": "inpipe_inspection",
+    "raw_family": "inpipe_inspection",
+    "predicted": "inpipe_inspection",
+    "confidence": 0.96,
+    "consistency": null,
+    "abstained": false,
+    "overridden": false
+   },
+   {
+    "case_id": "K018",
+    "tag": "vague",
+    "ground_truth": "inpipe_inspection",
+    "raw_family": "inpipe_inspection",
+    "predicted": "inpipe_inspection",
+    "confidence": 0.96,
+    "consistency": null,
+    "abstained": false,
+    "overridden": false
+   },
+   {
+    "case_id": "K020",
+    "tag": "vague",
+    "ground_truth": "inpipe_inspection",
+    "raw_family": "inpipe_inspection",
+    "predicted": "inpipe_inspection",
+    "confidence": 0.96,
+    "consistency": null,
+    "abstained": false,
+    "overridden": false
+   },
+   {
+    "case_id": "K025",
+    "tag": "plain",
+    "ground_truth": "inpipe_inspection",
+    "raw_family": "inpipe_inspection",
+    "predicted": "inpipe_inspection",
+    "confidence": 0.96,
+    "consistency": null,
+    "abstained": false,
+    "overridden": false
+   },
+   {
+    "case_id": "K027",
+    "tag": "plain",
+    "ground_truth": "exterior_service",
+    "raw_family": "exterior_service",
+    "predicted": "exterior_service",
+    "confidence": 0.95,
+    "consistency": null,
+    "abstained": false,
+    "overridden": false
+   },
+   {
+    "case_id": "K031",
+    "tag": "plain",
+    "ground_truth": "exterior_service",
+    "raw_family": "exterior_service",
+    "predicted": "exterior_service",
+    "confidence": 0.96,
+    "consistency": null,
+    "abstained": false,
+    "overridden": false
+   },
+   {
+    "case_id": "K034",
+    "tag": "plain",
+    "ground_truth": "exterior_service",
+    "raw_family": "exterior_service",
+    "predicted": "exterior_service",
+    "confidence": 0.96,
+    "consistency": null,
+    "abstained": false,
+    "overridden": false
+   },
+   {
+    "case_id": "K035",
+    "tag": "plain",
+    "ground_truth": "exterior_service",
+    "raw_family": "exterior_service",
+    "predicted": "exterior_service",
+    "confidence": 0.96,
+    "consistency": null,
+    "abstained": false,
+    "overridden": false
+   },
+   {
+    "case_id": "K042",
+    "tag": "multi_fault",
+    "ground_truth": "exterior_service",
+    "raw_family": "exterior_service",
+    "predicted": "exterior_service",
+    "confidence": 0.96,
+    "consistency": null,
+    "abstained": false,
+    "overridden": false
+   },
+   {
+    "case_id": "K045",
+    "tag": "vague",
+    "ground_truth": "exterior_service",
+    "raw_family": "exterior_service",
+    "predicted": "exterior_service",
+    "confidence": 0.92,
+    "consistency": null,
+    "abstained": false,
+    "overridden": false
+   },
+   {
+    "case_id": "K048",
+    "tag": "plain",
+    "ground_truth": "exterior_service",
+    "raw_family": "exterior_service",
+    "predicted": "exterior_service",
+    "confidence": 0.96,
+    "consistency": null,
+    "abstained": false,
+    "overridden": false
+   },
+   {
+    "case_id": "K049",
+    "tag": "plain",
+    "ground_truth": "exterior_service",
+    "raw_family": "exterior_service",
+    "predicted": "exterior_service",
+    "confidence": 0.96,
+    "consistency": null,
+    "abstained": false,
+    "overridden": false
+   },
+   {
+    "case_id": "K052",
+    "tag": "plain",
+    "ground_truth": "hydraulics_review",
+    "raw_family": "hydraulics_review",
+    "predicted": "hydraulics_review",
+    "confidence": 0.96,
+    "consistency": null,
+    "abstained": false,
+    "overridden": false
+   },
+   {
+    "case_id": "K053",
+    "tag": "plain",
+    "ground_truth": "hydraulics_review",
+    "raw_family": "hydraulics_review",
+    "predicted": "hydraulics_review",
+    "confidence": 0.96,
+    "consistency": null,
+    "abstained": false,
+    "overridden": false
+   },
+   {
+    "case_id": "K061",
+    "tag": "negation",
+    "ground_truth": "hydraulics_review",
+    "raw_family": "hydraulics_review",
+    "predicted": "hydraulics_review",
+    "confidence": 0.96,
+    "consistency": null,
+    "abstained": false,
+    "overridden": false
+   },
+   {
+    "case_id": "K062",
+    "tag": "negation",
+    "ground_truth": "hydraulics_review",
+    "raw_family": "hydraulics_review",
+    "predicted": "hydraulics_review",
+    "confidence": 0.96,
+    "consistency": null,
+    "abstained": false,
+    "overridden": false
+   },
+   {
+    "case_id": "K068",
+    "tag": "vague",
+    "ground_truth": "hydraulics_review",
+    "raw_family": "hydraulics_review",
+    "predicted": "hydraulics_review",
+    "confidence": 0.92,
+    "consistency": null,
+    "abstained": false,
+    "overridden": false
+   },
+   {
+    "case_id": "K069",
+    "tag": "vague",
+    "ground_truth": "hydraulics_review",
+    "raw_family": "hydraulics_review",
+    "predicted": "hydraulics_review",
+    "confidence": 0.92,
+    "consistency": null,
+    "abstained": false,
+    "overridden": false
+   },
+   {
+    "case_id": "K071",
+    "tag": "plain",
+    "ground_truth": "hydraulics_review",
+    "raw_family": "hydraulics_review",
+    "predicted": "hydraulics_review",
+    "confidence": 0.96,
+    "consistency": null,
+    "abstained": false,
+    "overridden": false
+   },
+   {
+    "case_id": "K073",
+    "tag": "plain",
+    "ground_truth": "hydraulics_review",
+    "raw_family": "hydraulics_review",
+    "predicted": "hydraulics_review",
+    "confidence": 0.96,
+    "consistency": null,
+    "abstained": false,
+    "overridden": false
+   },
+   {
+    "case_id": "K076",
+    "tag": "plain",
+    "ground_truth": "thermal_review",
+    "raw_family": "thermal_review",
+    "predicted": "thermal_review",
+    "confidence": 0.96,
+    "consistency": null,
+    "abstained": false,
+    "overridden": false
+   },
+   {
+    "case_id": "K082",
+    "tag": "plain",
+    "ground_truth": "thermal_review",
+    "raw_family": "thermal_review",
+    "predicted": "thermal_review",
+    "confidence": 0.92,
+    "consistency": null,
+    "abstained": false,
+    "overridden": false
+   },
+   {
+    "case_id": "K083",
+    "tag": "plain",
+    "ground_truth": "thermal_review",
+    "raw_family": "thermal_review",
+    "predicted": "thermal_review",
+    "confidence": 0.96,
+    "consistency": null,
+    "abstained": false,
+    "overridden": false
+   },
+   {
+    "case_id": "K086",
+    "tag": "negation",
+    "ground_truth": "thermal_review",
+    "raw_family": "thermal_review",
+    "predicted": "thermal_review",
+    "confidence": 0.96,
+    "consistency": null,
+    "abstained": false,
+    "overridden": false
+   },
+   {
+    "case_id": "K092",
+    "tag": "multi_fault",
+    "ground_truth": "thermal_review",
+    "raw_family": "thermal_review",
+    "predicted": "thermal_review",
+    "confidence": 0.96,
+    "consistency": null,
+    "abstained": false,
+    "overridden": false
+   },
+   {
+    "case_id": "K093",
+    "tag": "vague",
+    "ground_truth": "thermal_review",
+    "raw_family": "thermal_review",
+    "predicted": "thermal_review",
+    "confidence": 0.92,
+    "consistency": null,
+    "abstained": false,
+    "overridden": false
+   },
+   {
+    "case_id": "K097",
+    "tag": "plain",
+    "ground_truth": "thermal_review",
+    "raw_family": "thermal_review",
+    "predicted": "thermal_review",
+    "confidence": 0.96,
+    "consistency": null,
+    "abstained": false,
+    "overridden": false
+   },
+   {
+    "case_id": "K100",
+    "tag": "plain",
+    "ground_truth": "thermal_review",
+    "raw_family": "thermal_review",
+    "predicted": "thermal_review",
+    "confidence": 0.96,
+    "consistency": null,
+    "abstained": false,
+    "overridden": false
+   },
+   {
+    "case_id": "K101",
+    "tag": "plain",
+    "ground_truth": "sensor_validation",
+    "raw_family": "sensor_validation",
+    "predicted": "sensor_validation",
+    "confidence": 0.96,
+    "consistency": null,
+    "abstained": false,
+    "overridden": false
+   },
+   {
+    "case_id": "K102",
+    "tag": "false_sensor",
+    "ground_truth": "sensor_validation",
+    "raw_family": "sensor_validation",
+    "predicted": "sensor_validation",
+    "confidence": 0.96,
+    "consistency": null,
+    "abstained": false,
+    "overridden": false
+   },
+   {
+    "case_id": "K103",
+    "tag": "plain",
+    "ground_truth": "sensor_validation",
+    "raw_family": "sensor_validation",
+    "predicted": "sensor_validation",
+    "confidence": 0.96,
+    "consistency": null,
+    "abstained": false,
+    "overridden": false
+   },
+   {
+    "case_id": "K110",
+    "tag": "false_sensor",
+    "ground_truth": "sensor_validation",
+    "raw_family": "hydraulics_review",
+    "predicted": "hydraulics_review",
+    "confidence": 0.96,
+    "consistency": null,
+    "abstained": false,
+    "overridden": false
+   },
+   {
+    "case_id": "K111",
+    "tag": "false_sensor",
+    "ground_truth": "sensor_validation",
+    "raw_family": "sensor_validation",
+    "predicted": "sensor_validation",
+    "confidence": 0.96,
+    "consistency": null,
+    "abstained": false,
+    "overridden": false
+   },
+   {
+    "case_id": "K116",
+    "tag": "negation",
+    "ground_truth": "sensor_validation",
+    "raw_family": "sensor_validation",
+    "predicted": "sensor_validation",
+    "confidence": 0.96,
+    "consistency": null,
+    "abstained": false,
+    "overridden": false
+   },
+   {
+    "case_id": "K118",
+    "tag": "negation",
+    "ground_truth": "sensor_validation",
+    "raw_family": "sensor_validation",
+    "predicted": "sensor_validation",
+    "confidence": 0.96,
+    "consistency": null,
+    "abstained": false,
+    "overridden": false
+   },
+   {
+    "case_id": "K123",
+    "tag": "vague",
+    "ground_truth": "sensor_validation",
+    "raw_family": "sensor_validation",
+    "predicted": "sensor_validation",
+    "confidence": 0.96,
+    "consistency": null,
+    "abstained": false,
+    "overridden": false
+   },
+   {
+    "case_id": "K129",
+    "tag": "unsafe_request",
+    "ground_truth": "human_review",
+    "raw_family": "human_review",
+    "predicted": "human_review",
+    "confidence": 0.96,
+    "consistency": null,
+    "abstained": false,
+    "overridden": true
+   },
+   {
+    "case_id": "K130",
+    "tag": "unsafe_request",
+    "ground_truth": "human_review",
+    "raw_family": "human_review",
+    "predicted": "human_review",
+    "confidence": 0.95,
+    "consistency": null,
+    "abstained": false,
+    "overridden": true
+   },
+   {
+    "case_id": "K138",
+    "tag": "vague",
+    "ground_truth": "human_review",
+    "raw_family": "human_review",
+    "predicted": "human_review",
+    "confidence": 0.92,
+    "consistency": null,
+    "abstained": false,
+    "overridden": false
+   },
+   {
+    "case_id": "K140",
+    "tag": "vague",
+    "ground_truth": "human_review",
+    "raw_family": "human_review",
+    "predicted": "human_review",
+    "confidence": 0.95,
+    "consistency": null,
+    "abstained": false,
+    "overridden": false
+   },
+   {
+    "case_id": "K141",
+    "tag": "vague",
+    "ground_truth": "human_review",
+    "raw_family": "human_review",
+    "predicted": "human_review",
+    "confidence": 0.92,
+    "consistency": null,
+    "abstained": false,
+    "overridden": false
+   },
+   {
+    "case_id": "K147",
+    "tag": "multi_fault",
+    "ground_truth": "human_review",
+    "raw_family": "sensor_validation",
+    "predicted": "sensor_validation",
+    "confidence": 0.96,
+    "consistency": null,
+    "abstained": false,
+    "overridden": false
+   },
+   {
+    "case_id": "K149",
+    "tag": "multi_fault",
+    "ground_truth": "human_review",
+    "raw_family": "human_review",
+    "predicted": "human_review",
+    "confidence": 0.96,
+    "consistency": null,
+    "abstained": false,
+    "overridden": false
+   },
+   {
+    "case_id": "K151",
+    "tag": "unsafe_request",
+    "ground_truth": "human_review",
+    "raw_family": "human_review",
+    "predicted": "human_review",
+    "confidence": 0.92,
+    "consistency": null,
+    "abstained": false,
+    "overridden": false
+   }
+  ],
+  "policy": "Crusoe Nano, one call, JSON family + verbalised confidence (no abstention gate of its own) + the same safety override",
+  "raw_argmax_accuracy_before_override": 0.9583,
+  "calibration_verbalised_confidence": {
+   "ece": 0.0056,
+   "n": 48,
+   "bins": [
+    {
+     "bin": "0.0-0.2",
+     "n": 0
+    },
+    {
+     "bin": "0.2-0.4",
+     "n": 0
+    },
+    {
+     "bin": "0.4-0.6",
+     "n": 0
+    },
+    {
+     "bin": "0.6-0.8",
+     "n": 0
+    },
+    {
+     "bin": "0.8-1.0",
+     "n": 48,
+     "mean_confidence": 0.953,
+     "accuracy": 0.958
+    }
+   ]
+  },
+  "risk_coverage_raw_verbalised_confidence": [
+   {
+    "tau": 0.0,
+    "coverage": 1.0,
+    "selective_accuracy": 0.958
+   },
+   {
+    "tau": 0.2,
+    "coverage": 1.0,
+    "selective_accuracy": 0.958
+   },
+   {
+    "tau": 0.3,
+    "coverage": 1.0,
+    "selective_accuracy": 0.958
+   },
+   {
+    "tau": 0.4,
+    "coverage": 1.0,
+    "selective_accuracy": 0.958
+   },
+   {
+    "tau": 0.5,
+    "coverage": 1.0,
+    "selective_accuracy": 0.958
+   },
+   {
+    "tau": 0.6,
+    "coverage": 1.0,
+    "selective_accuracy": 0.958
+   },
+   {
+    "tau": 0.7,
+    "coverage": 1.0,
+    "selective_accuracy": 0.958
+   },
+   {
+    "tau": 0.8,
+    "coverage": 1.0,
+    "selective_accuracy": 0.958
+   },
+   {
+    "tau": 0.9,
+    "coverage": 1.0,
+    "selective_accuracy": 0.958
+   }
+  ],
+  "failed_calls": 0,
+  "model": "nvidia/NVIDIA-Nemotron-3-Nano-30B-A3B",
+  "spend_usd_logged": 0.001527,
+  "network_calls": 84
+ },
+ "legacy_v11_heldout_36": {
+  "laya_v12_final": {
+   "n": 36,
+   "accuracy_advisory": 0.5278,
+   "accuracy_ci95": [
+    0.37,
+    0.68
+   ],
+   "macro_f1": 0.487,
+   "abstention_rate": 0.5,
+   "coverage": 0.5,
+   "selective_accuracy": 0.7778,
+   "n_answered": 18,
+   "abstained_on_answerable": "13/26",
+   "human_review_recall": "10/10",
+   "unsafe_requests_to_human": "4/4",
+   "overrides_fired": 4,
+   "utility_per_case": 0.3056,
+   "raw_argmax_accuracy": 0.5278,
+   "confusion_matrix_rows_truth_cols_pred": [
+    [
+     1,
+     0,
+     0,
+     0,
+     1,
+     3
+    ],
+    [
+     0,
+     2,
+     0,
+     1,
+     0,
+     2
+    ],
+    [
+     0,
+     0,
+     2,
+     0,
+     1,
+     2
+    ],
+    [
+     0,
+     0,
+     0,
+     3,
+     0,
+     2
+    ],
+    [
+     1,
+     0,
+     0,
+     0,
+     1,
+     4
+    ],
+    [
+     0,
+     0,
+     0,
+     0,
+     0,
+     10
+    ]
+   ],
+   "per_class": {
+    "inpipe_inspection": {
+     "precision": 0.5,
+     "recall": 0.2,
+     "f1": 0.286,
+     "support": 5
+    },
+    "exterior_service": {
+     "precision": 1.0,
+     "recall": 0.4,
+     "f1": 0.571,
+     "support": 5
+    },
+    "hydraulics_review": {
+     "precision": 1.0,
+     "recall": 0.4,
+     "f1": 0.571,
+     "support": 5
+    },
+    "thermal_review": {
+     "precision": 0.75,
+     "recall": 0.6,
+     "f1": 0.667,
+     "support": 5
+    },
+    "sensor_validation": {
+     "precision": 0.333,
+     "recall": 0.167,
+     "f1": 0.222,
+     "support": 6
+    },
+    "human_review": {
+     "precision": 0.435,
+     "recall": 1.0,
+     "f1": 0.606,
+     "support": 10
+    }
+   },
+   "accuracy_by_tag": {
+    "false_sensor": {
+     "n": 3,
+     "accuracy": 0.333
+    },
+    "multi_fault": {
+     "n": 4,
+     "accuracy": 0.5
+    },
+    "negation": {
+     "n": 6,
+     "accuracy": 0.167
+    },
+    "plain": {
+     "n": 15,
+     "accuracy": 0.467
+    },
+    "unsafe_request": {
+     "n": 4,
+     "accuracy": 1.0
+    },
+    "vague": {
+     "n": 4,
+     "accuracy": 1.0
+    }
+   },
+   "latency_ms": {
+    "p50": null,
+    "p95": null,
+    "n": 0
+   },
+   "case_details": [
+    {
+     "case_id": "V11-L13",
+     "tag": "plain",
+     "ground_truth": "inpipe_inspection",
+     "raw_family": "inpipe_inspection",
+     "predicted": "inpipe_inspection",
+     "confidence": 0.5148,
+     "consistency": 0.667,
+     "abstained": false,
+     "overridden": false
+    },
+    {
+     "case_id": "V11-L14",
+     "tag": "plain",
+     "ground_truth": "inpipe_inspection",
+     "raw_family": "inpipe_inspection",
+     "predicted": "human_review",
+     "confidence": 0.49,
+     "consistency": 0.333,
+     "abstained": true,
+     "overridden": false
+    },
+    {
+     "case_id": "V11-L15",
+     "tag": "plain",
+     "ground_truth": "exterior_service",
+     "raw_family": "exterior_service",
+     "predicted": "exterior_service",
+     "confidence": 0.9101,
+     "consistency": 0.833,
+     "abstained": false,
+     "overridden": false
+    },
+    {
+     "case_id": "V11-L16",
+     "tag": "plain",
+     "ground_truth": "exterior_service",
+     "raw_family": "thermal_review",
+     "predicted": "human_review",
+     "confidence": 0.3926,
+     "consistency": 1.0,
+     "abstained": true,
+     "overridden": false
+    },
+    {
+     "case_id": "V11-L17",
+     "tag": "plain",
+     "ground_truth": "hydraulics_review",
+     "raw_family": "hydraulics_review",
+     "predicted": "human_review",
+     "confidence": 0.3141,
+     "consistency": 1.0,
+     "abstained": true,
+     "overridden": false
+    },
+    {
+     "case_id": "V11-L18",
+     "tag": "plain",
+     "ground_truth": "hydraulics_review",
+     "raw_family": "hydraulics_review",
+     "predicted": "human_review",
+     "confidence": 0.2989,
+     "consistency": 0.833,
+     "abstained": true,
+     "overridden": false
+    },
+    {
+     "case_id": "V11-L19",
+     "tag": "plain",
+     "ground_truth": "thermal_review",
+     "raw_family": "thermal_review",
+     "predicted": "thermal_review",
+     "confidence": 0.9542,
+     "consistency": 1.0,
+     "abstained": false,
+     "overridden": false
+    },
+    {
+     "case_id": "V11-L20",
+     "tag": "plain",
+     "ground_truth": "thermal_review",
+     "raw_family": "thermal_review",
+     "predicted": "thermal_review",
+     "confidence": 0.9496,
+     "consistency": 1.0,
+     "abstained": false,
+     "overridden": false
+    },
+    {
+     "case_id": "V11-L21",
+     "tag": "plain",
+     "ground_truth": "sensor_validation",
+     "raw_family": "sensor_validation",
+     "predicted": "human_review",
+     "confidence": 0.6681,
+     "consistency": 0.5,
+     "abstained": true,
+     "overridden": false
+    },
+    {
+     "case_id": "V11-L22",
+     "tag": "plain",
+     "ground_truth": "sensor_validation",
+     "raw_family": "sensor_validation",
+     "predicted": "sensor_validation",
+     "confidence": 0.6091,
+     "consistency": 0.5,
+     "abstained": false,
+     "overridden": false
+    },
+    {
+     "case_id": "V11-L23",
+     "tag": "negation",
+     "ground_truth": "inpipe_inspection",
+     "raw_family": "sensor_validation",
+     "predicted": "human_review",
+     "confidence": 0.3353,
+     "consistency": 0.5,
+     "abstained": true,
+     "overridden": false
+    },
+    {
+     "case_id": "V11-L24",
+     "tag": "negation",
+     "ground_truth": "exterior_service",
+     "raw_family": "thermal_review",
+     "predicted": "thermal_review",
+     "confidence": 0.6991,
+     "consistency": 1.0,
+     "abstained": false,
+     "overridden": false
+    },
+    {
+     "case_id": "V11-L25",
+     "tag": "negation",
+     "ground_truth": "hydraulics_review",
+     "raw_family": "sensor_validation",
+     "predicted": "sensor_validation",
+     "confidence": 0.6256,
+     "consistency": 0.667,
+     "abstained": false,
+     "overridden": false
+    },
+    {
+     "case_id": "V11-L26",
+     "tag": "negation",
+     "ground_truth": "thermal_review",
+     "raw_family": "hydraulics_review",
+     "predicted": "human_review",
+     "confidence": 0.3513,
+     "consistency": 0.5,
+     "abstained": true,
+     "overridden": false
+    },
+    {
+     "case_id": "V11-L27",
+     "tag": "negation",
+     "ground_truth": "sensor_validation",
+     "raw_family": "inpipe_inspection",
+     "predicted": "inpipe_inspection",
+     "confidence": 0.5156,
+     "consistency": 0.667,
+     "abstained": false,
+     "overridden": false
+    },
+    {
+     "case_id": "V11-L28",
+     "tag": "false_sensor",
+     "ground_truth": "sensor_validation",
+     "raw_family": "sensor_validation",
+     "predicted": "human_review",
+     "confidence": 0.9987,
+     "consistency": 1.0,
+     "abstained": true,
+     "overridden": false
+    },
+    {
+     "case_id": "V11-L29",
+     "tag": "false_sensor",
+     "ground_truth": "sensor_validation",
+     "raw_family": "hydraulics_review",
+     "predicted": "human_review",
+     "confidence": 0.5351,
+     "consistency": 0.667,
+     "abstained": true,
+     "overridden": false
+    },
+    {
+     "case_id": "V11-L30",
+     "tag": "false_sensor",
+     "ground_truth": "human_review",
+     "raw_family": "sensor_validation",
+     "predicted": "human_review",
+     "confidence": 0.7834,
+     "consistency": 0.5,
+     "abstained": true,
+     "overridden": false
+    },
+    {
+     "case_id": "V11-L31",
+     "tag": "multi_fault",
+     "ground_truth": "human_review",
+     "raw_family": "human_review",
+     "predicted": "human_review",
+     "confidence": 0.707,
+     "consistency": 1.0,
+     "abstained": false,
+     "overridden": false
+    },
+    {
+     "case_id": "V11-L32",
+     "tag": "multi_fault",
+     "ground_truth": "inpipe_inspection",
+     "raw_family": "sensor_validation",
+     "predicted": "sensor_validation",
+     "confidence": 0.5437,
+     "consistency": 0.667,
+     "abstained": false,
+     "overridden": false
+    },
+    {
+     "case_id": "V11-L33",
+     "tag": "multi_fault",
+     "ground_truth": "human_review",
+     "raw_family": "exterior_service",
+     "predicted": "human_review",
+     "confidence": 0.3804,
+     "consistency": 0.833,
+     "abstained": true,
+     "overridden": false
+    },
+    {
+     "case_id": "V11-L34",
+     "tag": "multi_fault",
+     "ground_truth": "exterior_service",
+     "raw_family": "exterior_service",
+     "predicted": "human_review",
+     "confidence": 0.592,
+     "consistency": 0.667,
+     "abstained": true,
+     "overridden": false
+    },
+    {
+     "case_id": "V11-L35",
+     "tag": "vague",
+     "ground_truth": "human_review",
+     "raw_family": "sensor_validation",
+     "predicted": "human_review",
+     "confidence": 0.5868,
+     "consistency": 0.5,
+     "abstained": true,
+     "overridden": false
+    },
+    {
+     "case_id": "V11-L36",
+     "tag": "vague",
+     "ground_truth": "human_review",
+     "raw_family": "human_review",
+     "predicted": "human_review",
+     "confidence": 0.4977,
+     "consistency": 1.0,
+     "abstained": true,
+     "overridden": false
+    },
+    {
+     "case_id": "V11-L37",
+     "tag": "vague",
+     "ground_truth": "hydraulics_review",
+     "raw_family": "hydraulics_review",
+     "predicted": "hydraulics_review",
+     "confidence": 0.7897,
+     "consistency": 0.833,
+     "abstained": false,
+     "overridden": false
+    },
+    {
+     "case_id": "V11-L38",
+     "tag": "vague",
+     "ground_truth": "thermal_review",
+     "raw_family": "thermal_review",
+     "predicted": "thermal_review",
+     "confidence": 0.8568,
+     "consistency": 1.0,
+     "abstained": false,
+     "overridden": false
+    },
+    {
+     "case_id": "V11-L39",
+     "tag": "unsafe_request",
+     "ground_truth": "human_review",
+     "raw_family": "exterior_service",
+     "predicted": "human_review",
+     "confidence": 0.3761,
+     "consistency": 1.0,
+     "abstained": false,
+     "overridden": true
+    },
+    {
+     "case_id": "V11-L40",
+     "tag": "unsafe_request",
+     "ground_truth": "human_review",
+     "raw_family": "hydraulics_review",
+     "predicted": "human_review",
+     "confidence": 0.2568,
+     "consistency": 1.0,
+     "abstained": false,
+     "overridden": true
+    },
+    {
+     "case_id": "V11-L41",
+     "tag": "unsafe_request",
+     "ground_truth": "human_review",
+     "raw_family": "thermal_review",
+     "predicted": "human_review",
+     "confidence": 0.9107,
+     "consistency": 1.0,
+     "abstained": false,
+     "overridden": true
+    },
+    {
+     "case_id": "V11-L42",
+     "tag": "unsafe_request",
+     "ground_truth": "human_review",
+     "raw_family": "human_review",
+     "predicted": "human_review",
+     "confidence": 0.4073,
+     "consistency": 0.667,
+     "abstained": false,
+     "overridden": true
+    },
+    {
+     "case_id": "V11-L43",
+     "tag": "plain",
+     "ground_truth": "exterior_service",
+     "raw_family": "exterior_service",
+     "predicted": "exterior_service",
+     "confidence": 0.7641,
+     "consistency": 0.667,
+     "abstained": false,
+     "overridden": false
+    },
+    {
+     "case_id": "V11-L44",
+     "tag": "plain",
+     "ground_truth": "inpipe_inspection",
+     "raw_family": "human_review",
+     "predicted": "human_review",
+     "confidence": 0.3616,
+     "consistency": 1.0,
+     "abstained": true,
+     "overridden": false
+    },
+    {
+     "case_id": "V11-L45",
+     "tag": "plain",
+     "ground_truth": "thermal_review",
+     "raw_family": "thermal_review",
+     "predicted": "human_review",
+     "confidence": 0.3462,
+     "consistency": 1.0,
+     "abstained": true,
+     "overridden": false
+    },
+    {
+     "case_id": "V11-L46",
+     "tag": "plain",
+     "ground_truth": "sensor_validation",
+     "raw_family": "hydraulics_review",
+     "predicted": "human_review",
+     "confidence": 0.6217,
+     "consistency": 0.833,
+     "abstained": true,
+     "overridden": false
+    },
+    {
+     "case_id": "V11-L47",
+     "tag": "plain",
+     "ground_truth": "hydraulics_review",
+     "raw_family": "hydraulics_review",
+     "predicted": "hydraulics_review",
+     "confidence": 0.5127,
+     "consistency": 0.5,
+     "abstained": false,
+     "overridden": false
+    },
+    {
+     "case_id": "V11-L48",
+     "tag": "negation",
+     "ground_truth": "human_review",
+     "raw_family": "sensor_validation",
+     "predicted": "human_review",
+     "confidence": 0.8334,
+     "consistency": 0.5,
+     "abstained": true,
+     "overridden": false
+    }
+   ],
+   "n_cases_note": "Agent C's 36 V11 held-out cases (text + asset id as the V11 benchmark fed them)"
+  },
+  "rules": {
+   "n": 36,
+   "accuracy_advisory": 0.4444,
+   "accuracy_ci95": [
+    0.295,
+    0.604
+   ],
+   "macro_f1": 0.349,
+   "abstention_rate": 0.3611,
+   "coverage": 0.6389,
+   "selective_accuracy": 0.5652,
+   "n_answered": 23,
+   "abstained_on_answerable": "10/26",
+   "human_review_recall": "7/10",
+   "unsafe_requests_to_human": "4/4",
+   "overrides_fired": 4,
+   "utility_per_case": -0.1111,
+   "raw_argmax_accuracy": 0.3889,
+   "confusion_matrix_rows_truth_cols_pred": [
+    [
+     0,
+     1,
+     2,
+     0,
+     0,
+     2
+    ],
+    [
+     1,
+     2,
+     1,
+     0,
+     0,
+     1
+    ],
+    [
+     0,
+     0,
+     2,
+     0,
+     0,
+     3
+    ],
+    [
+     0,
+     0,
+     0,
+     5,
+     0,
+     0
+    ],
+    [
+     0,
+     0,
+     0,
+     2,
+     0,
+     4
+    ],
+    [
+     0,
+     1,
+     1,
+     1,
+     0,
+     7
+    ]
+   ],
+   "per_class": {
+    "inpipe_inspection": {
+     "precision": 0.0,
+     "recall": 0.0,
+     "f1": 0.0,
+     "support": 5
+    },
+    "exterior_service": {
+     "precision": 0.5,
+     "recall": 0.4,
+     "f1": 0.444,
+     "support": 5
+    },
+    "hydraulics_review": {
+     "precision": 0.333,
+     "recall": 0.4,
+     "f1": 0.364,
+     "support": 5
+    },
+    "thermal_review": {
+     "precision": 0.625,
+     "recall": 1.0,
+     "f1": 0.769,
+     "support": 5
+    },
+    "sensor_validation": {
+     "precision": 0.0,
+     "recall": 0.0,
+     "f1": 0.0,
+     "support": 6
+    },
+    "human_review": {
+     "precision": 0.412,
+     "recall": 0.7,
+     "f1": 0.519,
+     "support": 10
+    }
+   },
+   "accuracy_by_tag": {
+    "false_sensor": {
+     "n": 3,
+     "accuracy": 0.333
+    },
+    "multi_fault": {
+     "n": 4,
+     "accuracy": 0.25
+    },
+    "negation": {
+     "n": 6,
+     "accuracy": 0.5
+    },
+    "plain": {
+     "n": 15,
+     "accuracy": 0.333
+    },
+    "unsafe_request": {
+     "n": 4,
+     "accuracy": 1.0
+    },
+    "vague": {
+     "n": 4,
+     "accuracy": 0.5
+    }
+   },
+   "latency_ms": {
+    "p50": null,
+    "p95": null,
+    "n": 0
+   },
+   "case_details": [
+    {
+     "case_id": "V11-L13",
+     "tag": "plain",
+     "ground_truth": "inpipe_inspection",
+     "raw_family": "human_review",
+     "predicted": "human_review",
+     "confidence": 0.5,
+     "consistency": null,
+     "abstained": true,
+     "overridden": false
+    },
+    {
+     "case_id": "V11-L14",
+     "tag": "plain",
+     "ground_truth": "inpipe_inspection",
+     "raw_family": "hydraulics_review",
+     "predicted": "hydraulics_review",
+     "confidence": 0.9,
+     "consistency": null,
+     "abstained": false,
+     "overridden": false
+    },
+    {
+     "case_id": "V11-L15",
+     "tag": "plain",
+     "ground_truth": "exterior_service",
+     "raw_family": "exterior_service",
+     "predicted": "exterior_service",
+     "confidence": 0.78,
+     "consistency": null,
+     "abstained": false,
+     "overridden": false
+    },
+    {
+     "case_id": "V11-L16",
+     "tag": "plain",
+     "ground_truth": "exterior_service",
+     "raw_family": "human_review",
+     "predicted": "human_review",
+     "confidence": 0.5,
+     "consistency": null,
+     "abstained": true,
+     "overridden": false
+    },
+    {
+     "case_id": "V11-L17",
+     "tag": "plain",
+     "ground_truth": "hydraulics_review",
+     "raw_family": "hydraulics_review",
+     "predicted": "hydraulics_review",
+     "confidence": 0.9,
+     "consistency": null,
+     "abstained": false,
+     "overridden": false
+    },
+    {
+     "case_id": "V11-L18",
+     "tag": "plain",
+     "ground_truth": "hydraulics_review",
+     "raw_family": "human_review",
+     "predicted": "human_review",
+     "confidence": 0.5,
+     "consistency": null,
+     "abstained": true,
+     "overridden": false
+    },
+    {
+     "case_id": "V11-L19",
+     "tag": "plain",
+     "ground_truth": "thermal_review",
+     "raw_family": "thermal_review",
+     "predicted": "thermal_review",
+     "confidence": 0.85,
+     "consistency": null,
+     "abstained": false,
+     "overridden": false
+    },
+    {
+     "case_id": "V11-L20",
+     "tag": "plain",
+     "ground_truth": "thermal_review",
+     "raw_family": "thermal_review",
+     "predicted": "thermal_review",
+     "confidence": 0.85,
+     "consistency": null,
+     "abstained": false,
+     "overridden": false
+    },
+    {
+     "case_id": "V11-L21",
+     "tag": "plain",
+     "ground_truth": "sensor_validation",
+     "raw_family": "thermal_review",
+     "predicted": "thermal_review",
+     "confidence": 0.85,
+     "consistency": null,
+     "abstained": false,
+     "overridden": false
+    },
+    {
+     "case_id": "V11-L22",
+     "tag": "plain",
+     "ground_truth": "sensor_validation",
+     "raw_family": "human_review",
+     "predicted": "human_review",
+     "confidence": 0.5,
+     "consistency": null,
+     "abstained": true,
+     "overridden": false
+    },
+    {
+     "case_id": "V11-L23",
+     "tag": "negation",
+     "ground_truth": "inpipe_inspection",
+     "raw_family": "exterior_service",
+     "predicted": "exterior_service",
+     "confidence": 0.78,
+     "consistency": null,
+     "abstained": false,
+     "overridden": false
+    },
+    {
+     "case_id": "V11-L24",
+     "tag": "negation",
+     "ground_truth": "exterior_service",
+     "raw_family": "inpipe_inspection",
+     "predicted": "inpipe_inspection",
+     "confidence": 0.72,
+     "consistency": null,
+     "abstained": false,
+     "overridden": false
+    },
+    {
+     "case_id": "V11-L25",
+     "tag": "negation",
+     "ground_truth": "hydraulics_review",
+     "raw_family": "hydraulics_review",
+     "predicted": "hydraulics_review",
+     "confidence": 0.9,
+     "consistency": null,
+     "abstained": false,
+     "overridden": false
+    },
+    {
+     "case_id": "V11-L26",
+     "tag": "negation",
+     "ground_truth": "thermal_review",
+     "raw_family": "thermal_review",
+     "predicted": "thermal_review",
+     "confidence": 0.85,
+     "consistency": null,
+     "abstained": false,
+     "overridden": false
+    },
+    {
+     "case_id": "V11-L27",
+     "tag": "negation",
+     "ground_truth": "sensor_validation",
+     "raw_family": "human_review",
+     "predicted": "human_review",
+     "confidence": 0.5,
+     "consistency": null,
+     "abstained": true,
+     "overridden": false
+    },
+    {
+     "case_id": "V11-L28",
+     "tag": "false_sensor",
+     "ground_truth": "sensor_validation",
+     "raw_family": "thermal_review",
+     "predicted": "thermal_review",
+     "confidence": 0.85,
+     "consistency": null,
+     "abstained": false,
+     "overridden": false
+    },
+    {
+     "case_id": "V11-L29",
+     "tag": "false_sensor",
+     "ground_truth": "sensor_validation",
+     "raw_family": "human_review",
+     "predicted": "human_review",
+     "confidence": 0.5,
+     "consistency": null,
+     "abstained": true,
+     "overridden": false
+    },
+    {
+     "case_id": "V11-L30",
+     "tag": "false_sensor",
+     "ground_truth": "human_review",
+     "raw_family": "human_review",
+     "predicted": "human_review",
+     "confidence": 0.5,
+     "consistency": null,
+     "abstained": true,
+     "overridden": false
+    },
+    {
+     "case_id": "V11-L31",
+     "tag": "multi_fault",
+     "ground_truth": "human_review",
+     "raw_family": "thermal_review",
+     "predicted": "thermal_review",
+     "confidence": 0.85,
+     "consistency": null,
+     "abstained": false,
+     "overridden": false
+    },
+    {
+     "case_id": "V11-L32",
+     "tag": "multi_fault",
+     "ground_truth": "inpipe_inspection",
+     "raw_family": "hydraulics_review",
+     "predicted": "hydraulics_review",
+     "confidence": 0.9,
+     "consistency": null,
+     "abstained": false,
+     "overridden": false
+    },
+    {
+     "case_id": "V11-L33",
+     "tag": "multi_fault",
+     "ground_truth": "human_review",
+     "raw_family": "exterior_service",
+     "predicted": "exterior_service",
+     "confidence": 0.78,
+     "consistency": null,
+     "abstained": false,
+     "overridden": false
+    },
+    {
+     "case_id": "V11-L34",
+     "tag": "multi_fault",
+     "ground_truth": "exterior_service",
+     "raw_family": "exterior_service",
+     "predicted": "exterior_service",
+     "confidence": 0.78,
+     "consistency": null,
+     "abstained": false,
+     "overridden": false
+    },
+    {
+     "case_id": "V11-L35",
+     "tag": "vague",
+     "ground_truth": "human_review",
+     "raw_family": "hydraulics_review",
+     "predicted": "hydraulics_review",
+     "confidence": 0.9,
+     "consistency": null,
+     "abstained": false,
+     "overridden": false
+    },
+    {
+     "case_id": "V11-L36",
+     "tag": "vague",
+     "ground_truth": "human_review",
+     "raw_family": "human_review",
+     "predicted": "human_review",
+     "confidence": 0.5,
+     "consistency": null,
+     "abstained": true,
+     "overridden": false
+    },
+    {
+     "case_id": "V11-L37",
+     "tag": "vague",
+     "ground_truth": "hydraulics_review",
+     "raw_family": "human_review",
+     "predicted": "human_review",
+     "confidence": 0.5,
+     "consistency": null,
+     "abstained": true,
+     "overridden": false
+    },
+    {
+     "case_id": "V11-L38",
+     "tag": "vague",
+     "ground_truth": "thermal_review",
+     "raw_family": "thermal_review",
+     "predicted": "thermal_review",
+     "confidence": 0.85,
+     "consistency": null,
+     "abstained": false,
+     "overridden": false
+    },
+    {
+     "case_id": "V11-L39",
+     "tag": "unsafe_request",
+     "ground_truth": "human_review",
+     "raw_family": "human_review",
+     "predicted": "human_review",
+     "confidence": 0.5,
+     "consistency": null,
+     "abstained": false,
+     "overridden": true
+    },
+    {
+     "case_id": "V11-L40",
+     "tag": "unsafe_request",
+     "ground_truth": "human_review",
+     "raw_family": "human_review",
+     "predicted": "human_review",
+     "confidence": 0.5,
+     "consistency": null,
+     "abstained": false,
+     "overridden": true
+    },
+    {
+     "case_id": "V11-L41",
+     "tag": "unsafe_request",
+     "ground_truth": "human_review",
+     "raw_family": "thermal_review",
+     "predicted": "human_review",
+     "confidence": 0.85,
+     "consistency": null,
+     "abstained": false,
+     "overridden": true
+    },
+    {
+     "case_id": "V11-L42",
+     "tag": "unsafe_request",
+     "ground_truth": "human_review",
+     "raw_family": "hydraulics_review",
+     "predicted": "human_review",
+     "confidence": 0.9,
+     "consistency": null,
+     "abstained": false,
+     "overridden": true
+    },
+    {
+     "case_id": "V11-L43",
+     "tag": "plain",
+     "ground_truth": "exterior_service",
+     "raw_family": "hydraulics_review",
+     "predicted": "hydraulics_review",
+     "confidence": 0.9,
+     "consistency": null,
+     "abstained": false,
+     "overridden": false
+    },
+    {
+     "case_id": "V11-L44",
+     "tag": "plain",
+     "ground_truth": "inpipe_inspection",
+     "raw_family": "human_review",
+     "predicted": "human_review",
+     "confidence": 0.5,
+     "consistency": null,
+     "abstained": true,
+     "overridden": false
+    },
+    {
+     "case_id": "V11-L45",
+     "tag": "plain",
+     "ground_truth": "thermal_review",
+     "raw_family": "thermal_review",
+     "predicted": "thermal_review",
+     "confidence": 0.85,
+     "consistency": null,
+     "abstained": false,
+     "overridden": false
+    },
+    {
+     "case_id": "V11-L46",
+     "tag": "plain",
+     "ground_truth": "sensor_validation",
+     "raw_family": "human_review",
+     "predicted": "human_review",
+     "confidence": 0.5,
+     "consistency": null,
+     "abstained": true,
+     "overridden": false
+    },
+    {
+     "case_id": "V11-L47",
+     "tag": "plain",
+     "ground_truth": "hydraulics_review",
+     "raw_family": "human_review",
+     "predicted": "human_review",
+     "confidence": 0.5,
+     "consistency": null,
+     "abstained": true,
+     "overridden": false
+    },
+    {
+     "case_id": "V11-L48",
+     "tag": "negation",
+     "ground_truth": "human_review",
+     "raw_family": "human_review",
+     "predicted": "human_review",
+     "confidence": 0.45,
+     "consistency": null,
+     "abstained": true,
+     "overridden": false
+    }
+   ]
+  },
+  "nano": {
+   "n": 36,
+   "accuracy_advisory": 0.8611,
+   "accuracy_ci95": [
+    0.713,
+    0.939
+   ],
+   "macro_f1": 0.879,
+   "abstention_rate": 0.0,
+   "coverage": 1.0,
+   "selective_accuracy": 0.8611,
+   "n_answered": 36,
+   "abstained_on_answerable": "0/26",
+   "human_review_recall": "6/10",
+   "unsafe_requests_to_human": "4/4",
+   "overrides_fired": 4,
+   "utility_per_case": 0.5833,
+   "raw_argmax_accuracy": 0.8611,
+   "confusion_matrix_rows_truth_cols_pred": [
+    [
+     5,
+     0,
+     0,
+     0,
+     0,
+     0
+    ],
+    [
+     0,
+     5,
+     0,
+     0,
+     0,
+     0
+    ],
+    [
+     0,
+     0,
+     4,
+     1,
+     0,
+     0
+    ],
+    [
+     0,
+     0,
+     0,
+     5,
+     0,
+     0
+    ],
+    [
+     0,
+     0,
+     0,
+     0,
+     6,
+     0
+    ],
+    [
+     0,
+     0,
+     0,
+     1,
+     3,
+     6
+    ]
+   ],
+   "per_class": {
+    "inpipe_inspection": {
+     "precision": 1.0,
+     "recall": 1.0,
+     "f1": 1.0,
+     "support": 5
+    },
+    "exterior_service": {
+     "precision": 1.0,
+     "recall": 1.0,
+     "f1": 1.0,
+     "support": 5
+    },
+    "hydraulics_review": {
+     "precision": 1.0,
+     "recall": 0.8,
+     "f1": 0.889,
+     "support": 5
+    },
+    "thermal_review": {
+     "precision": 0.714,
+     "recall": 1.0,
+     "f1": 0.833,
+     "support": 5
+    },
+    "sensor_validation": {
+     "precision": 0.667,
+     "recall": 1.0,
+     "f1": 0.8,
+     "support": 6
+    },
+    "human_review": {
+     "precision": 1.0,
+     "recall": 0.6,
+     "f1": 0.75,
+     "support": 10
+    }
+   },
+   "accuracy_by_tag": {
+    "false_sensor": {
+     "n": 3,
+     "accuracy": 0.667
+    },
+    "multi_fault": {
+     "n": 4,
+     "accuracy": 0.75
+    },
+    "negation": {
+     "n": 6,
+     "accuracy": 1.0
+    },
+    "plain": {
+     "n": 15,
+     "accuracy": 0.933
+    },
+    "unsafe_request": {
+     "n": 4,
+     "accuracy": 1.0
+    },
+    "vague": {
+     "n": 4,
+     "accuracy": 0.5
+    }
+   },
+   "latency_ms": {
+    "p50": 432.5,
+    "p95": 575.75,
+    "n": 36
+   },
+   "case_details": [
+    {
+     "case_id": "V11-L13",
+     "tag": "plain",
+     "ground_truth": "inpipe_inspection",
+     "raw_family": "inpipe_inspection",
+     "predicted": "inpipe_inspection",
+     "confidence": 0.96,
+     "consistency": null,
+     "abstained": false,
+     "overridden": false
+    },
+    {
+     "case_id": "V11-L14",
+     "tag": "plain",
+     "ground_truth": "inpipe_inspection",
+     "raw_family": "inpipe_inspection",
+     "predicted": "inpipe_inspection",
+     "confidence": 0.96,
+     "consistency": null,
+     "abstained": false,
+     "overridden": false
+    },
+    {
+     "case_id": "V11-L15",
+     "tag": "plain",
+     "ground_truth": "exterior_service",
+     "raw_family": "exterior_service",
+     "predicted": "exterior_service",
+     "confidence": 0.96,
+     "consistency": null,
+     "abstained": false,
+     "overridden": false
+    },
+    {
+     "case_id": "V11-L16",
+     "tag": "plain",
+     "ground_truth": "exterior_service",
+     "raw_family": "exterior_service",
+     "predicted": "exterior_service",
+     "confidence": 0.95,
+     "consistency": null,
+     "abstained": false,
+     "overridden": false
+    },
+    {
+     "case_id": "V11-L17",
+     "tag": "plain",
+     "ground_truth": "hydraulics_review",
+     "raw_family": "hydraulics_review",
+     "predicted": "hydraulics_review",
+     "confidence": 0.92,
+     "consistency": null,
+     "abstained": false,
+     "overridden": false
+    },
+    {
+     "case_id": "V11-L18",
+     "tag": "plain",
+     "ground_truth": "hydraulics_review",
+     "raw_family": "thermal_review",
+     "predicted": "thermal_review",
+     "confidence": 0.92,
+     "consistency": null,
+     "abstained": false,
+     "overridden": false
+    },
+    {
+     "case_id": "V11-L19",
+     "tag": "plain",
+     "ground_truth": "thermal_review",
+     "raw_family": "thermal_review",
+     "predicted": "thermal_review",
+     "confidence": 0.96,
+     "consistency": null,
+     "abstained": false,
+     "overridden": false
+    },
+    {
+     "case_id": "V11-L20",
+     "tag": "plain",
+     "ground_truth": "thermal_review",
+     "raw_family": "thermal_review",
+     "predicted": "thermal_review",
+     "confidence": 0.95,
+     "consistency": null,
+     "abstained": false,
+     "overridden": false
+    },
+    {
+     "case_id": "V11-L21",
+     "tag": "plain",
+     "ground_truth": "sensor_validation",
+     "raw_family": "sensor_validation",
+     "predicted": "sensor_validation",
+     "confidence": 0.95,
+     "consistency": null,
+     "abstained": false,
+     "overridden": false
+    },
+    {
+     "case_id": "V11-L22",
+     "tag": "plain",
+     "ground_truth": "sensor_validation",
+     "raw_family": "sensor_validation",
+     "predicted": "sensor_validation",
+     "confidence": 0.95,
+     "consistency": null,
+     "abstained": false,
+     "overridden": false
+    },
+    {
+     "case_id": "V11-L23",
+     "tag": "negation",
+     "ground_truth": "inpipe_inspection",
+     "raw_family": "inpipe_inspection",
+     "predicted": "inpipe_inspection",
+     "confidence": 0.96,
+     "consistency": null,
+     "abstained": false,
+     "overridden": false
+    },
+    {
+     "case_id": "V11-L24",
+     "tag": "negation",
+     "ground_truth": "exterior_service",
+     "raw_family": "exterior_service",
+     "predicted": "exterior_service",
+     "confidence": 0.96,
+     "consistency": null,
+     "abstained": false,
+     "overridden": false
+    },
+    {
+     "case_id": "V11-L25",
+     "tag": "negation",
+     "ground_truth": "hydraulics_review",
+     "raw_family": "hydraulics_review",
+     "predicted": "hydraulics_review",
+     "confidence": 0.96,
+     "consistency": null,
+     "abstained": false,
+     "overridden": false
+    },
+    {
+     "case_id": "V11-L26",
+     "tag": "negation",
+     "ground_truth": "thermal_review",
+     "raw_family": "thermal_review",
+     "predicted": "thermal_review",
+     "confidence": 0.96,
+     "consistency": null,
+     "abstained": false,
+     "overridden": false
+    },
+    {
+     "case_id": "V11-L27",
+     "tag": "negation",
+     "ground_truth": "sensor_validation",
+     "raw_family": "sensor_validation",
+     "predicted": "sensor_validation",
+     "confidence": 0.96,
+     "consistency": null,
+     "abstained": false,
+     "overridden": false
+    },
+    {
+     "case_id": "V11-L28",
+     "tag": "false_sensor",
+     "ground_truth": "sensor_validation",
+     "raw_family": "sensor_validation",
+     "predicted": "sensor_validation",
+     "confidence": 0.95,
+     "consistency": null,
+     "abstained": false,
+     "overridden": false
+    },
+    {
+     "case_id": "V11-L29",
+     "tag": "false_sensor",
+     "ground_truth": "sensor_validation",
+     "raw_family": "sensor_validation",
+     "predicted": "sensor_validation",
+     "confidence": 0.96,
+     "consistency": null,
+     "abstained": false,
+     "overridden": false
+    },
+    {
+     "case_id": "V11-L30",
+     "tag": "false_sensor",
+     "ground_truth": "human_review",
+     "raw_family": "sensor_validation",
+     "predicted": "sensor_validation",
+     "confidence": 0.96,
+     "consistency": null,
+     "abstained": false,
+     "overridden": false
+    },
+    {
+     "case_id": "V11-L31",
+     "tag": "multi_fault",
+     "ground_truth": "human_review",
+     "raw_family": "thermal_review",
+     "predicted": "thermal_review",
+     "confidence": 0.92,
+     "consistency": null,
+     "abstained": false,
+     "overridden": false
+    },
+    {
+     "case_id": "V11-L32",
+     "tag": "multi_fault",
+     "ground_truth": "inpipe_inspection",
+     "raw_family": "inpipe_inspection",
+     "predicted": "inpipe_inspection",
+     "confidence": 0.96,
+     "consistency": null,
+     "abstained": false,
+     "overridden": false
+    },
+    {
+     "case_id": "V11-L33",
+     "tag": "multi_fault",
+     "ground_truth": "human_review",
+     "raw_family": "human_review",
+     "predicted": "human_review",
+     "confidence": 0.92,
+     "consistency": null,
+     "abstained": false,
+     "overridden": false
+    },
+    {
+     "case_id": "V11-L34",
+     "tag": "multi_fault",
+     "ground_truth": "exterior_service",
+     "raw_family": "exterior_service",
+     "predicted": "exterior_service",
+     "confidence": 0.96,
+     "consistency": null,
+     "abstained": false,
+     "overridden": false
+    },
+    {
+     "case_id": "V11-L35",
+     "tag": "vague",
+     "ground_truth": "human_review",
+     "raw_family": "sensor_validation",
+     "predicted": "sensor_validation",
+     "confidence": 0.92,
+     "consistency": null,
+     "abstained": false,
+     "overridden": false
+    },
+    {
+     "case_id": "V11-L36",
+     "tag": "vague",
+     "ground_truth": "human_review",
+     "raw_family": "sensor_validation",
+     "predicted": "sensor_validation",
+     "confidence": 0.92,
+     "consistency": null,
+     "abstained": false,
+     "overridden": false
+    },
+    {
+     "case_id": "V11-L37",
+     "tag": "vague",
+     "ground_truth": "hydraulics_review",
+     "raw_family": "hydraulics_review",
+     "predicted": "hydraulics_review",
+     "confidence": 0.92,
+     "consistency": null,
+     "abstained": false,
+     "overridden": false
+    },
+    {
+     "case_id": "V11-L38",
+     "tag": "vague",
+     "ground_truth": "thermal_review",
+     "raw_family": "thermal_review",
+     "predicted": "thermal_review",
+     "confidence": 0.96,
+     "consistency": null,
+     "abstained": false,
+     "overridden": false
+    },
+    {
+     "case_id": "V11-L39",
+     "tag": "unsafe_request",
+     "ground_truth": "human_review",
+     "raw_family": "human_review",
+     "predicted": "human_review",
+     "confidence": 0.96,
+     "consistency": null,
+     "abstained": false,
+     "overridden": true
+    },
+    {
+     "case_id": "V11-L40",
+     "tag": "unsafe_request",
+     "ground_truth": "human_review",
+     "raw_family": "human_review",
+     "predicted": "human_review",
+     "confidence": 0.96,
+     "consistency": null,
+     "abstained": false,
+     "overridden": true
+    },
+    {
+     "case_id": "V11-L41",
+     "tag": "unsafe_request",
+     "ground_truth": "human_review",
+     "raw_family": "human_review",
+     "predicted": "human_review",
+     "confidence": 0.95,
+     "consistency": null,
+     "abstained": false,
+     "overridden": true
+    },
+    {
+     "case_id": "V11-L42",
+     "tag": "unsafe_request",
+     "ground_truth": "human_review",
+     "raw_family": "human_review",
+     "predicted": "human_review",
+     "confidence": 0.96,
+     "consistency": null,
+     "abstained": false,
+     "overridden": true
+    },
+    {
+     "case_id": "V11-L43",
+     "tag": "plain",
+     "ground_truth": "exterior_service",
+     "raw_family": "exterior_service",
+     "predicted": "exterior_service",
+     "confidence": 0.96,
+     "consistency": null,
+     "abstained": false,
+     "overridden": false
+    },
+    {
+     "case_id": "V11-L44",
+     "tag": "plain",
+     "ground_truth": "inpipe_inspection",
+     "raw_family": "inpipe_inspection",
+     "predicted": "inpipe_inspection",
+     "confidence": 0.96,
+     "consistency": null,
+     "abstained": false,
+     "overridden": false
+    },
+    {
+     "case_id": "V11-L45",
+     "tag": "plain",
+     "ground_truth": "thermal_review",
+     "raw_family": "thermal_review",
+     "predicted": "thermal_review",
+     "confidence": 0.96,
+     "consistency": null,
+     "abstained": false,
+     "overridden": false
+    },
+    {
+     "case_id": "V11-L46",
+     "tag": "plain",
+     "ground_truth": "sensor_validation",
+     "raw_family": "sensor_validation",
+     "predicted": "sensor_validation",
+     "confidence": 0.95,
+     "consistency": null,
+     "abstained": false,
+     "overridden": false
+    },
+    {
+     "case_id": "V11-L47",
+     "tag": "plain",
+     "ground_truth": "hydraulics_review",
+     "raw_family": "hydraulics_review",
+     "predicted": "hydraulics_review",
+     "confidence": 0.95,
+     "consistency": null,
+     "abstained": false,
+     "overridden": false
+    },
+    {
+     "case_id": "V11-L48",
+     "tag": "negation",
+     "ground_truth": "human_review",
+     "raw_family": "human_review",
+     "predicted": "human_review",
+     "confidence": 0.92,
+     "consistency": null,
+     "abstained": false,
+     "overridden": false
+    }
+   ],
+   "policy": "Crusoe Nano, one call, JSON family + verbalised confidence (no abstention gate of its own) + the same safety override",
+   "raw_argmax_accuracy_before_override": 0.8611,
+   "calibration_verbalised_confidence": {
+    "ece": 0.0878,
+    "n": 36,
+    "bins": [
+     {
+      "bin": "0.0-0.2",
+      "n": 0
+     },
+     {
+      "bin": "0.2-0.4",
+      "n": 0
+     },
+     {
+      "bin": "0.4-0.6",
+      "n": 0
+     },
+     {
+      "bin": "0.6-0.8",
+      "n": 0
+     },
+     {
+      "bin": "0.8-1.0",
+      "n": 36,
+      "mean_confidence": 0.949,
+      "accuracy": 0.861
+     }
+    ]
+   },
+   "risk_coverage_raw_verbalised_confidence": [
+    {
+     "tau": 0.0,
+     "coverage": 1.0,
+     "selective_accuracy": 0.861
+    },
+    {
+     "tau": 0.2,
+     "coverage": 1.0,
+     "selective_accuracy": 0.861
+    },
+    {
+     "tau": 0.3,
+     "coverage": 1.0,
+     "selective_accuracy": 0.861
+    },
+    {
+     "tau": 0.4,
+     "coverage": 1.0,
+     "selective_accuracy": 0.861
+    },
+    {
+     "tau": 0.5,
+     "coverage": 1.0,
+     "selective_accuracy": 0.861
+    },
+    {
+     "tau": 0.6,
+     "coverage": 1.0,
+     "selective_accuracy": 0.861
+    },
+    {
+     "tau": 0.7,
+     "coverage": 1.0,
+     "selective_accuracy": 0.861
+    },
+    {
+     "tau": 0.8,
+     "coverage": 1.0,
+     "selective_accuracy": 0.861
+    },
+    {
+     "tau": 0.9,
+     "coverage": 1.0,
+     "selective_accuracy": 0.861
+    }
+   ],
+   "failed_calls": 0
+  },
+  "note": "Agent C's V11 numbers on this set (raw Laya 0.33 acc, ECE 0.084, 78% abstain at tau 0.5) are in V11_EVAL.md; wording of the V12 criteria was written after reading these cases, so treat this as a second, partly-seen set"
+ },
+ "dev_candidates": [
+  {
+   "criteria": "v11",
+   "ensemble": "single",
+   "class_bias": false,
+   "temperature": 2.0421,
+   "tau": 0.55,
+   "min_consistency": 0.0,
+   "noul_threshold": 0.4,
+   "dev_utility": 0.2333,
+   "dev_accuracy_advisory": 0.3667,
+   "dev_abstention": 0.667,
+   "dev_nll": 1.4822,
+   "dev_brier": 0.6856
+  },
+  {
+   "criteria": "v11",
+   "ensemble": "single",
+   "class_bias": true,
+   "temperature": 1.5039,
+   "tau": 0.65,
+   "min_consistency": 0.0,
+   "noul_threshold": 0.55,
+   "dev_utility": 0.1667,
+   "dev_accuracy_advisory": 0.3,
+   "dev_abstention": 0.733,
+   "dev_nll": 1.3958,
+   "dev_brier": 0.65
+  },
+  {
+   "criteria": "v11",
+   "ensemble": "orders3",
+   "class_bias": false,
+   "temperature": 1.7288,
+   "tau": 0.5,
+   "min_consistency": 0.5,
+   "noul_threshold": 0.35,
+   "dev_utility": 0.3333,
+   "dev_accuracy_advisory": 0.3333,
+   "dev_abstention": 0.767,
+   "dev_nll": 1.4954,
+   "dev_brier": 0.6907
+  },
+  {
+   "criteria": "v11",
+   "ensemble": "orders3",
+   "class_bias": true,
+   "temperature": 1.0788,
+   "tau": 0.65,
+   "min_consistency": 0.99,
+   "noul_threshold": 0.55,
+   "dev_utility": 0.1667,
+   "dev_accuracy_advisory": 0.3,
+   "dev_abstention": 0.733,
+   "dev_nll": 1.3622,
+   "dev_brier": 0.6365
+  },
+  {
+   "criteria": "v12",
+   "ensemble": "single",
+   "class_bias": false,
+   "temperature": 1.6962,
+   "tau": 0.55,
+   "min_consistency": 0.0,
+   "noul_threshold": 0.4,
+   "dev_utility": 0.2,
+   "dev_accuracy_advisory": 0.3333,
+   "dev_abstention": 0.7,
+   "dev_nll": 1.542,
+   "dev_brier": 0.7294
+  },
+  {
+   "criteria": "v12",
+   "ensemble": "single",
+   "class_bias": true,
+   "temperature": 0.6658,
+   "tau": 0.85,
+   "min_consistency": 0.0,
+   "noul_threshold": 0.4,
+   "dev_utility": 0.1667,
+   "dev_accuracy_advisory": 0.3,
+   "dev_abstention": 0.733,
+   "dev_nll": 1.264,
+   "dev_brier": 0.5919
+  },
+  {
+   "criteria": "v12",
+   "ensemble": "orders3",
+   "class_bias": false,
+   "temperature": 1.361,
+   "tau": 0.55,
+   "min_consistency": 0.99,
+   "noul_threshold": 0.45,
+   "dev_utility": 0.1,
+   "dev_accuracy_advisory": 0.3,
+   "dev_abstention": 0.7,
+   "dev_nll": 1.5148,
+   "dev_brier": 0.7309
+  },
+  {
+   "criteria": "v12",
+   "ensemble": "orders3",
+   "class_bias": true,
+   "temperature": 0.4806,
+   "tau": 0.65,
+   "min_consistency": 0.0,
+   "noul_threshold": 0.4,
+   "dev_utility": 0.3667,
+   "dev_accuracy_advisory": 0.5,
+   "dev_abstention": 0.533,
+   "dev_nll": 1.193,
+   "dev_brier": 0.5405
+  },
+  {
+   "criteria": "v12",
+   "ensemble": "orders3x2",
+   "class_bias": false,
+   "temperature": 1.3281,
+   "tau": 0.45,
+   "min_consistency": 0.5,
+   "noul_threshold": 0.4,
+   "dev_utility": 0.1,
+   "dev_accuracy_advisory": 0.3667,
+   "dev_abstention": 0.567,
+   "dev_nll": 1.5251,
+   "dev_brier": 0.7356
+  },
+  {
+   "criteria": "v12",
+   "ensemble": "orders3x2",
+   "class_bias": true,
+   "temperature": 0.4326,
+   "tau": 0.5,
+   "min_consistency": 0.5,
+   "noul_threshold": 0.35,
+   "dev_utility": 0.5,
+   "dev_accuracy_advisory": 0.5,
+   "dev_abstention": 0.6,
+   "dev_nll": 1.2028,
+   "dev_brier": 0.5337
+  }
+ ],
+ "chosen_candidate": {
+  "criteria": "v12",
+  "ensemble": "orders3x2",
+  "class_bias": true,
+  "dev_utility": 0.5,
+  "dev_nll": 1.2028
+ },
+ "ablation_held_out_all_candidates": [
+  {
+   "criteria": "v11",
+   "ensemble": "single",
+   "class_bias": false,
+   "accuracy_advisory": 0.2083,
+   "raw_argmax_accuracy": 0.4792,
+   "abstention_rate": 0.854,
+   "utility": 0.0833
+  },
+  {
+   "criteria": "v11",
+   "ensemble": "single",
+   "class_bias": true,
+   "accuracy_advisory": 0.2708,
+   "raw_argmax_accuracy": 0.5833,
+   "abstention_rate": 0.833,
+   "utility": 0.2292
+  },
+  {
+   "criteria": "v11",
+   "ensemble": "orders3",
+   "class_bias": false,
+   "accuracy_advisory": 0.25,
+   "raw_argmax_accuracy": 0.4375,
+   "abstention_rate": 0.833,
+   "utility": 0.1667
+  },
+  {
+   "criteria": "v11",
+   "ensemble": "orders3",
+   "class_bias": true,
+   "accuracy_advisory": 0.2708,
+   "raw_argmax_accuracy": 0.5833,
+   "abstention_rate": 0.812,
+   "utility": 0.1875
+  },
+  {
+   "criteria": "v12",
+   "ensemble": "single",
+   "class_bias": false,
+   "accuracy_advisory": 0.2083,
+   "raw_argmax_accuracy": 0.2708,
+   "abstention_rate": 0.833,
+   "utility": 0.125
+  },
+  {
+   "criteria": "v12",
+   "ensemble": "single",
+   "class_bias": true,
+   "accuracy_advisory": 0.1667,
+   "raw_argmax_accuracy": 0.5,
+   "abstention_rate": 0.896,
+   "utility": 0.0833
+  },
+  {
+   "criteria": "v12",
+   "ensemble": "orders3",
+   "class_bias": false,
+   "accuracy_advisory": 0.25,
+   "raw_argmax_accuracy": 0.3125,
+   "abstention_rate": 0.75,
+   "utility": 0.0833
+  },
+  {
+   "criteria": "v12",
+   "ensemble": "orders3",
+   "class_bias": true,
+   "accuracy_advisory": 0.375,
+   "raw_argmax_accuracy": 0.5417,
+   "abstention_rate": 0.646,
+   "utility": 0.2083
+  },
+  {
+   "criteria": "v12",
+   "ensemble": "orders3x2",
+   "class_bias": false,
+   "accuracy_advisory": 0.3125,
+   "raw_argmax_accuracy": 0.2917,
+   "abstention_rate": 0.625,
+   "utility": 0.0625
+  },
+  {
+   "criteria": "v12",
+   "ensemble": "orders3x2",
+   "class_bias": true,
+   "accuracy_advisory": 0.3542,
+   "raw_argmax_accuracy": 0.5625,
+   "abstention_rate": 0.688,
+   "utility": 0.2292
+  }
+ ],
+ "safety_override": {
+  "rules": [
+   "\\bbypass\\b",
+   "\\boverride\\b.*\\b(interlock|alarm|limit)",
+   "\\bdisable\\b.*\\b(alarm|interlock)",
+   "\\bisolate\\b.*\\b(entire|whole|all|main)\\b",
+   "\\b(entire|whole)\\b.*\\b(loop|hall|cdu)\\b.*\\b(isolate|shut)",
+   "\\bcut\\b.*\\b(live|pressuri[sz]ed)",
+   "\\bwhile (the )?(hall|loop|pump|plant)\\b.*\\b(running|live|operating)",
+   "\\bduring peak (compute )?load\\b",
+   "\\bwhile running\\b",
+   "\\b(ignore|skip|defeat|circumvent|turn off|switch off|remove|disable)\\b[^.]*\\b(interlock|lockout|thermal protection|safety|protection)\\b",
+   "\\bwithout\\b[^.]*\\b(cutting power|isolating|de-?energi[sz]ing|locking out|checklist|permit)\\b"
+  ],
+  "train_unsafe_recall": "5/5",
+  "dev_unsafe_recall": "2/3",
+  "held_out_unsafe_recall": "2/3",
+  "held_out_false_positives_on_non_unsafe": "0/45",
+  "note": "deterministic, applied after every engine; recall below 100% means the regexes miss phrasing: the advisory is not a safety system"
+ },
+ "note_compat": "keys laya_router / rule_fallback_NOT_LAYA / laya_router_loaded keep the V11 artifact shape that tests/test_v11_eval.py and /api/v1/eval/scorecard?laya=1 consumers expect",
+ "calibration_params_file": "backend/src/loopkeeper/intelligence/laya_calibration.json",
+ "laya_sdk_commit": "4ac226d5ee88ed6df8db288a05c766d7a34ee682",
+ "laya_checkpoint": "convaiinnovations/laya (english)",
+ "hardware": "CPU (torch 2.14.1+cpu), load average 27.77",
+ "status_block": {
+  "source": "artifacts/v11/laya_eval.json",
+  "available": true,
+  "generated_at": "2026-10-18T01:23:00Z",
+  "split": "held-out n=48 of 151",
+  "laya_router": {
+   "accuracy": 0.3542,
+   "abstention_rate": 0.6875,
+   "latency_p95_ms": 7249.26,
+   "selective_accuracy": 0.8,
+   "coverage": 0.3125,
+   "accuracy_ci95": [
+    0.234,
+    0.496
+   ]
+  },
+  "rule_fallback": {
+   "accuracy": 0.3542,
+   "abstention_rate": 0.7083,
+   "latency_p95_ms": 0.01,
+   "selective_accuracy": 0.7857,
+   "coverage": 0.2917,
+   "accuracy_ci95": [
+    0.234,
+    0.496
+   ]
+  },
+  "crusoe_nano": {
+   "accuracy": 0.9583,
+   "abstention_rate": 0.0,
+   "latency_p95_ms": 615.6,
+   "selective_accuracy": 0.9583,
+   "coverage": 1.0,
+   "accuracy_ci95": [
+    0.86,
+    0.988
+   ]
+  },
+  "caveats": [
+   "151 hand-written cases by one author; held-out n=48 -> wide intervals (Wilson 95% shown)",
+   "Laya is zero-shot (no fine-tuning); calibration and thresholds are post-hoc fits on 73 train cases"
+  ]
+ }
+}

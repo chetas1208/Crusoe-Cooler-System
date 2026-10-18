@@ -161,6 +161,7 @@ class MuJoCoRuntime:
         self.base_pos = [12.0, 2.0, 0.15]
         self.base_yaw = 0.0
         self._ext_target = None
+        self.ext_hold_local: Optional[List[float]] = None          # cell-frame centre a payload carried by an engine-side manipulator is held at (set per engine tick)
         self.set_anchor(*self.CELL_ORIGIN, math.pi / 2.0)          # identity anchor until the engine places the cell in the facility
         self.base_vel = [0.0, 0.0]
         self._omega_cmd = 0.0
@@ -198,6 +199,7 @@ class MuJoCoRuntime:
         self._model = None
         self._data = None
         self._cartridge_bid = -1
+        self._cart_qadr = self._cart_vadr = 0
         self._link6_bid = -1
         
         if HAS_MUJOCO:
@@ -211,6 +213,8 @@ class MuJoCoRuntime:
             self._data = mujoco.MjData(self._model)
             self._cartridge_bid = mujoco.mj_name2id(self._model, mujoco.mjtObj.mjOBJ_BODY, "strainer_cartridge")
             self._link6_bid = mujoco.mj_name2id(self._model, mujoco.mjtObj.mjOBJ_BODY, "arm_link_6")
+            cj = mujoco.mj_name2id(self._model, mujoco.mjtObj.mjOBJ_JOINT, "cartridge_free")
+            self._cart_qadr, self._cart_vadr = int(self._model.jnt_qposadr[cj]), int(self._model.jnt_dofadr[cj])
             
             # Initial forward step
             mujoco.mj_forward(self._model, self._data)
@@ -239,6 +243,11 @@ class MuJoCoRuntime:
         d = np.array([local_xyz[0] - self.CELL_ORIGIN[0], local_xyz[1] - self.CELL_ORIGIN[1], local_xyz[2]], dtype=float)
         f = self._A @ d
         return [float(f[0] + self.anchor_xz[0]), float(f[1]), float(f[2] + self.anchor_xz[1])]
+
+    def from_facility_point(self, facility_xyz) -> List[float]:
+        """Inverse of to_facility_point: a facility point -> the cell frame."""
+        d = self._A.T @ np.array([facility_xyz[0] - self.anchor_xz[0], facility_xyz[1], facility_xyz[2] - self.anchor_xz[1]], dtype=float)
+        return [float(d[0] + self.CELL_ORIGIN[0]), float(d[1] + self.CELL_ORIGIN[1]), float(d[2])]
 
     def to_local_planar(self, X: float, Z: float) -> Tuple[float, float]:
         d = self._A.T @ np.array([X - self.anchor_xz[0], 0.0, Z - self.anchor_xz[1]])
@@ -442,13 +451,33 @@ class MuJoCoRuntime:
         self.gripper_aperture = 0.07
         self.held_object_id = None
         self.cartridge_state.held_by_robot_id = None
+        return self._settle_and_judge(None)
+
+    def drop_external(self, local_xyz: List[float]) -> Tuple[bool, str]:
+        """Release a payload that an engine-side manipulator carried at `local_xyz` (cell frame): it is let go there at rest and the cell physics
+        decides where it ends up (same judgement as place_cartridge)."""
+        self.ext_hold_local = None
+        self.held_object_id = None
+        self.cartridge_state.held_by_robot_id = None
+        return self._settle_and_judge(list(local_xyz))
+
+    def _settle_and_judge(self, release_at: Optional[List[float]]) -> Tuple[bool, str]:
+        if release_at is not None:
+            self.cartridge_state.pos_xyz = list(release_at)
+            self.cartridge_state.vel_xyz = [0.0, 0.0, 0.0]
+            if self._data is not None:
+                adr = int(self._model.jnt_qposadr[mujoco.mj_name2id(self._model, mujoco.mjtObj.mjOBJ_JOINT, "cartridge_free")])
+                vadr = int(self._model.jnt_dofadr[mujoco.mj_name2id(self._model, mujoco.mjtObj.mjOBJ_JOINT, "cartridge_free")])
+                self._data.qpos[adr:adr + 7] = [release_at[0], release_at[1], release_at[2], 1.0, 0.0, 0.0, 0.0]
+                self._data.qvel[vadr:vadr + 6] = 0.0
+                mujoco.mj_forward(self._model, self._data)
         if self._data is not None:
             for _ in range(75):                      # 1.5 s to settle under gravity
                 self.step()
             end = self.cartridge_state.pos_xyz
             speed = float(np.linalg.norm(self.cartridge_state.vel_xyz))
         else:
-            end, speed = self.get_end_effector_pose()[:3], 0.0
+            end, speed = (release_at or self.get_end_effector_pose()[:3]), 0.0
         sx, sy, sz = self.SEAT_XYZ
         horiz = math.hypot(end[0] - sx, end[1] - sy)
         vert = abs(end[2] - sz)
@@ -522,6 +551,9 @@ class MuJoCoRuntime:
                 self._data.qpos[1] = by0 + wv[1] * h * (k + 1) - 2.0
                 self._data.qpos[2] = bw0 + wv[2] * h * (k + 1)
                 self._data.qvel[0:3] = wv
+                if self.ext_hold_local is not None:                     # payload carried by the engine-side manipulator: prescribed pose
+                    self._data.qpos[self._cart_qadr:self._cart_qadr + 7] = [self.ext_hold_local[0], self.ext_hold_local[1], self.ext_hold_local[2], 1.0, 0.0, 0.0, 0.0]
+                    self._data.qvel[self._cart_vadr:self._cart_vadr + 6] = 0.0
                 mujoco.mj_step(self._model, self._data)
 
             # Extract cartridge state (position + velocity are MuJoCo's, not integrated here)
@@ -541,7 +573,9 @@ class MuJoCoRuntime:
                 self._lost_ticks = 0
         else:
             # Fallback kinematics
-            if self.held_object_id:
+            if self.ext_hold_local is not None:
+                self.cartridge_state.pos_xyz = list(self.ext_hold_local)
+            elif self.held_object_id:
                 ee = self.get_end_effector_pose()
                 self.cartridge_state.pos_xyz = [ee[0], ee[1], ee[2] - 0.03]
             elif not self.repair_state.cartridge_installed and self.cartridge_state.pos_xyz[2] > 0.045:

@@ -17,7 +17,10 @@ if TYPE_CHECKING:  # pragma: no cover
 
 KINDS_BY_CLASS = {"inpipe": ("inspect", "clear", "return"), "outrig": ("service", "return")}
 TERMINAL_MODES = ("FAILED", "ABORTED", "BLOCKED", "NEEDS_CHARGE")
-TOW_AFTER_S = 900.0              # sim seconds a rover with an empty battery may stay stranded before the maintenance crew tows it to its dock
+TOW_AFTER_S = 900.0              # sim seconds a robot (rover OR crawler) with an empty battery may stay stranded before the maintenance crew brings it to its dock
+EMPTY_PCT = 1.0                  # below this a robot cannot drive itself (mission moves refuse at the same level, see _preconditions)
+LOW_DOCK_PCT = 25.0              # an idle robot parked away from its dock with less than this drives itself home and charges
+AUTO_RETURN_COOLDOWN_TICKS = 120  # do not re-queue a failed automatic return every tick
 # preconditions that can clear by themselves: the step waits (robot BLOCKED) up to cfg.blocked_timeout_s
 WAITABLE = ("crawler_inside_segment", "racks_not_cordoned", "segment_locked", "route_blocked", "isolation_busy")
 
@@ -28,6 +31,8 @@ class MissionManager:
         self.missions: dict[str, Json] = {}
         self.rt: dict[str, Json] = {}
         self.stranded_since: dict[str, int] = {}
+        self._swept = False                 # one start-up / post-restore recovery pass (see _startup_sweep)
+        self._auto_ret_after: dict[str, int] = {}
         self.queues: dict[str, list] = {}
         self.seq = 0
         self.applied_effects: set = set()
@@ -191,7 +196,11 @@ class MissionManager:
         if eng.physics_degraded() and kind != "return":
             return False, "physics_degraded", None
         if robot.battery < eng.cfg.battery_reserve_pct and kind != "return":
-            return False, "battery_below_reserve", None
+            return False, f"battery_below_reserve: {rid} has {robot.battery:.0f} % battery (missions need {eng.cfg.battery_reserve_pct:.0f} %); it is sent to charge instead", None
+        if kind == "return" and robot.battery < EMPTY_PCT and not self._at_home(robot):
+            self.stranded_since.setdefault(rid, eng.tick)
+            return False, (f"battery_depleted: {rid} has {robot.battery:.1f} % battery and cannot drive itself home; the recovery crew will bring it to "
+                           f"its dock within {int(TOW_AFTER_S / 60)} min of simulated time and it will charge there"), None
         target = args["target_id"]
         params = args.get("params") or {}
         if args.get("steps"):
@@ -392,6 +401,8 @@ class MissionManager:
     def advance(self, dt: float) -> None:
         eng = self.eng
         degraded = eng.physics_degraded()
+        if not self._swept:
+            self._startup_sweep()
         for rid in sorted(eng.robots):
             robot = eng.robots[rid]
             cs = eng.control.state_of(rid)
@@ -448,10 +459,7 @@ class MissionManager:
                 eng.traffic.clear_hold(rid)
             finished = robot.step(dt, eng.graph)
             if m is None:
-                # a rover that failed/ran dry away from its dock must not stay stranded: queue the safe return while it still has charge
-                if (robot.klass == "outrig" and robot.mode in ("FAILED", "NEEDS_CHARGE", "ABORTED") and robot.battery > 0.5 and not self.queues.get(rid)
-                        and not self._at_home(robot) and robot.active is None):
-                    self._auto_return(robot)
+                self._idle_upkeep(robot)
                 self._maybe_tow(robot)
                 self._start_next(rid, robot)
                 continue
@@ -798,14 +806,46 @@ class MissionManager:
             if robot.klass == "inpipe" and not self._at_home(robot):
                 self._auto_return(robot)
 
-    def _maybe_tow(self, robot: RobotActor) -> None:
-        """An OUTRIG with an empty battery away from its dock cannot move. After TOW_AFTER_S of simulated time a maintenance crew tows it to its
-        dock, where it charges like any other rover. This is a modelled, logged exception (event `robot.towed`), not a hidden reset: without it a
-        long run slowly loses its whole fleet."""
+    def _idle_upkeep(self, robot: RobotActor) -> None:
+        """Nobody is driving this robot and it has no mission: it must never sit uncharged.
+        * at its dock -> DOCKED (charging at CHARGE %/s) even if it stopped in IDLE / NEEDS_CHARGE (e.g. after a manual session ended on the pad);
+        * parked away from the dock and low (or a rover that failed/aborted away from home) -> drive itself home while it still has the charge;
+        * empty away from the dock -> see _maybe_tow."""
         eng = self.eng
         rid = robot.id
-        if (robot.klass != "outrig" or robot.mode not in TERMINAL_MODES or robot.battery > 0.5 or robot.active is not None
-                or self._at_home(robot) or (eng.control.view(rid) or {}).get("state", "AUTONOMOUS") != "AUTONOMOUS"):
+        if robot.active is not None or robot.held or self.queues.get(rid):
+            return
+        if self._at_home(robot):
+            if robot.mode in ("IDLE", "NEEDS_CHARGE"):
+                robot.mode = "DOCKED"
+            return
+        if robot.battery < EMPTY_PCT or eng.tick < self._auto_ret_after.get(rid, 0):
+            return
+        stuck_rover = robot.klass == "outrig" and robot.mode in ("FAILED", "NEEDS_CHARGE", "ABORTED")
+        low_idle = robot.mode in ("IDLE", "NEEDS_CHARGE") and robot.battery < LOW_DOCK_PCT
+        if stuck_rover or low_idle:
+            self._auto_ret_after[rid] = eng.tick + AUTO_RETURN_COOLDOWN_TICKS
+            self._auto_return(robot, "Return to dock to charge" if low_idle else "Safe return (battery reserve)")
+
+    def _startup_sweep(self) -> None:
+        """Runs once on the first tick of an engine (fresh or restored from storage): robots that were left empty away from their dock by an
+        earlier session are brought in by the recovery crew right away instead of waiting out the full TOW_AFTER_S again (the wait they already
+        served was not persisted). Logged like any other tow (`robot.towed`)."""
+        self._swept = True
+        eng = self.eng
+        for rid, robot in sorted(eng.robots.items()):
+            if (robot.battery < EMPTY_PCT and robot.active is None and eng.control.state_of(rid) == "AUTONOMOUS" and not self._at_home(robot)
+                    and robot.mode != "WORKING"):
+                self.stranded_since[rid] = eng.tick - int(TOW_AFTER_S / eng.dt) - 1
+
+    def _maybe_tow(self, robot: RobotActor) -> None:
+        """A robot with an empty battery away from its dock cannot move. After TOW_AFTER_S of simulated time a maintenance crew brings it to its
+        dock, where it charges like any other robot. This is a modelled, logged exception (event `robot.towed`), not a hidden reset: without it a
+        long run slowly loses its whole fleet. Same rule for every class (rover: carried to the dock pad; crawler: retrieved through its port)."""
+        eng = self.eng
+        rid = robot.id
+        if (robot.mode == "WORKING" or robot.battery >= EMPTY_PCT or robot.active is not None or self._at_home(robot)
+                or eng.control.state_of(rid) != "AUTONOMOUS"):
             self.stranded_since.pop(rid, None)
             return
         since = self.stranded_since.setdefault(rid, eng.tick)
@@ -815,18 +855,25 @@ class MissionManager:
         if not home:
             return
         frm = [round(robot.pos[0], 2), round(robot.pos[2], 2)]
+        eng.navigation.cancel(rid, reason="recovery", quiet=True)
         robot.cancel_active()
-        robot.pos = [float(home["position_xyz_m"][0]), 0.0, float(home["position_xyz_m"][2])]
+        if robot.klass == "inpipe":
+            robot.segment_id, robot.s_m = home["edge_id"], float(home["s_m"])
+            robot.pos = [float(c) for c in eng.graph.position(robot.segment_id, robot.s_m)]
+            robot.tangent = [float(c) for c in eng.graph.tangent(robot.segment_id, robot.s_m)]
+        else:
+            robot.pos = [float(home["position_xyz_m"][0]), 0.0, float(home["position_xyz_m"][2])]
+        robot.v = 0.0
         robot.mode = "DOCKED"
         self.stranded_since.pop(rid, None)
-        self.eng.emit_internal("robot.towed", rid, {"robot_id": rid, "from_xz": frm, "to": robot.home_id, "stranded_s": TOW_AFTER_S,
-                                                    "reason": "battery_empty_away_from_dock"}, actor_type="system")
+        eng.emit_internal("robot.towed", rid, {"robot_id": rid, "from_xz": frm, "to": robot.home_id, "stranded_s": TOW_AFTER_S,
+                                               "reason": "battery_empty_away_from_dock"}, actor_type="system")
 
-    def _auto_return(self, robot: RobotActor) -> None:
+    def _auto_return(self, robot: RobotActor, title: str = "Safe return (battery reserve)") -> None:
         mid = f"m_{self.seq + 1:02d}"
         self.seq += 1
         cmd = "return_to_port" if robot.klass == "inpipe" else "return_to_dock"
-        m = {"id": mid, "incident_id": "", "robot_id": robot.id, "kind": "return", "title": "Safe return (battery reserve)",
+        m = {"id": mid, "incident_id": "", "robot_id": robot.id, "kind": "return", "title": title,
              "target_id": robot.home_id, "status": "ASSIGNED", "progress": 0.0,
              "steps": [{"id": "s1", "command": cmd, "label": self._label(cmd, {}, robot), "status": "pending", "args": {}}],
              "opened_tick": self.eng.tick, "approval_id": None, "agent_task_id": None, "created_by": "engine",

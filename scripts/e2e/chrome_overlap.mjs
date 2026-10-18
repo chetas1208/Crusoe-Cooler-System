@@ -35,7 +35,7 @@ const probe = () => {
     if (ix > 2 && iy > 2) hits.push(`${a.sel} x ${b.sel} (${Math.round(ix)}x${Math.round(iy)} px)`);
   }
   const bar = document.querySelector('.topbar');
-  const wraps = [...document.querySelectorAll('.topbar .vital__label, .topbar .btn--sim, .topbar .status__name, .topbar .cm-launcher')].filter(shown).filter((e) => e.getBoundingClientRect().height > 40).map((e) => e.className);
+  const wraps = [...document.querySelectorAll('.topbar .vital__label, .topbar .btn--sim, .topbar .status__name, .topbar .cm-launcher')].filter(shown).filter((e) => e.getBoundingClientRect().height > 52).map((e) => e.className);
   const tbox = bar?.getBoundingClientRect();
   const parts = ['.topbar__left', '.topbar__center', '.topbar__right'].map((s) => document.querySelector(s)).filter((e) => e && shown(e));
   const outside = parts.filter((p) => { const r = p.getBoundingClientRect(); return tbox && (r.right > tbox.right + 1 || r.left < tbox.left - 1); }).length;

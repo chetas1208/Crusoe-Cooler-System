@@ -2,6 +2,7 @@ import { controlActions, useControl, useNav } from '@loopkeeper/core/control';
 import { usePreviewDrive, useWorld } from '@loopkeeper/core/store';
 import { useMapCamera } from '@loopkeeper/scene';
 import { nearestEdge } from './roadOf';
+import { Button } from '../../ui/kit/index';
 
 type Owner = 'AUTO' | 'HUMAN' | 'STOP';
 
@@ -13,7 +14,7 @@ const OWNER_TONE: Record<Owner, { bg: string; fg: string }> = {
 
 const cell = (k: string, v: string, tone?: string) => (
   <span style={{ display: 'inline-flex', gap: 5, alignItems: 'baseline', whiteSpace: 'nowrap' }}>
-    <span style={{ color: 'var(--t3)', fontSize: 9, letterSpacing: '0.06em', textTransform: 'uppercase' }}>{k}</span>
+    <span style={{ color: 'var(--t3)', fontSize: 12, letterSpacing: '0.04em', textTransform: 'uppercase' }}>{k}</span>
     <b className="mono" style={{ fontWeight: 500, color: tone ?? 'var(--t1)' }}>{v}</b>
   </span>
 );
@@ -33,8 +34,8 @@ export function ControlStrip() {
 
   if (!robot) {
     return (
-      <div className="hud-control panel" data-panel="control-hud" role="region" aria-label="Robot control" style={shell}>
-        <span style={{ color: 'var(--t2)', fontSize: 11 }}>No robot selected. Pick one in Fleet Selection or click it on the map.</span>
+      <div className="hud-control panel" data-panel="control-hud" data-stage-inset="bottom" role="region" aria-label="Robot control" style={shell}>
+        <span style={{ color: 'var(--t2)', fontSize: 12 }}>No robot selected. Pick one in Fleet Selection or click it on the map.</span>
       </div>
     );
   }
@@ -52,34 +53,34 @@ export function ControlStrip() {
   const linkBad = held ? !ctl.linkOk : !live;
 
   return (
-    <div className="hud-control panel" data-panel="control-hud" data-owner={owner} role="region" aria-label={`Robot control: ${robot.name}`} style={shell}>
-      <b style={{ fontSize: 12, letterSpacing: '0.04em' }}>{robot.id}</b>
-      <span data-testid="owner-chip" style={{ fontSize: 10, fontWeight: 700, letterSpacing: '0.08em', padding: '2px 8px', borderRadius: 4, background: tone.bg, color: tone.fg }}>{owner}</span>
+    <div className="hud-control panel" data-panel="control-hud" data-stage-inset="bottom" data-owner={owner} role="region" aria-label={`Robot control: ${robot.name}`} style={shell}>
+      <b style={{ fontSize: 13, letterSpacing: '0.04em' }}>{robot.id}</b>
+      <span data-testid="owner-chip" style={{ fontSize: 12, fontWeight: 700, letterSpacing: '0.08em', padding: '2px 8px', borderRadius: 4, background: tone.bg, color: tone.fg }}>{owner}</span>
       {cell('mode', robot.mode)}
       {cell('speed', `${speed.toFixed(2)} m/s`)}
       {cell(seg ? 'segment' : 'road', seg ? String(seg) : road ? (road.road ?? road.id) : '—')}
       {cell('battery', `${Math.round(robot.battery_pct)} %`, robot.battery_pct <= 20 ? 'var(--warning)' : undefined)}
       {cell('link', held && ctl.rttMs !== null ? `${link} · ${Math.round(ctl.rttMs)} ms` : link, linkBad ? 'var(--warning)' : undefined)}
       {previewOn && (
-        <span data-testid="preview-label" style={{ fontSize: 10, fontWeight: 700, letterSpacing: '0.06em', color: '#22d3ee', border: '1px solid rgba(34,211,238,0.5)', borderRadius: 4, padding: '2px 6px' }}>
+        <span data-testid="preview-label" style={{ fontSize: 12, fontWeight: 700, letterSpacing: '0.04em', color: '#22d3ee', border: '1px solid rgba(34,211,238,0.5)', borderRadius: 4, padding: '2px 6px' }}>
           PREVIEW ONLY · local ghost, no robot moves
         </span>
       )}
       <span style={{ display: 'inline-flex', gap: 6, marginLeft: 'auto' }}>
         {held ? (
           <>
-            <button className="btn btn--sm btn--secondary" onClick={() => controlActions.release('operator_release')} title="Hand the robot back to the agent (Esc)">Release</button>
-            <button className="btn btn--sm btn--danger" onClick={() => controlActions.safeStop('operator_stop')} title="Emergency brake and stop">Stop</button>
+            <Button size="sm" variant="secondary" onClick={() => controlActions.release('operator_release')} title="Hand the robot back to the agent (Esc)">Release</Button>
+            <Button size="sm" variant="danger" onClick={() => controlActions.safeStop('operator_stop')} title="Emergency brake and stop">Stop</Button>
           </>
         ) : stopped && !requesting ? (
-          <button className="btn btn--sm btn--secondary" onClick={() => controlActions.dismiss()}>Acknowledge</button>
+          <Button size="sm" variant="secondary" onClick={() => controlActions.dismiss()}>Acknowledge</Button>
         ) : (
-          <button className="btn btn--sm btn--primary" disabled={requesting || !!disabledWhy} title={disabledWhy || 'Acquire the server lease and drive this robot'} onClick={() => void controlActions.takeControl(robot.id)}>
+          <Button size="sm" variant="primary" loading={requesting} disabledReason={disabledWhy || undefined} onClick={() => void controlActions.takeControl(robot.id)}>
             {requesting ? 'Acquiring…' : 'Take Control'}
-          </button>
+          </Button>
         )}
       </span>
-      {!held && disabledWhy && !requesting && <span style={{ flexBasis: '100%', color: 'var(--t3)', fontSize: 10.5 }}>{disabledWhy}</span>}
+      {!held && disabledWhy && !requesting && <span style={{ flexBasis: '100%', color: 'var(--t3)', fontSize: 12 }}>{disabledWhy}</span>}
     </div>
   );
 }
@@ -95,7 +96,7 @@ const shell: React.CSSProperties = {
   width: '100%',
   maxWidth: 860,
   boxSizing: 'border-box',
-  fontSize: 11,
+  fontSize: 12,
   background: 'rgba(10,14,22,0.92)',
   backdropFilter: 'blur(12px)',
   borderRadius: 8,

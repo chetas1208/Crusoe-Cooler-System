@@ -12,8 +12,8 @@ that is not finished or not lead-verified are marked `[PENDING: ...]`. Read sect
    Bridge used in this script: after Segment 1 you inject the *same physical fault family* into the live plant through the engine's test
    command and say so out loud ("same fault, now on the live plant with the agent team attached").
    `[PENDING: lead] prompt -> scenario -> injection into the live run with the agent team (not wired as of this writing)`.
-3. **Laya is advisory and weak.** Held-out eval (`artifacts/v11/laya_eval.json`, 36 test cases): Laya router raw accuracy 0.33, the labelled
-   rule fallback 0.42; an unsafe-request override is deterministic code, not Laya. On a vague prompt Laya usually *abstains* and routes to
+3. **Laya is advisory and weak.** Held-out eval (`artifacts/v11/laya_eval.json`, 48 held-out cases, abstain counts as human review): Laya 0.35, rules 0.35,
+   Nemotron Nano 0.96; the unsafe-request override (3/3 held-out) is deterministic code, not Laya. On a vague prompt Laya usually *abstains* and routes to
    `human_review`. That is the designed behaviour. Never say "Laya understood the request".
 4. **First-repair-fails.** The signature flow (brush clears only part of a fouled pipe -> verifier rejects -> SEN-01 replans -> second action
    restores flow -> sustained checks held) is proven by `backend/tests/test_v11_dod.py` and `artifacts/v11/dod_signature_flow.json` with the

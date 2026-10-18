@@ -120,12 +120,21 @@ async def stream_endpoint(ws: WebSocket) -> None:
     ctx: ApiContext = ws.app.state.ctx
     sub_proto, header_token = _tokens_from_subprotocols(ws)
     token = bearer_from_header(ws.headers.get("authorization")) or header_token
+    host = ws.client.host if ws.client else "?"
+    by_ip: dict = ws.app.state.__dict__.setdefault("ws_by_ip", {})
+    if by_ip.get(host, 0) >= ctx.settings.ws_max_per_ip:                       # connection cap per client address (rejected at the handshake)
+        await ws.close(code=1013)
+        return
+    by_ip[host] = by_ip.get(host, 0) + 1
     await ws.accept(subprotocol=sub_proto)
     ws.app.state.ws_clients = getattr(ws.app.state, "ws_clients", 0) + 1       # read by /health/detail
     try:
         await _serve(ws, ctx, token)
     finally:
         ws.app.state.ws_clients = max(0, getattr(ws.app.state, "ws_clients", 1) - 1)
+        by_ip[host] = max(0, by_ip.get(host, 1) - 1)
+        if not by_ip[host]:
+            by_ip.pop(host, None)
 
 
 async def _serve(ws: WebSocket, ctx: ApiContext, token: Optional[str]) -> None:

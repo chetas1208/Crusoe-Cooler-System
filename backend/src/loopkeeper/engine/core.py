@@ -35,6 +35,7 @@ from .robots.graphs import NavGrid, PipeGraph
 from .robots.traffic import Traffic
 from ..nav.navigator import Navigator
 from .robots.missions import MissionManager
+from .robots.manipulator import ManipulatorBank
 from .sensing import Sensing
 from .tracking import TRACKED, Tracking
 from .util import Json, b64, chash, clone, new_uuid, sha256_hex, canon, unb64
@@ -155,6 +156,7 @@ class Engine:
                 rt.set_anchor(float(sp[0]) + 0.05, float(sp[2]), math.pi / 2.0)
             self.bays[bid] = rt
         self.mujoco_runtime = self.bays.get("strainer_01") or MuJoCoRuntime(self.run_id)      # primary bay (back-compat alias)
+        self.manipulators = ManipulatorBank(self)      # one independent 6-DOF arm + gripper state per OUTRIG (engine/robots/manipulator.py)
         self.recovery_info: Json = {}
         self.run_row: Json = {}
 
@@ -183,6 +185,9 @@ class Engine:
         r = self.robots.get(rid)
         if r is None or r.klass != "outrig":
             return False, "no_manipulator: only OUTRIG rovers carry the 6-DOF arm"
+        arm = self.manipulators.arms.get(rid)
+        if arm is not None and arm.held_source == "operator":
+            return False, f"hands_full: {rid} is holding {arm.held_object_id} (operator grasp); place it first"
         mine = self.bay_of(rid)
         if mine is not None and (bay_id is None or bay_id == mine.bay_id):
             return True, ""
@@ -412,6 +417,7 @@ class Engine:
                 c["contact_list"] = mj["contact_list"]
                 c["payload_mass_kg"] = mj["payload_mass_kg"]
                 c["deposit_fouling_pct"] = mj["deposit_fouling_pct"]
+            self.manipulators.decorate(rid, c)          # per-robot arm state (OUTRIG): c["manipulator"] + the flat arm fields of THIS robot
             out[rid] = c
         return out          # registry is the only source of robot ids: no legacy aliases in emitted data
 
@@ -473,7 +479,8 @@ class Engine:
                 "robots": {rid: r.to_state() for rid, r in self.robots.items()}, "missions": self.missions.to_state(),
                 "locks": self.locks.to_state(), "track": self.track.to_state(), "control": self.control.to_state(), "nav": self.navigation.to_state(),
                 "next_snap_s": self._next_snap_s, "next_sample_s": self._next_sample_s, "topology_hash": self.topology_revision,
-                "workcells": {bid: {"owner": b.owner, "state": b.get_state()} for bid, b in self.bays.items()}}
+                "workcells": {bid: {"owner": b.owner, "state": b.get_state()} for bid, b in self.bays.items()},
+                "manipulators": self.manipulators.to_state()}
 
     def state_hash(self) -> str:
         d = self.state_doc()
@@ -512,6 +519,7 @@ class Engine:
                 bay.set_state(wc["state"])
             except Exception as e:                     # noqa: BLE001
                 log.warning("workcell %s state not restored (%s)", bid, type(e).__name__)
+        self.manipulators.load_state(doc.get("manipulators") or {})
         self._invalidate()
 
     def recover_from_storage(self) -> Json:
@@ -645,6 +653,7 @@ class Engine:
             return False
         self.clock.tick += 1
         self._invalidate()
+        self.manipulators.on_tick()                   # arms ease toward their targets; carried objects follow the end effector (before the cells step)
         for bay in self.bays.values():
             owner = self.robots.get(bay.owner) if bay.owner else None
             if owner is not None:
@@ -992,6 +1001,12 @@ class ActorView:
 
     @property
     def run_id(self) -> str: return self._e.run_id
+    @property
+    def storage(self) -> Any: return self._e.storage                  # read-only: shared-brain memory hooks locate their store through the engine
+    @property
+    def facility_id(self) -> str: return self._e.facility_id
+    @property
+    def topology_revision(self) -> str: return self._e.topology_revision
 
     def world(self) -> Json: return self._e.world()
     @property

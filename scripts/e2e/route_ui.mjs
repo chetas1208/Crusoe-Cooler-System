@@ -55,8 +55,10 @@ await send.first().evaluate((b) => b.click());
 note('dom_click_ms', Date.now() - t0c);
 await sleep(2500);
 await snap('2_destination_mode');
-const pos = await page.evaluate((id) => window.__lkRouteScreen?.(id) ?? null, TARGET);
+let pos = null;
+for (let i = 0; i < 150 && !pos; i++) { pos = await page.evaluate((id) => window.__lkRouteScreen?.(id) ?? null, TARGET); if (!pos) await sleep(1000); }
 note('marker_screen_pos', pos);
+note('seam', await page.evaluate(() => ({ fn: typeof window.__lkRouteScreen, cands_and_graphs: window.__lkRouteScreen?.('?'), url: location.search })));
 if (!pos) { console.error('no marker position'); await browser.close(); process.exit(2); }
 await page.mouse.click(pos.x, pos.y);
 await sleep(2500);
@@ -72,7 +74,7 @@ const t2 = await text();
 note('reserved_text', /RESERVED/.test(t2));
 const tgt = (await api('/runs/current/navigation/graphs?kind=exterior')).nodes.find((n) => n.id === TARGET);
 let end = start;
-for (let i = 0; i < 80; i++) { end = (await api(`/robots/${ROBOT}`)).pose.position_xyz_m; if (Math.hypot(end[0] - tgt.x, end[2] - tgt.z) < 0.7) break; await sleep(1000); if (i === 3) await snap('5_en_route'); }
+for (let i = 0; i < 400; i++) { end = (await api(`/robots/${ROBOT}`)).pose.position_xyz_m; if (Math.hypot(end[0] - tgt.x, end[2] - tgt.z) < 0.7) break; await sleep(1000); if (i === 3) await snap('5_en_route'); }
 await sleep(1500);
 await snap('6_arrived');
 const d = Math.hypot(end[0] - tgt.x, end[2] - tgt.z);

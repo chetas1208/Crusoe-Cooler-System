@@ -17,11 +17,11 @@ from support.fixtures import OTHER, TOKEN, VIEWER, make_settings  # noqa: E402
 
 @pytest.fixture(autouse=True)
 def _deterministic_triage_thread(monkeypatch):
-    """Flake root cause (tests/agents/test_live_flows.py::test_all_six_faults...[3-12.0]): the sentinel graph runs the Laya triage via
-    asyncio.to_thread, but AgentRuntimeImpl.settle() decides 'the agents are idle' by counting 400 event-loop yields without activity. A thread
-    that is merely slow to be scheduled (loaded machine) looks idle, settle() returns early and the incident graph resumes at a different
-    simulated time -> a different outcome. Wall-clock must not enter a deterministic simulation, so in tests the triage call runs inline (same
-    function, same result; the router is off in tests via LOOPKEEPER_LAYA_ROUTER=0). Production keeps the thread."""
+    """Defence against a SUSPECTED flake source (not reproduced: 14 runs of test_all_six_faults...[3-12.0] across 6 PYTHONHASHSEEDs under load
+    ~30, with and without this shim, plus a 50 ms thread delay, all passed). The sentinel graph runs the Laya triage via asyncio.to_thread,
+    while AgentRuntimeImpl.settle() decides 'agents are idle' by counting 400 event-loop yields without activity, so a thread that is slow to be
+    scheduled looks idle and the graph could resume at a different simulated time. Wall-clock must not enter a deterministic simulation: in
+    tests the triage call runs inline (same function, same result; router off via LOOPKEEPER_LAYA_ROUTER=0). Production keeps the thread."""
     mod = sys.modules.get("loopkeeper.orchestration.graphs.sentinel")
     if mod is None or not hasattr(mod, "asyncio") or os.environ.get("LOOPKEEPER_TEST_THREADED_TRIAGE") == "1":   # =1: A/B switch, restores the racy behaviour
         return
@@ -36,6 +36,34 @@ def _deterministic_triage_thread(monkeypatch):
             return fn(*a, **kw)
 
     monkeypatch.setattr(mod, "asyncio", _InlineThreads())
+
+
+@pytest.fixture(scope="session")
+def embedded_pg_server(tmp_path_factory):
+    """ONE embedded PostgreSQL (pgserver, unix socket only: no TCP port, so xdist workers never collide) per test session / xdist worker, instead of
+    one initdb + server start per test or module. Skips when pgserver is unavailable. Use `pg_database` below for an isolated database."""
+    if os.environ.get("TEST_DATABASE_URL"):
+        yield None
+        return
+    pgserver = pytest.importorskip("pgserver")
+    try:
+        srv = pgserver.get_server(str(tmp_path_factory.mktemp("shared_pg")))
+    except Exception as e:                                      # noqa: BLE001
+        pytest.skip(f"embedded postgres unavailable: {type(e).__name__}")
+    yield srv
+    srv.cleanup()
+
+
+@pytest.fixture
+def pg_database(embedded_pg_server, request):
+    """URL of a brand-new empty database on the shared embedded server (CREATE DATABASE is ~50 ms vs seconds for a fresh server)."""
+    import re
+    import psycopg
+    base = os.environ.get("TEST_DATABASE_URL") or embedded_pg_server.get_uri()
+    name = "t_" + re.sub(r"\W", "_", request.node.name).lower()[:40] + f"_{os.getpid()}_{id(request.node) % 100000}"
+    with psycopg.connect(base, autocommit=True) as c:
+        c.execute(f'CREATE DATABASE "{name}"')
+    yield re.sub(r"/[^/?]*(\?|$)", lambda m: f"/{name}{m.group(1)}", base, count=1) if "@/" in base else base.rsplit("/", 1)[0] + "/" + name
 
 
 @pytest.fixture

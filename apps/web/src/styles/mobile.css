@@ -174,11 +174,24 @@ html:where([data-compact='1']) .hud-cam-modes .btn { font-size: 0 !important; ga
 html:where([data-compact='1']) .ex-state { gap: 6px 10px; padding: 10px 12px; }
 html:where([data-compact='1']) .ex-state > div { margin-left: 0 !important; border-left: 0 !important; padding-left: 0 !important; flex-wrap: wrap !important; width: 100%; gap: 6px !important; }
 html:where([data-compact='1']) .ex-state .chip { font-size: 12px !important; min-height: 36px; padding: 2px 12px !important; }
-html:where([data-compact='1']) .ex-library > header { flex-wrap: wrap; gap: 8px; padding: 10px 12px !important; }
-html:where([data-compact='1']) .ex-library > header h3 { font-size: 14px !important; line-height: 1.25; }
-html:where([data-compact='1']) .ex-library > header > div:first-child { min-width: 0; }
-html:where([data-compact='1']) .ex-library > div { padding-left: 12px !important; padding-right: 12px !important; }
-html:where([data-compact='1']) .ex-library > div:last-child { grid-template-columns: minmax(0, 1fr) !important; gap: 10px !important; overflow: visible !important; padding-top: 12px !important; padding-bottom: 12px !important; }
 html:where([data-compact='1']) .ex-tl__body { grid-template-columns: 72px minmax(0, 1fr); min-height: 134px; }
 html:where([data-compact='1']) .ex-track { min-height: 124px; }
 html:where([data-compact='1']) .ex-tl__bar { padding: 8px; }
+
+/* kit Panel headers inside the Execution column (Scenario Library ...): title and subtitle get a full row, the actions sit under them */
+html:where([data-compact='1']) .ex .lk-panel__head { flex-wrap: wrap; row-gap: 6px; }
+html:where([data-compact='1']) .ex .lk-panel__titles { flex: 1 1 100%; flex-wrap: wrap; }
+html:where([data-compact='1']) .ex .lk-panel__title { white-space: normal; }
+html:where([data-compact='1']) .ex .lk-panel__sub { white-space: normal; flex: 1 1 100%; }
+html:where([data-compact='1']) .ex .lk-panel__actions { flex: 1 1 100%; justify-content: flex-start; flex-wrap: wrap; }
+/* Map HUD: status pill and camera modes share ONE row */
+html:where([data-compact='1']) .hud-pill { flex: 1 1 72px; }
+html:where([data-compact='1']) .hud-cam-modes .btn, html:where([data-compact='1']) .hud-cam-modes .lk-btn { min-width: 36px; padding: 4px 6px !important; }
+/* tab rail: the Comms chip fits the rail (icon, dot, count) */
+html:where([data-compact='1'][data-orient='landscape']) .mtabs .cm-launcher { padding: 4px 3px; gap: 3px; }
+html:where([data-compact='1'][data-orient='landscape']) .mtabs .cm-badge { min-width: 0; padding: 0 4px; }
+/* Map HUD (owner: Map) on a compact stage: no reserved corner for the desktop View dock (it is a normal panel in the column here); badge and camera modes on one row */
+html:where([data-compact='1']) .map-control-hud [data-panel='hud-top'] { margin: 0 !important; width: 100% !important; flex-wrap: nowrap !important; justify-content: flex-start !important; gap: 6px !important; }
+html:where([data-compact='1']) .map-control-hud [data-panel='hud-top'] > .hud-cam-modes { flex: none; }
+/* the HUD's own control strip already says "no robot / drive off"; the pad is only shown while Preview / live drive is on */
+html:where([data-compact='1']) .drivepad[data-mode='off'] { display: none; }

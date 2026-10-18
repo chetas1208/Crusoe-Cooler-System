@@ -203,6 +203,39 @@ class EndEffectorPose(Wire):
     quat_xyzw: tuple[float, float, float, float]
 
 
+class ManipulatorResult(Wire):
+    action: str
+    ok: Optional[bool] = None
+    message: str
+    tick: Optional[float] = None
+
+
+class ManipulatorNearest(Wire):
+    id: str
+    distance_m: float
+    in_envelope: bool
+
+
+class RobotManipulator(Wire):
+    """Per-robot 6-DOF arm + gripper state of an OUTRIG (docs/engineering/V12_ARM_CONTRACT.md). Absent for crawlers."""
+    joint_names: list[str]
+    joints_rad: list[float]
+    joint_targets_rad: list[float]
+    joint_limits_rad: list[tuple[float, float]]
+    gripper_aperture_m: float
+    gripper_target_m: float
+    gripper_limits_m: tuple[float, float]
+    held_object_id: Optional[str] = None
+    ee_xyz_m: Vec3
+    ee_quat_xyzw: tuple[float, float, float, float]
+    busy: bool
+    speed_scale: float
+    source: Literal["operator", "service_bay"]
+    pending_action: Optional[str] = None
+    last_result: Optional[ManipulatorResult] = None
+    nearest_object: Optional[ManipulatorNearest] = None
+
+
 class Robot(Wire):
     id: EntityId
     class_: RobotClass = Field(alias="class")
@@ -230,6 +263,7 @@ class Robot(Wire):
     contact_list: Optional[list[str]] = None
     payload_mass_kg: Optional[float] = None
     deposit_fouling_pct: Optional[float] = None
+    manipulator: Optional[RobotManipulator] = None
 
 
 class MissionStep(Wire):
@@ -608,6 +642,7 @@ class RobotPosePayload(Wire):
     contact_list: Optional[list[str]] = None
     payload_mass_kg: Optional[float] = None
     deposit_fouling_pct: Optional[float] = None
+    manipulator: Optional[RobotManipulator] = None
 
 
 class MissionTransitionPayload(Wire):

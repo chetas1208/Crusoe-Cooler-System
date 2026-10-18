@@ -18,7 +18,7 @@ from pydantic import ValidationError
 from . import models as M
 from . import models_control as C
 from . import models_runs as R
-from .context import ReadOnlyRun, RunScope, ctx_of, principal_of, rate_limit, run_scope, submit_as
+from .context import ReadOnlyRun, RunScope, ctx_of, principal_of, mutate_limit, rate_limit, run_scope, submit_as
 from .projections import agent_graph
 from .scrub import scrub
 from .security import json_error
@@ -217,6 +217,29 @@ def refusal(code: str, reason: str, status: Optional[int] = None, **extra: Any) 
     return JSONResponse(scrub(body), status_code=status or C.HTTP_STATUS_FOR_CODE[code])
 
 
+_CODE_BY_PREFIX = (          # engine refusal text -> wire code (clients stop / re-acquire on these, see session.ts)
+    ("lease_unknown", "no_lease"), ("lease_ended", "lease_revoked"), ("lease_released", "lease_revoked"), ("lease_expired", "lease_revoked"),
+    ("stale_lease_epoch", "stale_epoch"), ("command_seq_not_increasing", "stale_seq"), ("topology_revision_mismatch", "topology_changed"),
+    ("lease_conflict", "lease_held"), ("robot_in_safe_hold", "not_controllable"), ("unknown_robot", "unknown_robot"),
+)
+
+
+def _refusal_code(reason: str) -> str:
+    for prefix, code in _CODE_BY_PREFIX:
+        if reason.startswith(prefix):
+            return code
+    return "not_controllable"
+
+
+def _revoked_reason(sc: RunScope, lease_id: Optional[str]) -> Optional[str]:
+    try:
+        lease = sc.engine.control.leases.get(lease_id) if lease_id else None
+        r = (lease or {}).get("ended_reason")
+        return r if r in C.ControlReason.__args__ else None
+    except Exception:       # noqa: BLE001 - the hint is optional
+        return None
+
+
 async def _control(sc: RunScope, request: Request, robot_id: str, kind: str, args: dict, idem: Optional[str],
                    model: type, *, limited: bool) -> JSONResponse:
     if limited:
@@ -240,9 +263,14 @@ async def _control(sc: RunScope, request: Request, robot_id: str, kind: str, arg
         log.exception("engine.submit failed")
         return refusal("not_controllable", "engine unavailable", 503)
     if not res.get("accepted"):
-        code = res.get("code") if res.get("code") in C.HTTP_STATUS_FOR_CODE else "not_controllable"
+        reason = str(res.get("reason") or "refused")
+        code = res.get("code") if res.get("code") in C.HTTP_STATUS_FOR_CODE else _refusal_code(reason)
         extra = {k: res[k] for k in ("holder", "current_world_version", "revoked_reason") if k in res}
-        return refusal(code, str(res.get("reason") or "refused"), **extra)
+        if code == "lease_revoked" and "revoked_reason" not in extra:
+            why = _revoked_reason(sc, args.get("lease_id"))
+            if why:
+                extra["revoked_reason"] = why
+        return refusal(code, reason, **extra)
     res.setdefault("robot_id", robot_id)
     res.pop("command_id", None)
     try:
@@ -281,6 +309,33 @@ async def release(robot_id: str, body: C.ReleaseRequest, request: Request, sc: R
     return resp
 
 
+class DockRequest(C.StrictWire):
+    idempotency_key: str = Field(pattern=C.TOKEN)
+
+
+@router.post("/runs/{run_id}/robots/{robot_id}/control/send_to_dock")
+async def send_to_dock(robot_id: str, body: DockRequest, request: Request, sc: RunScope = Depends(run_scope("drive"))):
+    """Operator command: drive the robot to its home dock (releasing a manual lease first). An empty pack is queued for crew recovery."""
+    try:
+        rate_limit(request, "drive", sc.principal)
+    except HTTPException as e:
+        return JSONResponse({"accepted": False, "code": "bad_request", "reason": "rate limit exceeded"}, status_code=e.status_code, headers=e.headers)
+    if robot_id not in _world(sc).get("robots", {}):
+        return refusal("unknown_robot", "unknown robot")
+    cid = sc.ctx.idem.command_id(sc.principal.id, sc.run_id, robot_id, "robot.return_home", body.idempotency_key)
+    cmd = {"command_id": cid, "kind": "robot.return_home", "target_id": robot_id, "args": {}, "actor_type": "operator",
+           "principal": sc.principal.id, "run_id": sc.run_id}
+    try:
+        res = dict(await submit_as(sc.engine, cmd))
+    except Exception:
+        log.exception("engine.submit failed")
+        return refusal("not_controllable", "engine unavailable", 503)
+    if not res.get("accepted"):
+        return refusal(_refusal_code(str(res.get("reason") or "")), str(res.get("reason") or "refused"))
+    res.pop("command_id", None)
+    return JSONResponse(scrub({**res, "robot_id": robot_id, "command_id": cid}))
+
+
 @router.post("/runs/{run_id}/robots/{robot_id}/drive")
 async def drive(robot_id: str, body: C.DriveIntent, request: Request, sc: RunScope = Depends(run_scope("drive"))):
     """Shape + auth + lease-holder only; the single-writer engine validates physics, lease epoch/TTL, seq at commit."""
@@ -314,7 +369,7 @@ def get_run(sc: RunScope = Depends(run_scope("read"))):
     return rec
 
 
-@router.post("/runs", status_code=202, response_model=R.RunSummary, **EXC)
+@router.post("/runs", status_code=202, response_model=R.RunSummary, **EXC, dependencies=[Depends(mutate_limit)])
 async def create_run(request: Request, body: dict = Body(...)):
     """Create either a legacy ScenarioSpec run or a fixed V8 crisis episode.
 
@@ -346,7 +401,7 @@ class StateRequest(C.StrictWire):
     state: Literal["running", "paused", "stopped"]
 
 
-@router.post("/runs/{run_id}/state", response_model=R.RunSummary, **EXC)
+@router.post("/runs/{run_id}/state", response_model=R.RunSummary, **EXC, dependencies=[Depends(mutate_limit)])
 async def set_run_state(body: StateRequest, sc: RunScope = Depends(run_scope("command"))):
     ext = getattr(sc.ctx.runs, "set_state", None)
     try:
@@ -427,7 +482,7 @@ async def run_replay(start_tick: Optional[int] = Query(default=None, ge=0), end_
         return problem_response(e)
 
 
-@router.post("/runs/{run_id}/fork", status_code=201, response_model=R.ForkResult, **EXC)
+@router.post("/runs/{run_id}/fork", status_code=201, response_model=R.ForkResult, **EXC, dependencies=[Depends(mutate_limit)])
 async def fork(body: R.ForkRequest, sc: RunScope = Depends(run_scope("fork"))):
     try:
         return await sc.ctx.runs.fork(sc.run_id, body.model_dump(exclude_none=True), sc.principal.id)
@@ -438,12 +493,20 @@ async def fork(body: R.ForkRequest, sc: RunScope = Depends(run_scope("fork"))):
         return problem_response(e)
 
 
+def _need_command_role(sc: RunScope) -> None:
+    """speed / play / pause change the clock of a run (or a stored run's recorded phase): a viewer token may read, never steer. Not run_scope('command'):
+    that also answers 409 for stored runs, whose playback speed these routes legitimately set."""
+    if not sc.principal.can("command", sc.run_id):
+        raise HTTPException(403, "insufficient role")
+
+
 class SpeedRequest(C.StrictWire):
     speed: int
 
 
 @router.post("/runs/{run_id}/speed")
 async def set_run_speed(body: SpeedRequest, sc: RunScope = Depends(run_scope("read"))):
+    _need_command_role(sc)
     if body.speed not in (1, 2, 3):
         raise HTTPException(422, "speed must be 1, 2 or 3")
     if sc.is_active:
@@ -458,6 +521,7 @@ async def set_run_speed(body: SpeedRequest, sc: RunScope = Depends(run_scope("re
 
 @router.post("/runs/{run_id}/play")
 async def play_run(sc: RunScope = Depends(run_scope("read"))):
+    _need_command_role(sc)
     if sc.is_active:
         sc.engine.clock.resume()
     try:
@@ -469,6 +533,7 @@ async def play_run(sc: RunScope = Depends(run_scope("read"))):
 
 @router.post("/runs/{run_id}/pause")
 async def pause_run(sc: RunScope = Depends(run_scope("read"))):
+    _need_command_role(sc)
     if sc.is_active:
         sc.engine.clock.pause()
     try:
@@ -526,7 +591,7 @@ def get_run_incident_report(sc: RunScope = Depends(run_scope("read"))):
     }
 
 
-@router.post("/runs/{run_id}/exports")
+@router.post("/runs/{run_id}/exports", dependencies=[Depends(mutate_limit)])
 def export_run_artifact(sc: RunScope = Depends(run_scope("read"))):
     row = getattr(sc.ctx.runs, "_row")(sc.run_id) if hasattr(sc.ctx.runs, "_row") else None
     if row is None:
@@ -552,7 +617,7 @@ def export_run_artifact(sc: RunScope = Depends(run_scope("read"))):
     return export_payload
 
 
-@router.post("/scenarios/validate", response_model=R.ScenarioValidation, **EXC)
+@router.post("/scenarios/validate", response_model=R.ScenarioValidation, **EXC, dependencies=[Depends(mutate_limit)])
 async def validate_scenario(body: R.ScenarioValidateRequest, request: Request):
     """Shape/bounds check (+ the engine's physical admissibility if it offers one). NEVER submits to the live world."""
     ctx, p = ctx_of(request), principal_of(request)
@@ -614,7 +679,7 @@ def scenario_detail(scenario_id: R.ScenarioId, request: Request):
     return get_definition(scenario_id).to_wire(topo)
 
 
-@router.post("/scenarios/{scenario_id}/validate")
+@router.post("/scenarios/{scenario_id}/validate", dependencies=[Depends(mutate_limit)])
 def validate_v8_scenario(scenario_id: R.ScenarioId, request: Request):
     ctx = ctx_of(request)
     try:
@@ -812,8 +877,9 @@ def laya_status():
     return d
 
 
-@router.post("/intelligence/laya/classify")
-def laya_classify(body: dict):
+@router.post("/intelligence/laya/classify", dependencies=[Depends(mutate_limit)])
+def laya_classify(body: dict, request: Request):
+    principal_of(request)                                    # was unauthenticated: classify runs a model-free but CPU-bound classifier on a client-sized dict
     from loopkeeper.intelligence.laya_classifier import get_laya_classifier
     laya_inst = get_laya_classifier()
     dec = laya_inst.classify_incident(body)

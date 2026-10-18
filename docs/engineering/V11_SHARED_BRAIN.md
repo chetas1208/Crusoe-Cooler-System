@@ -61,3 +61,4 @@ otherwise it stores an honest REJECTED with reasons.
 * Hooks are NOT yet wired into orchestration (Agent A owns those files); the exact lines are above. The ablation numbers do not exist yet (needs C's runs).
 * Neon: migration 0010 was exercised only on an embedded Postgres (pgserver) and, if set, `TEST_DATABASE_URL`; it has not been applied to production.
 * Retrieval ranks by confidence and scope only (no embeddings); the token count is an estimate (chars/4).
+* **Integration gap (found by the V11 ablation, Agent I)**: in the real runtime `ctx.engine` is an `ActorView` that exposes no `storage`, `facility_id` or `topology_revision`, so `memory_read` / `memory_write` do nothing (brain_for -> None; _scope AttributeError swallowed) even with MEMORY_ENABLED=1. Fix = three read-only properties on `engine/core.py::ActorView`. Measured effect once exposed (harness shim): none, see V11_EVAL.md section 2c.

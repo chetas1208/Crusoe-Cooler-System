@@ -1,9 +1,9 @@
 # Decisions
 
-## 2026-10-18 — Cruso Cooler System: Safe Whole-Repository Rename
+## 2026-10-18 — Crusoe Cooler System: Safe Whole-Repository Rename
 
 96. **Public Product Name Rebrand with Machine-Contract Decoupling:**
-    - The canonical public-facing product name is `Cruso Cooler System` (spelled deliberately **Cruso**, not **Crusoe**).
+    - The canonical public-facing product name is `Crusoe Cooler System`.
     - To guarantee zero downtime, non-disruptive concurrent execution, and zero broken database records, external and internal contracts are strictly decoupled:
       (1) Partner Preservation: References to `Crusoe`, `Crusoe Cloud`, `Crusoe Managed Inference`, and `CRUSOE_API_KEY` remain untouched.
       (2) Machine Contracts: Monorepo package scopes (`@loopkeeper/*`), Python modules (`loopkeeper.*`), PostgreSQL database names/tables (`neondb`, `control-db`), and API routes (`/api/v1/*`) are preserved to prevent runtime failures.

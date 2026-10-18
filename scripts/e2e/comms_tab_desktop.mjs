@@ -57,7 +57,7 @@ for (const size of sizes) {
         row.checks.open_by_default = !!s0.dock && s0.rows >= 0 && s0.dockAttr === 'open';
       }
       await page.waitForSelector('#lk-comms-panel .cm-row', { timeout: 30000 }).catch(() => {});
-      await page.evaluate(() => Promise.all(document.getAnimations().map((a) => a.finished.catch(() => {})))); // the dock slides in; measure after it settled
+      await page.evaluate(() => Promise.all(document.getAnimations().filter((a) => a.effect?.getComputedTiming().iterations !== Infinity).map((a) => Promise.race([a.finished, new Promise((r) => setTimeout(r, 3000))]).catch(() => {})))); // the dock slides in; measure after it settled
       const s = await page.evaluate(state);
       row.state = { tab: s.tab, dock: s.dock, app: s.app, rows: s.rows };
       row.checks.tab_visible = !!s.tab && s.tab.w > 40;

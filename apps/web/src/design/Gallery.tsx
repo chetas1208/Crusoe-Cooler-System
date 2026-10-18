@@ -301,7 +301,7 @@ export default function Gallery() {
     <div className="dg" data-design-gallery>
       <div className="dg__wrap">
         <nav className="dg__nav" aria-label="Gallery sections">
-          <div className="dg__brand">Cruso Cooler System kit</div>
+          <div className="dg__brand">Crusoe Cooler System kit</div>
           <p>Dark theme only. Every component, every state. Add ?design=1 to any URL.</p>
           {NAV.map(([id, l]) => <a key={id} href={`#${id}`}>{l}</a>)}
         </nav>

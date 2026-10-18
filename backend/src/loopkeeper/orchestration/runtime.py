@@ -185,11 +185,13 @@ class AgentRuntimeImpl:
             ctx.decisions.release(inc_id)
             ctx.locks.release_all(inc_id)
         except asyncio.CancelledError:
+            ctx.release_suppress(inc_id)
             raise  # shutdown: checkpoints stay; resume() continues the thread
         except Exception as e:
             log.exception("incident graph failed id=%s", inc_id)
             self.errors.append(f"{inc_id}: {type(e).__name__}")
             ctx.locks.release_all(inc_id)
+            ctx.release_suppress(inc_id)
             ctx.decisions.release(inc_id)
             inc = copy.deepcopy(ctx.ledger.incidents.get(inc_id))
             if inc and inc.get("closed_tick") is None:
@@ -244,6 +246,7 @@ class AgentRuntimeImpl:
             if task is not None and not task.done():
                 task.cancel()
             ctx.locks.release_all(iid)
+            ctx.release_suppress(iid)
             ctx.emit("drift.detected", iid, {"incident_id": iid, "kind": "stuck_stage", "stage": inc.get("stage"), "status": inc.get("status"),
                                              "idle_sim_s": round(idle), "graph_running": not dead})
             inc2 = copy.deepcopy(inc)

@@ -17,7 +17,12 @@ _API_HEADERS = [
     (b"referrer-policy", b"no-referrer"),
     (b"permissions-policy", b"geolocation=(), camera=(), microphone=()"),
 ]
-_BASE_HEADERS = [(b"x-content-type-options", b"nosniff"), (b"x-frame-options", b"DENY")]
+# the SPA the API serves (tunnel root): same policy as vercel.json; connect-src allows the API / WebSocket on any https/wss origin (tunnel, Vercel) + localhost
+_SPA_CSP = (b"default-src 'self'; script-src 'self' 'wasm-unsafe-eval'; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob:; font-src 'self' data:; "
+            b"connect-src 'self' https: wss: http://localhost:* ws://localhost:* http://127.0.0.1:* ws://127.0.0.1:*; worker-src 'self' blob:; "
+            b"object-src 'none'; base-uri 'self'; form-action 'self'; frame-ancestors 'none'")
+_BASE_HEADERS = [(b"x-content-type-options", b"nosniff"), (b"x-frame-options", b"DENY"), (b"content-security-policy", _SPA_CSP),
+                 (b"referrer-policy", b"strict-origin-when-cross-origin"), (b"permissions-policy", b"camera=(), microphone=(), geolocation=(), gamepad=(self)")]
 
 
 class _TooLarge(Exception):

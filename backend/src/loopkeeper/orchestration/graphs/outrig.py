@@ -139,7 +139,7 @@ def build_outrig_graph(ctx: AgentContext):
             if not ok:
                 return fail("isolation lock busy", "Isolation busy")
             z = zone_key(iso)
-            ctx.lock_suppress(zone_suppress_keys(ctx, z))
+            ctx.lock_suppress(zone_suppress_keys(ctx, z), owner=s.id)
             for r in ctx.fac.zone_racks(z):
                 ctx.maint[r] = (s.id, float("inf"))
             edges = ctx.fac.zone_edges(z)
@@ -166,7 +166,7 @@ def build_outrig_graph(ctx: AgentContext):
             s.ev("action", f"Workload moved off racks {names} (load reduced to 10%)", asset_id=racks[0] if racks else None)
             s.finish(cord, "completed", f"Racks {names} drained to idle; heat load removed before isolation.", ("Racks cordoned", True))
         else:
-            ctx.lock_suppress([work["target_id"]])
+            ctx.lock_suppress([work["target_id"]], owner=s.id)
             s.set_status("mitigating", "OUTRIG is preparing the work.")
         s.update_task(t)
         return s.patch(work=work)

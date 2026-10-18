@@ -136,3 +136,14 @@ async def submit_as(engine: Any, cmd: dict) -> Any:
     if takes_principal and isinstance(p, str):
         return await engine.submit(cmd, principal=p)
     return await engine.submit(cmd)
+
+
+def mutate_limit(request: Request) -> None:
+    """Dependency: token bucket for the expensive mutating routes (run create / fork / state / export / validate / classify). Keyed by the
+    authenticated principal, or by the client address when the caller is anonymous / unauthenticated (the route's own auth then answers 401)."""
+    s = ctx_of(request).settings
+    p = principal_of(request, optional=True)
+    who = f"p:{p.id}" if p is not None and not p.anonymous else f"ip:{request.client.host if request.client else '?'}"
+    ok, retry = ctx_of(request).buckets.allow("mutate", who, s.mutate_rate_per_s, s.mutate_burst)
+    if not ok:
+        raise HTTPException(429, "rate limit exceeded", headers={"Retry-After": str(max(1, int(retry + 0.999)))})

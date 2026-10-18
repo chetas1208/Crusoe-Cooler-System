@@ -41,7 +41,7 @@ class EngineConfig:
     leader_retry_s: float = 5.0
     # manual control
     lease_ttl_s: float = 30.0                # hard lease lifetime, renewed by heartbeat (wall)
-    deadman_s: float = 1.5                   # missed-heartbeat window => SAFE_HOLD (wall)
+    deadman_s: float = 2.5                   # missed-heartbeat window => SAFE_HOLD (wall). The UI sends intents at 8 Hz and every intent already expires after 250 ms (the robot brakes by itself), so the dead-man only has to cover a briefly delayed engine loop
     manual_max_speed_m_s: float = 0.12              # INPIPE crawlers (bore-limited)
     manual_max_speed_outrig_m_s: float = 0.40       # OUTRIG rovers on the 36 m hall floor (service speed; autonomous cruise is 0.45)
     manual_accel_m_s2: float = 0.15

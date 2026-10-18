@@ -14,6 +14,9 @@ import { buildPath } from '@loopkeeper/core';
 import { cachedPaths } from './geomCache';
 import { RobotTrail } from './Trail';
 import { crawlerArms, crawlerKit, markerGeo, outrigKit } from './robotKit';
+import type { ArmPartKit } from './robotKit';
+import { ARM_DIMS, ArmInterp, PART, REST_JOINTS, armFK, armLod, armRigFor, clampJoints, makePartMatrices, readManipulator } from './armKinematics';
+import type { ArmLod } from './armKinematics';
 import { GhostRobotOverlay } from './GhostRobotOverlay';
 
 /**
@@ -148,23 +151,40 @@ function Crawler({ robot }: { robot: Robot }) {
 
 /* ───────────────────────────── OUTRIG (instanced fleet) ───────────────────────────── */
 
-const MAST_BASE = 0.6;
-const ARM_BASE = 0.5;
+interface OutrigArmState {
+  interp: ArmInterp;
+  /** the store object the last sample was read from; the store replaces a robot's object when its data changes */
+  src: unknown;
+  lod: ArmLod;
+  limits?: number[][];
+  held: string | null;
+}
 
+const _q6 = [0, 0, 0, 0, 0, 0];
+const _smp = new Float64Array(7);
+const _stick = new THREE.Matrix4().makeScale(0.4, 0.4, 1);
+
+/**
+ * OUTRIG fleet: chassis + beacon + hit proxy + a 6-DOF arm per robot, all as InstancedMesh for the WHOLE class (instance i = robot i).
+ * Every robot draws its OWN arm pose: the joints come from robot.manipulator (or the older arm_qpos_rad), are smoothed between
+ * server updates by ArmInterp (never past the last sample), and placed by the same forward kinematics as the backend's MuJoCo
+ * model. A robot with no joint data is drawn stowed (the backend's REST_POSE), never animated on invented motion.
+ * LOD: full detail within ~6 m of the camera, a thin 3-segment stick to ~16 m, nothing beyond (the locator ring takes over).
+ */
 function OutrigFleet({ ids }: { ids: string[] }) {
   const kit = useMemo(() => outrigKit(), []);
   const n = ids.length;
+  const { camera } = useThree();
   const statics = useRef<Array<THREE.InstancedMesh | null>>([]);
-  const turret = useRef<THREE.InstancedMesh>(null);
-  const mast = useRef<THREE.InstancedMesh>(null);
-  const mast2 = useRef<THREE.InstancedMesh>(null);
-  const armBar = useRef<THREE.InstancedMesh>(null);
-  const head = useRef<THREE.InstancedMesh>(null);
-  const tools = useRef<Array<THREE.InstancedMesh | null>>([]);
+  const armMesh = useRef<Array<THREE.InstancedMesh | null>>([]);
+  const fingers = useRef<THREE.InstancedMesh>(null);
+  const held = useRef<THREE.InstancedMesh>(null);
+  const eeMark = useRef<THREE.InstancedMesh>(null);
   const beacon = useRef<THREE.InstancedMesh>(null);
   const hit = useRef<THREE.InstancedMesh>(null);
-  const st = useRef(ids.map(() => ({ work: 0, turret: 0 })));
-  if (st.current.length !== n) st.current = ids.map((_, i) => st.current[i] ?? { work: 0, turret: 0 });
+  const st = useRef<OutrigArmState[]>([]);
+  if (st.current.length !== n) st.current = ids.map((_, i) => st.current[i] ?? { interp: new ArmInterp(), src: undefined, lod: 'full', held: null });
+  const parts = useMemo(() => makePartMatrices(), []);
   const hitGeo = useMemo(() => {
     const g = new THREE.BoxGeometry(1.1, 1.0, 0.85);
     g.translate(0, 0.5, 0);
@@ -176,110 +196,94 @@ function OutrigFleet({ ids }: { ids: string[] }) {
     return m;
   }, []);
 
-  useFrame((state, dt) => {
+  useFrame((state) => {
     const w = useWorld.getState();
     const v = useView.getState();
     const show = v.layers.robots && v.mode !== 'pipe';
-    const all = [...statics.current, turret.current, mast.current, mast2.current, armBar.current, head.current, ...tools.current, beacon.current, hit.current];
+    const now = state.clock.elapsedTime;
+    const arms = armMesh.current;
     for (let i = 0; i < n; i++) {
       const id = ids[i];
       const r = w.robots[id];
       const sp = samplePose(id);
+      const rg = rigFor(id);
+      if (sp) {
+        rg.pos.set(sp.pos[0], 0.4, sp.pos[2]);
+        rg.dir.set(Math.sin(sp.yaw), 0, Math.cos(sp.yaw));
+        rg.quat.setFromAxisAngle(Y, sp.yaw);
+        rg.valid = true;
+      }
       if (!r || !sp || !show) {
-        for (const m of all) m?.setMatrixAt(i, ZERO);
-        const rg = rigFor(id);
-        if (sp) {
-          rg.pos.set(sp.pos[0], 0.4, sp.pos[2]);
-          rg.dir.set(Math.sin(sp.yaw), 0, Math.cos(sp.yaw));
-          rg.quat.setFromAxisAngle(Y, sp.yaw);
-          rg.valid = true;
-        }
+        for (const m of statics.current) m?.setMatrixAt(i, ZERO);
+        for (const m of arms) m?.setMatrixAt(i, ZERO);
+        fingers.current?.setMatrixAt(2 * i, ZERO);
+        fingers.current?.setMatrixAt(2 * i + 1, ZERO);
+        held.current?.setMatrixAt(i, ZERO);
+        eeMark.current?.setMatrixAt(i, ZERO);
+        beacon.current?.setMatrixAt(i, ZERO);
+        hit.current?.setMatrixAt(i, ZERO);
+        armRigFor(id).valid = false;
         continue;
       }
       const s = st.current[i];
-      const rg = rigFor(id);
-      rg.pos.set(sp.pos[0], 0.4, sp.pos[2]);
-      rg.dir.set(Math.sin(sp.yaw), 0, Math.cos(sp.yaw));
-      rg.quat.setFromAxisAngle(Y, sp.yaw);
-      rg.valid = true;
       const working = r.mode === 'WORKING' || r.mode === 'INSPECTING';
-      s.work += ((working ? 1 : 0) - s.work) * (1 - Math.exp(-dt * 2.2));
-      // reach toward the mission target (in the chassis frame)
-      let tx = 0;
-      let ty = 1.2;
-      let tz = 1;
-      const m = r.mission_id ? w.missions[r.mission_id] : undefined;
-      const tgt = m ? w.assetsById[m.target_id] : undefined;
-      if (tgt) {
-        _p.set(tgt.position_xyz_m[0] - sp.pos[0], 0, tgt.position_xyz_m[2] - sp.pos[2]).applyAxisAngle(Y, -sp.yaw);
-        tx = _p.x;
-        tz = _p.z;
-        ty = clamp(tgt.position_xyz_m[1], 0.5, 2.9);
-      }
-      const yawT = Math.atan2(tx, tz);
-      const reachH = clamp(Math.hypot(tx, tz) - 0.35, 0.2, 1.6);
-      s.turret += ((working ? yawT : 0) - s.turret) * (1 - Math.exp(-dt * 3));
-      const mastH = 0.45 + s.work * clamp(ty - 0.7, 0.2, 1.4);
-      const len = 0.25 + s.work * reachH;
-      const wob = working ? Math.sin(state.clock.elapsedTime * 5) * 0.03 * s.work : 0;
+      // chassis frame
+      const R = _c.makeRotationY(sp.yaw).setPosition(sp.pos[0], 0, sp.pos[2]);
+      for (const mesh of statics.current) mesh?.setMatrixAt(i, R);
+      hit.current?.setMatrixAt(i, R);
+      beacon.current?.setMatrixAt(i, _b.copy(R).multiply(T(-0.22, 0.4, -0.38)));
+      const moving = sp.speed > 0.02 || working;
+      _col.set(moving ? (Math.sin(now * 8) > 0 ? '#ffb347' : '#3a2a10') : '#2e7d5b');
+      beacon.current?.setColorAt(i, _col);
 
-      const hasSimArm = Array.isArray(r.arm_qpos_rad) && r.arm_qpos_rad.length >= 6;
-      if (hasSimArm) {
-        const q = r.arm_qpos_rad!;
-        s.turret = q[0];
-        const p2 = q[1];
-        const p3 = q[2];
-        const p5 = q[4];
-        // chassis frame
-        const root = _c.makeRotationY(sp.yaw).setPosition(sp.pos[0], 0, sp.pos[2]);
-        const R = root.clone();
-        for (const mesh of statics.current) mesh?.setMatrixAt(i, R);
-        hit.current?.setMatrixAt(i, R);
-        // turret frame
-        const Mt = R.clone().multiply(T(0, 0.41, -0.12)).multiply(_b.makeRotationY(s.turret));
-        turret.current?.setMatrixAt(i, Mt);
-        mast.current?.setMatrixAt(i, _b.copy(Mt).multiply(T(0, 0.25, 0)).multiply(_a.makeScale(1, 0.5 / MAST_BASE, 1)));
-        mast2.current?.setMatrixAt(i, _b.copy(Mt).multiply(T(0, 0.52, 0)));
-        // arm frame driven by MuJoCo shoulder & elbow
-        const Ma = Mt.clone().multiply(T(0, 0.55, 0)).multiply(_b.makeRotationX(-Math.PI / 2 + p2));
-        armBar.current?.setMatrixAt(i, _b.copy(Ma).multiply(T(0, 0.25, 0)).multiply(_a.makeScale(1, 0.5 / ARM_BASE, 1)));
-        const Mtool = Ma.multiply(T(0, 0.5, 0)).multiply(_b.makeRotationX(p3 + p5));
-        head.current?.setMatrixAt(i, Mtool);
-        const tool = r.tool;
-        const variant = !tool ? 0 : tool.includes('basket') || tool.includes('strainer') ? 0 : tool.includes('clamp') || tool.includes('spool') ? 1 : 2;
-        for (let k = 0; k < 3; k++) tools.current[k]?.setMatrixAt(i, k === variant ? Mtool : ZERO);
-        // status beacon
-        beacon.current?.setMatrixAt(i, _b.copy(R).multiply(T(-0.22, 0.4, -0.38)));
-        const moving = sp.speed > 0.02 || working;
-        _col.set(moving ? (Math.sin(state.clock.elapsedTime * 8) > 0 ? '#ffb347' : '#3a2a10') : '#2e7d5b');
-        beacon.current?.setColorAt(i, _col);
-      } else {
-        // chassis frame
-        const root = _c.makeRotationY(sp.yaw).setPosition(sp.pos[0], 0, sp.pos[2]);
-        const R = root.clone();
-        for (const mesh of statics.current) mesh?.setMatrixAt(i, R);
-        hit.current?.setMatrixAt(i, R);
-        // turret frame
-        const Mt = R.clone().multiply(T(0, 0.41, -0.12)).multiply(_b.makeRotationY(s.turret));
-        turret.current?.setMatrixAt(i, Mt);
-        mast.current?.setMatrixAt(i, _b.copy(Mt).multiply(T(0, mastH / 2, 0)).multiply(_a.makeScale(1, mastH / MAST_BASE, 1)));
-        mast2.current?.setMatrixAt(i, _b.copy(Mt).multiply(T(0, mastH + 0.02, 0)));
-        // arm frame
-        const Ma = Mt.clone().multiply(T(0, mastH + 0.05, 0)).multiply(_b.makeRotationX(-Math.PI / 2 + 0.2 + wob));
-        armBar.current?.setMatrixAt(i, _b.copy(Ma).multiply(T(0, len / 2, 0)).multiply(_a.makeScale(1, len / ARM_BASE, 1)));
-        const Mtool = Ma.multiply(T(0, 0.25 + s.work * reachH, 0));
-        head.current?.setMatrixAt(i, Mtool);
-        const tool = r.tool;
-        const variant = !tool ? -1 : tool.includes('basket') || tool.includes('strainer') ? 0 : tool.includes('clamp') || tool.includes('spool') ? 1 : 2;
-        for (let k = 0; k < 3; k++) tools.current[k]?.setMatrixAt(i, k === variant ? Mtool : ZERO);
-        // status beacon (colour by state, written to the instance colour)
-        beacon.current?.setMatrixAt(i, _b.copy(R).multiply(T(-0.22, 0.4, -0.38)));
-        const moving = sp.speed > 0.02 || working;
-        _col.set(moving ? (Math.sin(state.clock.elapsedTime * 8) > 0 ? '#ffb347' : '#3a2a10') : '#2e7d5b');
-        beacon.current?.setColorAt(i, _col);
+      // arm: newest server sample -> smoother -> FK
+      if (s.src !== r) {
+        s.src = r;
+        const mp = readManipulator(r);
+        if (mp) {
+          clampJoints(mp.joints_rad, mp.joint_limits_rad, _q6);
+          s.interp.push(_q6, mp.gripper_aperture_m ?? ARM_DIMS.apertureOpen, now);
+        } else if (!s.interp.ready) s.interp.push(REST_JOINTS, ARM_DIMS.apertureOpen, now);
+        s.limits = mp?.joint_limits_rad;
+        s.held = mp?.held_object_id ?? null;
       }
+      s.interp.sample(now, _smp);
+      clampJoints(_smp, s.limits, _q6);
+      armFK(_q6, _smp[6], parts);
+      // end effector in the world, for the arm close-up camera
+      const ea = armRigFor(id);
+      ea.pos.setFromMatrixPosition(parts[PART.EE]).applyMatrix4(R);
+      ea.valid = true;
+
+      s.lod = armLod(camera.position.distanceTo(_p.set(sp.pos[0], 0.5, sp.pos[2])), s.lod);
+      const full = s.lod === 'full';
+      const stick = s.lod === 'stick';
+      const put = (mesh: THREE.InstancedMesh | null | undefined, idx: number, k: number, thin: boolean) => {
+        if (!mesh) return;
+        _a.multiplyMatrices(R, parts[k]);
+        mesh.setMatrixAt(idx, thin ? _a.multiply(_stick) : _a);
+      };
+      const off = (mesh: THREE.InstancedMesh | null | undefined, idx: number) => mesh?.setMatrixAt(idx, ZERO);
+      for (let k = 0; k < 6; k++) {
+        const mesh = arms[k];
+        if (k === PART.L2 || k === PART.L3) (full || stick ? put(mesh, i, k, stick) : off(mesh, i));
+        else if (k === PART.PALM) (full || stick ? put(mesh, i, k, false) : off(mesh, i));
+        else full ? put(mesh, i, k, false) : off(mesh, i);
+      }
+      if (full) {
+        put(fingers.current, 2 * i, PART.FL, false);
+        put(fingers.current, 2 * i + 1, PART.FR, false);
+        put(eeMark.current, i, PART.EE, false);
+      } else {
+        off(fingers.current, 2 * i);
+        off(fingers.current, 2 * i + 1);
+        off(eeMark.current, i);
+      }
+      const isHeld = !!s.held && s.lod !== 'none';
+      if (isHeld) put(held.current, i, PART.EE, false);
+      else off(held.current, i);
     }
-    for (const m of all) if (m) m.instanceMatrix.needsUpdate = true;
+    for (const m of [...statics.current, ...arms, fingers.current, held.current, eeMark.current, beacon.current, hit.current]) if (m) m.instanceMatrix.needsUpdate = true;
     if (beacon.current?.instanceColor) beacon.current.instanceColor.needsUpdate = true;
   });
 
@@ -301,19 +305,19 @@ function OutrigFleet({ ids }: { ids: string[] }) {
   };
   if (!n) return null;
   const nr = () => null;
+  const A = kit.arm;
+  const armParts: ArmPartKit[] = [A.l1, A.l2, A.l3, A.l4, A.l5, A.palm];
   return (
     <group name="outrig-fleet">
       {kit.static.map((p, k) => (
         <instancedMesh key={`s${k}`} ref={(m) => void (statics.current[k] = m)} args={[p.geo, p.mat, n]} frustumCulled={false} castShadow raycast={nr} />
       ))}
-      <instancedMesh ref={turret} args={[kit.turret, kit.turretMat, n]} frustumCulled={false} castShadow raycast={nr} />
-      <instancedMesh ref={mast} args={[kit.mast, kit.mastMat, n]} frustumCulled={false} raycast={nr} />
-      <instancedMesh ref={mast2} args={[kit.mast2, kit.mast2Mat, n]} frustumCulled={false} raycast={nr} />
-      <instancedMesh ref={armBar} args={[kit.armBar, kit.armBarMat, n]} frustumCulled={false} raycast={nr} />
-      <instancedMesh ref={head} args={[kit.toolHead, kit.toolHeadMat, n]} frustumCulled={false} raycast={nr} />
-      <instancedMesh ref={(m) => void (tools.current[0] = m)} args={[kit.toolBasket, kit.toolBasketMat, n]} frustumCulled={false} raycast={nr} />
-      <instancedMesh ref={(m) => void (tools.current[1] = m)} args={[kit.toolClamp, kit.toolClampMat, n]} frustumCulled={false} raycast={nr} />
-      <instancedMesh ref={(m) => void (tools.current[2] = m)} args={[kit.toolBox, kit.toolBoxMat, n]} frustumCulled={false} raycast={nr} />
+      {armParts.map((p, k) => (
+        <instancedMesh key={`a${k}`} ref={(m) => void (armMesh.current[k] = m)} args={[p.geo, p.mat, n]} frustumCulled={false} raycast={nr} />
+      ))}
+      <instancedMesh ref={fingers} args={[A.finger.geo, A.finger.mat, 2 * n]} frustumCulled={false} raycast={nr} />
+      <instancedMesh ref={held} args={[A.held.geo, A.held.mat, n]} frustumCulled={false} raycast={nr} />
+      <instancedMesh ref={eeMark} args={[A.ee.geo, A.ee.mat, n]} frustumCulled={false} renderOrder={11} raycast={nr} />
       <instancedMesh ref={beacon} args={[kit.beacon, kit.beaconMat, n]} frustumCulled={false} raycast={nr} />
       <instancedMesh ref={hit} args={[hitGeo, hitMat, n]} frustumCulled={false} onPointerOver={over} onPointerOut={out} onClick={click} />
     </group>
@@ -529,7 +533,15 @@ function RigidObjectsAndFixtures() {
     [],
   );
 
-  const objEntries = Object.values(rigidObjects ?? {});
+  // an object in a robot's gripper is drawn by that robot's arm (smoothed, on the same kinematics); don't draw it twice
+  const heldKey = useWorld((st) =>
+    Object.values(st.robots)
+      .map((r) => readManipulator(r)?.held_object_id ?? '')
+      .filter(Boolean)
+      .join('|'),
+  );
+  const heldIds = new Set(heldKey ? heldKey.split('|') : []);
+  const objEntries = Object.values(rigidObjects ?? {}).filter((o) => !heldIds.has(o.id));
   const fixEntries = Object.values(mechanicalFixtures ?? {});
 
   return (

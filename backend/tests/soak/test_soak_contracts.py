@@ -15,7 +15,6 @@ def _engine(clock):
     return create_engine(plant=FacilityPlant(seed=3, config=cfg), run_id="soak_contract", seed=3, storage=MemoryStorage(), wall_time=clock)
 
 
-@pytest.mark.xfail(strict=False, reason="SOAK-02 (owner K): advertised heartbeat interval 10 s > deadman 1.5 s")
 @pytest.mark.asyncio
 async def test_lease_acquire_ack_heartbeat_interval_is_within_deadman():
     """SOAK-02: the acquire ack tells clients to heartbeat every `heartbeat_interval_ms` (ttl/3 = 10 s) but the deadman fires after `deadman_ms` (1.5 s)
@@ -44,7 +43,6 @@ async def test_deadman_ends_abandoned_lease_and_robot_returns_to_autonomous():
 
 
 @pytest.mark.slow
-@pytest.mark.xfail(strict=False, reason="SOAK-03 (owner M): classify crashes on an empty rack scope for plant zone c/d/e headers")
 @pytest.mark.asyncio
 async def test_fouling_on_far_zone_header_does_not_crash_the_incident_graph():
     from agent_fakes import FakeModelClient
@@ -55,5 +53,32 @@ async def test_fouling_on_far_zone_header_does_not_crash_the_incident_graph():
         await st.advance(400, 2.0)
         assert st.rt.errors == [], st.rt.errors
         assert all(i["cause"] != "unknown" for i in st.incidents())
+    finally:
+        await st.stop()
+
+
+@pytest.mark.slow
+@pytest.mark.xfail(strict=False, reason="SOAK-04 (owner M): ctx.suppress[asset]=inf is never released when the incident is escalated by the liveness guard")
+@pytest.mark.asyncio
+async def test_recurrence_on_an_asset_with_an_escalated_incident_opens_a_new_incident():
+    """SOAK-04 liveness: outrig.py:169 `ctx.lock_suppress([target])` suppresses the detector on the repaired asset with until=inf while the repair runs;
+    the release is the later `lock_suppress(..., now + settle_grace_s)`. When the incident is cancelled in between (runtime._liveness escalation, graph
+    crash) nothing frees it, so `ctx.suppress == {asset: inf}` until the process restarts and a fresh failure of that asset never opens an incident.
+    Reproducer: shrink the stuck-stage limit so the guard escalates, repair the strainer physically, inject it again."""
+    from agent_fakes import FakeModelClient
+    from live_harness import Stack
+    from loopkeeper.orchestration import Limits
+    st = await Stack.create(seed=3, model_client=FakeModelClient(), limits=Limits(stuck_stage_s=20.0))
+    try:
+        assert (await st.inject("strainer_blockage", "strainer_02"))["accepted"]
+        if not await st.run_until(lambda: any(i["status"] == "escalated" for i in st.incidents()), 900):
+            pytest.skip("the first incident did not escalate under the shrunken liveness guard (inconclusive)")
+        first = {i["id"] for i in st.incidents()}
+        res = st.eng.plant_apply("replace_strainer", "strainer_02", {})            # the operator fixes it physically
+        assert res.get("ok"), res
+        await st.advance(180, 2.0)
+        assert (await st.inject("strainer_blockage", "strainer_02"))["accepted"]
+        assert await st.run_until(lambda: {i["id"] for i in st.incidents()} - first, 600), \
+            f"no new incident for a fresh strainer_blockage on strainer_02 (suppress={dict(st.rt.ctx.suppress)} open_keys={dict(st.rt.ctx.open_keys)})"
     finally:
         await st.stop()

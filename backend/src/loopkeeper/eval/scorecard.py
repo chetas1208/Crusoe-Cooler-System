@@ -111,7 +111,7 @@ def agg_recursive(rows: list[Json], arm: str) -> Json:
     a["detect_latency_s_median"] = _median([r["detect_latency_s"] for r in rs if r.get("detect_latency_s") is not None])
     a["policy_gate"] = {"commands_submitted": sum(r.get("commands_submitted", 0) for r in rs), "policy_blocked": sum(r.get("unsafe_blocked", 0) for r in rs), "unsafe_executed_on_plant": sum(r.get("unsafe_executed", 0) for r in rs)}
     a["model_calls"] = {"network": sum(r.get("model_calls", {}).get("network", 0) for r in rs), "error_rows": sum(len(r.get("model_calls", {}).get("errors", [])) for r in rs),
-                        "decision_tasks_model": sum(r.get("tasks", {}).get("model", 0) for r in rs), "decision_tasks_labelled_fallback": sum(r.get("tasks", {}).get("fallback", 0) for r in rs)}
+                        "decision_tasks_not_labelled_fallback": sum(r.get("tasks", {}).get("model", 0) for r in rs), "decision_tasks_labelled_fallback": sum(r.get("tasks", {}).get("fallback", 0) for r in rs)}
     a["per_scenario_runtime"] = _rec_scenarios(rs)
     a["seed_variation"] = seed_variation(rs)
     a["by_rate_with_clusters"] = {"verified": rate(rs, _verified), "false_success_per_run": rate(rs, lambda r: float(bool(r.get("false_success")))),
@@ -164,7 +164,7 @@ def main() -> None:
     base_arms = {a: card["arms"][a] for a in ("no_action", "static", "single_pass")}
     base_runs = [r for r in card["runs"] if r.get("arm") in base_arms and not r.get("replay")]
     w5, w14 = load_rows("recursive_w5"), load_rows("recursive_w14_layaon")
-    rec, rep = (w5, w14) if w5 else (w14, [])                       # primary = the low-concurrency run (fewer provider 503 fallbacks); the 14-worker run is a reported replicate
+    rec, rep = (w5, w14) if w5 else (w14, [])                       # primary = the low-concurrency run on the CURRENT build; the earlier-build runs are kept as a before/after record
     rep2 = load_rows("recursive_w5_layaon")                           # first 5-worker run (Laya router ON, strict trace definition): second replicate
     det = load_rows("recursive_det")
     on = load_rows("recursive_mem_on")
@@ -179,11 +179,11 @@ def main() -> None:
                    "seed_variation": seed_variation(rs)}
     if rec:
         arms["recursive"] = agg_recursive(rec, "recursive")
-    legacy_trace = {"actions_traced": None, "actions_total": None, "rate": None, "note": "this replicate used the first, stricter trace definition (it undercounts escalated-replan and set_load actions); see the primary arm"}
+    legacy_trace = {"actions_traced": None, "actions_total": None, "rate": None, "note": "run on an EARLIER runtime build (high-impact L3 isolation was auto-approved by the veto window; Laya router ON; first, stricter trace definition) - kept as a before/after record, not as a replicate of the current build"}
     if rep:
-        arms["recursive_replicate_w14_laya_on"] = {**agg_recursive([{**r, "arm": "recursive_replicate_w14_laya_on"} for r in rep], "recursive_replicate_w14_laya_on"), "trace_coverage": legacy_trace}
+        arms["recursive_prior_build_w14"] = {**agg_recursive([{**r, "arm": "recursive_prior_build_w14"} for r in rep], "recursive_prior_build_w14"), "trace_coverage": legacy_trace}
     if rep2:
-        arms["recursive_replicate_w5_laya_on"] = {**agg_recursive([{**r, "arm": "recursive_replicate_w5_laya_on"} for r in rep2], "recursive_replicate_w5_laya_on"), "trace_coverage": legacy_trace}
+        arms["recursive_prior_build_w5"] = {**agg_recursive([{**r, "arm": "recursive_prior_build_w5"} for r in rep2], "recursive_prior_build_w5"), "trace_coverage": legacy_trace}
     if det:
         arms["recursive_det_no_llm"] = agg_recursive([{**r, "arm": "recursive_det_no_llm"} for r in det], "recursive_det_no_llm")
     # ---- paired comparisons (scenario, seed) on verified completion
@@ -195,11 +195,11 @@ def main() -> None:
         cmp["recursive_minus_single_pass_false_success_per_run"] = paired(by["single_pass"], rec, lambda r: float(bool(r.get("false_success"))), "false_success_per_run")
         cmp["recursive_minus_static_false_success_per_run"] = paired(by["static"], rec, lambda r: float(bool(r.get("false_success"))), "false_success_per_run")
         if rep2:
-            cmp["replicate_w5_run1_minus_primary_verified_completion"] = paired(rec, rep2, lambda r: float(_verified(r)), "verified_completion")
-            cmp["replicate_w5_run1_minus_primary_recover_after_onset_s"] = paired(rec, rep2, lambda r: r.get("recover_after_onset_s"), "recover_after_onset_s")
+            cmp["prior_build_w5_minus_primary_verified_completion"] = paired(rec, rep2, lambda r: float(_verified(r)), "verified_completion")
+            cmp["prior_build_w5_minus_primary_recover_after_onset_s"] = paired(rec, rep2, lambda r: r.get("recover_after_onset_s"), "recover_after_onset_s")
         if rep:
-            cmp["replicate_w14_minus_primary_w5_verified_completion"] = paired(rec, rep, lambda r: float(_verified(r)), "verified_completion")
-            cmp["replicate_w14_minus_primary_w5_recover_after_onset_s"] = paired(rec, rep, lambda r: r.get("recover_after_onset_s"), "recover_after_onset_s")
+            cmp["prior_build_w14_minus_primary_verified_completion"] = paired(rec, rep, lambda r: float(_verified(r)), "verified_completion")
+            cmp["prior_build_w14_minus_primary_recover_after_onset_s"] = paired(rec, rep, lambda r: r.get("recover_after_onset_s"), "recover_after_onset_s")
         if det:
             cmp["recursive_llm_minus_runtime_no_llm_verified_completion"] = paired(det, rec, lambda r: float(_verified(r)), "verified_completion")
             cmp["recursive_llm_minus_runtime_no_llm_recover_after_onset_s"] = paired(det, rec, lambda r: r.get("recover_after_onset_s"), "recover_after_onset_s")
@@ -221,6 +221,14 @@ def main() -> None:
     spend["model_calls_network"] = sum(r.get("model_calls", {}).get("network", 0) for a in arms_files for r in load_rows(a))
     spend["pricing_note"] = "est. from catalog pricing treated as USD per 1M tokens (unit not stated by the API)"
     probe_p = OUT / "runtime_probe.json"
+    import subprocess
+    from ..orchestration import Limits
+    try:
+        head = subprocess.run(["git", "rev-parse", "--short", "HEAD"], capture_output=True, text=True, cwd=F.ROOT, timeout=10).stdout.strip()
+    except Exception:                                              # noqa: BLE001
+        head = None
+    build = {"git_head": head, "limits_l3_requires_human": Limits().l3_requires_human, "laya_router": "off (rule fallback; set LOOPKEEPER_LAYA_ROUTER=1 to run it)", "inference_gateway": "default client (INFERENCE_GATEWAY=1)",
+             "note": "the runtime changed between the earliest and the final runs (V12 L3 policy: isolation / section replacement is never auto-approved); the earlier-build arms record that"}
     card2 = {**{k: card[k] for k in ("manifest_sha256", "prompt_hashes", "n_scenarios", "n_seeds", "replay_determinism", "unsafe_action_probe")}, "schema": "lk.scorecard.v2",
              "generated_at": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime()), "arms": arms,
              "baseline_spend": base_spend,
@@ -230,9 +238,9 @@ def main() -> None:
                                              "the runtime replans and escalates by itself; it may also never open an incident for a fault class it has no detector for",
                                              "claim time = the instant the runtime closes its incident(s) VERIFIED (the verifier window holds checks 28-55 sim s); truth is sampled at that instant",
                                              "model latency is not simulated time (the sim waits for in-flight calls), same as the single-pass arm"]},
-             "comparisons_paired": cmp, "memory_ablation": abl, "runtime_unsafe_probe": json.loads(probe_p.read_text()) if probe_p.exists() else None, "spend": spend,
+             "runtime_build": build, "comparisons_paired": cmp, "memory_ablation": abl, "runtime_unsafe_probe": json.loads(probe_p.read_text()) if probe_p.exists() else None, "spend": spend,
              "statistics_note": "wilson95_n_runs treats the runs as independent (too narrow: seeds change onset +-30 s and plant noise but barely change model output); cluster_bootstrap95_over_scenarios resamples the 9 scenarios (effective n ~9) and is the interval to quote",
-             "wall_s": card.get("wall_s"), "runs": base_runs + compact(rec) + compact([{**r, "arm": "recursive_replicate_w14_laya_on"} for r in rep]) + compact([{**r, "arm": "recursive_replicate_w5_laya_on"} for r in rep2]) + compact(det) + compact(on) + compact(off2)}
+             "wall_s": card.get("wall_s"), "runs": base_runs + compact(rec) + compact([{**r, "arm": "recursive_prior_build_w14"} for r in rep]) + compact([{**r, "arm": "recursive_prior_build_w5"} for r in rep2]) + compact(det) + compact(on) + compact(off2)}
     for p in (ART / "scorecard.json", DOCS):
         p.write_text(json.dumps(card2, indent=1, default=str) + "\n")
     for a, g in arms.items():

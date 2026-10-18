@@ -1,6 +1,7 @@
 import * as THREE from 'three';
 import { mergeParts, xf } from './merge';
 import { C } from './theme';
+import { ARM_DIMS } from './armKinematics';
 
 /**
  * Shared robot assets: geometry and materials are built ONCE for the whole fleet (16 robots must not own 16 copies).
@@ -52,30 +53,38 @@ const box = (w: number, h: number, d: number) => new THREE.BoxGeometry(w, h, d);
 
 /* ───────────────────────────── OUTRIG ───────────────────────────── */
 
+export interface ArmPartKit {
+  geo: THREE.BufferGeometry;
+  mat: THREE.Material;
+}
+
 export interface OutrigKit {
   /** merged, never-moving relative to the chassis */
   static: Array<{ geo: THREE.BufferGeometry; mat: THREE.Material }>;
-  turret: THREE.BufferGeometry;
-  turretMat: THREE.Material;
-  mast: THREE.BufferGeometry; // unit height 0.6, scaled in y
-  mastMat: THREE.Material;
-  mast2: THREE.BufferGeometry;
-  mast2Mat: THREE.Material;
-  armBar: THREE.BufferGeometry; // unit height 0.5, scaled in y
-  armBarMat: THREE.Material;
-  toolHead: THREE.BufferGeometry;
-  toolHeadMat: THREE.Material;
-  toolBasket: THREE.BufferGeometry;
-  toolClamp: THREE.BufferGeometry;
-  toolBox: THREE.BufferGeometry;
-  toolBasketMat: THREE.Material;
-  toolClampMat: THREE.Material;
-  toolBoxMat: THREE.Material;
+  /**
+   * Articulated arm parts, authored in the backend's sim axes (link along local +z) and placed by armKinematics.armFK.
+   * Order matches armKinematics.PART: l1 l2 l3 l4 l5 palm fingerL fingerR, then the end-effector triad and a held object.
+   */
+  arm: { l1: ArmPartKit; l2: ArmPartKit; l3: ArmPartKit; l4: ArmPartKit; l5: ArmPartKit; palm: ArmPartKit; finger: ArmPartKit; ee: ArmPartKit; held: ArmPartKit };
   beacon: THREE.BufferGeometry;
   beaconMat: THREE.MeshBasicMaterial;
 }
 
 let outrig: OutrigKit | null = null;
+
+/** CylinderGeometry is y-up; arm links run along local +z */
+function zCyl(r: number, h: number, seg = 18, zc = 0) {
+  const g = new THREE.CylinderGeometry(r, r, h, seg);
+  g.rotateX(Math.PI / 2);
+  g.translate(0, 0, zc);
+  return g;
+}
+function zCapsule(r: number, len: number) {
+  const g = new THREE.CapsuleGeometry(r, len, 6, 14);
+  g.rotateX(Math.PI / 2);
+  g.translate(0, 0, len / 2);
+  return g;
+}
 
 export function outrigKit(): OutrigKit {
   if (outrig) return outrig;
@@ -92,10 +101,8 @@ export function outrigKit(): OutrigKit {
     }
   add(box(0.44, 0.03, 0.012), xf(0, 0.3, 0.465), '#f4f7ff', 'glow');
   add(box(0.66, 0.06, 0.06), xf(0, 0.1, 0.5), '#14181f', 'metal');
-  // rear tool cradle
-  add(cyl(0.05, 0.045, 0.1, 12), xf(-0.14, 0.46, -0.34), '#8d97a8', 'metal');
-  add(new THREE.TorusGeometry(0.045, 0.013, 8, 16), xf(0.02, 0.45, -0.34, Math.PI / 2, 0, 0), C.outrig, 'paint');
-  add(box(0.1, 0.07, 0.08), xf(0.17, 0.455, -0.34), '#3d6fb6', 'paint');
+  // shoulder pedestal ring where the arm leaves the deck (the arm origin is the backend's mount point)
+  add(cyl(0.085, 0.095, 0.03, 20), xf(0, 0.392, 0.16), '#2c323c', 'metal');
   // sensor mast + lidar head (rotating a cylinder about its own axis is invisible)
   add(cyl(0.012, 0.012, 0.3, 8), xf(0, 0.54, 0.34), '#59606e', 'metal');
   add(cyl(0.05, 0.05, 0.05, 14), xf(0, 0.72, 0.34), '#1f242c', 'metal');
@@ -104,46 +111,38 @@ export function outrigKit(): OutrigKit {
   for (const f of ['paint', 'metal', 'rubber', 'glow'] as const) if (g[f]) stat.push({ geo: g[f]!, mat: mats[f] });
 
   const mk = (hex: string, r: number, m: number) => new THREE.MeshStandardMaterial({ color: hex, roughness: r, metalness: m });
-  const toolHead = mergeParts([
-    { geo: box(0.09, 0.05, 0.07) },
-    { geo: box(0.014, 0.05, 0.05), m: xf(-0.035, -0.045, 0) },
-    { geo: box(0.014, 0.05, 0.05), m: xf(0.035, -0.045, 0) },
+  const D = ARM_DIMS;
+  const dark = mk('#4d596b', 0.4, 0.6);
+  // each link carries a barrel at its own joint (pitch joints turn about local y, the cylinder's native axis)
+  const l2 = mergeParts([
+    { geo: zCapsule(D.l2.r, D.l2.len), c: rgb('#d1d9e6') },
+    { geo: new THREE.CylinderGeometry(D.l2.r * 1.15, D.l2.r * 1.15, D.l2.r * 2.6, 16), c: rgb('#4d596b') },
   ]);
+  const l3 = mergeParts([
+    { geo: zCapsule(D.l3.r, D.l3.len), c: rgb('#d1d9e6') },
+    { geo: new THREE.CylinderGeometry(D.l3.r * 1.2, D.l3.r * 1.2, D.l3.r * 2.8, 16), c: rgb('#4d596b') },
+  ]);
+  const triad = mergeParts([
+    { geo: new THREE.BoxGeometry(0.05, 0.004, 0.004), m: xf(0.025, 0, 0), c: rgb('#ff5d5d') },
+    { geo: new THREE.BoxGeometry(0.004, 0.05, 0.004), m: xf(0, 0.025, 0), c: rgb('#5dff9a') },
+    { geo: new THREE.BoxGeometry(0.004, 0.004, 0.05), m: xf(0, 0, 0.025), c: rgb('#5d9bff') },
+    { geo: new THREE.SphereGeometry(0.009, 10, 8), c: rgb('#ffffff') },
+  ]);
+  const vcMat = new THREE.MeshStandardMaterial({ vertexColors: true, roughness: 0.4, metalness: 0.5 });
   outrig = {
     static: stat,
-    turret: cyl(0.15, 0.17, 0.08, 18),
-    turretMat: mk('#2c323c', 0.4, 0.6),
-    mast: box(0.1, 0.6, 0.1),
-    mastMat: mk('#d6dae2', 0.4, 0.5),
-    mast2: box(0.075, 0.08, 0.075),
-    mast2Mat: mk('#8993a3', 0.4, 0.7),
-    armBar: box(0.05, 0.5, 0.05),
-    armBarMat: mk(C.outrig, 0.4, 0.4),
-    toolHead,
-    toolHeadMat: mk('#34393f', 0.4, 0.7),
-    toolBasket: (() => {
-      const g2 = cyl(0.06, 0.05, 0.14, 12);
-      g2.translate(0, -0.1, 0);
-      return g2;
-    })(),
-    toolClamp: (() => {
-      const g2 = new THREE.TorusGeometry(0.08, 0.02, 8, 18);
-      g2.rotateX(Math.PI / 2);
-      g2.translate(0, -0.1, 0);
-      return g2;
-    })(),
-    toolBox: (() => {
-      const g2 = box(0.11, 0.1, 0.08);
-      g2.translate(0, -0.09, 0);
-      return g2;
-    })(),
-    toolBasketMat: (() => {
-      const m = mk('#9aa3b2', 0.4, 0.8);
-      m.side = THREE.DoubleSide;
-      return m;
-    })(),
-    toolClampMat: mk(C.outrig, 0.5, 0.5),
-    toolBoxMat: mk('#3d6fb6', 0.5, 0.4),
+    arm: {
+      l1: { geo: zCyl(D.l1.r, D.l1.h), mat: dark },
+      l2: { geo: l2, mat: vcMat },
+      l3: { geo: l3, mat: vcMat },
+      l4: { geo: zCyl(D.l4.r, D.l4.h), mat: dark },
+      l5: { geo: zCyl(D.l5.r, D.l5.h), mat: dark },
+      palm: { geo: new THREE.BoxGeometry(D.palm[0], D.palm[1], D.palm[2]), mat: mk('#333f52', 0.4, 0.6) },
+      finger: { geo: new THREE.BoxGeometry(D.finger.half[0] * 2, D.finger.half[1] * 2, D.finger.half[2] * 2), mat: mk('#ebf0f5', 0.35, 0.5) },
+      ee: { geo: triad, mat: new THREE.MeshBasicMaterial({ vertexColors: true, toneMapped: false, depthTest: false, transparent: true }) },
+      // the backend's strainer cartridge (r 22 mm, h 90 mm), axis along the gripper's local z
+      held: { geo: zCyl(0.022, 0.09, 16), mat: mk('#1fbfea', 0.35, 0.5) },
+    },
     beacon: new THREE.SphereGeometry(0.035, 10, 8),
     beaconMat: new THREE.MeshBasicMaterial({ color: '#ffffff', toneMapped: false }),
   };

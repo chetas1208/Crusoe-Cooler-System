@@ -205,15 +205,15 @@ describe('control session on a fake API', () => {
     vi.useRealTimers();
   });
 
-  it('sends intents at 15..30 Hz with lease_id, monotonic command_seq and graph_revision, only after the lease is granted', async () => {
+  it('sends intents at 4..8 Hz (one request in flight) with lease_id, monotonic command_seq and graph_revision, only after the lease is granted', async () => {
     const p = controlActions.takeControl('OR-03');
     expect(sent.length).toBe(0);
     await vi.advanceTimersByTimeAsync(0);
     await p;
     expect(useControl.getState().inputEnabled).toBe(true);
     await vi.advanceTimersByTimeAsync(1000);
-    expect(sent.length).toBeGreaterThanOrEqual(15);
-    expect(sent.length).toBeLessThanOrEqual(30);
+    expect(sent.length).toBeGreaterThanOrEqual(4);
+    expect(sent.length).toBeLessThanOrEqual(8);
     expect(sent.every((i) => i.lease_id === 'L1' && i.graph_revision === 'g1.c1' && i.duration_ms <= 250)).toBe(true);
     const seqs = sent.map((i) => i.command_seq);
     expect(seqs).toEqual([...seqs].sort((a, b) => a - b));
@@ -290,10 +290,36 @@ describe('control session on a fake API', () => {
     expect(useControl.getState().stop?.reason).toBe('deadman_timeout');
   });
 
+  it('a robot that keeps answering lease_not_active for 3 s is acquiring, not a lost link', async () => {
+    await controlActions.takeControl('OR-03');
+    driveReply = () => ({ accepted: false, code: 'not_controllable', reason: 'lease_not_active: robot is still acquiring (retry)' });
+    await vi.advanceTimersByTimeAsync(3000);
+    expect(useControl.getState().stop).toBeNull();
+    expect(useControl.getState().state === 'MANUAL_ARMED' || useControl.getState().state === 'MANUAL_DRIVING').toBe(true);
+    driveReply = (i) => ({ accepted: true, robot_id: 'OR-03', lease_epoch: 1, applied_seq: i.command_seq, controller_state: 'MANUAL', world_version: 1, pose: { segment_id: 'e', s_m: 0, speed_m_s: 0, velocity_m_s: 0, facing: 1, position_xyz_m: [0, 0, 0] }, odometer_m: 0 });
+    await vi.advanceTimersByTimeAsync(200);
+    expect(useControl.getState().ack).not.toBeNull();
+  });
+
+  it('a stalled page (timers delayed by seconds) is not mistaken for a lost link; real silence afterwards still is', async () => {
+    await controlActions.takeControl('OR-03');
+    await vi.advanceTimersByTimeAsync(100);
+    api.drive = () => new Promise(() => undefined); // answers are queued behind a stall
+    api.heartbeat = () => new Promise(() => undefined);
+    await vi.advanceTimersByTimeAsync(200);
+    vi.setSystemTime(Date.now() + 3000); // the page was frozen for 3 s: the next timer tick sees a 3 s gap
+    await vi.advanceTimersByTimeAsync(100);
+    expect(useControl.getState().stop).toBeNull();
+    await vi.advanceTimersByTimeAsync(600);
+    expect(useControl.getState().stop).toBeNull();
+    await vi.advanceTimersByTimeAsync(1200);
+    expect(useControl.getState().stop?.reason).toBe('link_lost');
+  });
+
   it('a stale graph revision is shown verbatim and keeps the lease', async () => {
     await controlActions.takeControl('OR-03');
     driveReply = () => ({ accepted: false, code: 'not_controllable', reason: 'stale_graph_revision: the navigation graph changed; re-read /navigation/graphs' });
-    await vi.advanceTimersByTimeAsync(100);
+    await vi.advanceTimersByTimeAsync(200);
     expect(useControl.getState().notice?.text).toMatch(/^stale_graph_revision/);
     expect(useControl.getState().inputEnabled).toBe(true);
   });

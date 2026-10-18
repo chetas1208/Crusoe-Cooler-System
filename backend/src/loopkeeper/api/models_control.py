@@ -35,6 +35,9 @@ ControlErrorCode = Literal[
     "bad_request", "no_lease", "stale_epoch", "stale_seq", "not_passable", "lease_revoked", "replay_readonly",
 ]
 ToolAction = Literal["lamp_on", "lamp_off", "scan"]
+# arm actions (engine/robots/manipulator.py ARM_ACTIONS) + the crawler brush tool
+DRIVE_ACTIONS = frozenset({"joint_jog", "joint_targets", "gripper_open", "gripper_close", "pick", "place", "arm_home", "arm_stow", "arm_stop",
+                           "clean_deposit"})
 ControlEventKind = Literal["human.override", "agent.resumed", "safe_hold", "drive.rejected", "scan.result", "end_of_line"]
 
 # mirrors HTTP_STATUS_FOR_CODE in contracts.control.ts (parity-tested)
@@ -155,12 +158,29 @@ class DriveIntent(StrictWire):
     graph_revision: Optional[str] = Field(default=None, max_length=64)
     duration_ms: int = Field(ge=20, le=250)
     tool: Optional[ToolAction] = None
-    action: Optional[str] = None
-    joint_idx: Optional[int] = None
-    delta_rad: Optional[float] = None
-    gripper_aperture: Optional[float] = None
+    # OUTRIG arm / gripper intents (identical for every OUTRIG; crawlers are refused in the ack). All optional.
+    action: Optional[str] = Field(default=None, max_length=32)
+    joint_idx: Optional[int] = Field(default=None, ge=0, le=5)                          # 0-based joint index (joint_1 = 0)
+    delta_rad: Optional[float] = Field(default=None, ge=-0.8, le=0.8, allow_inf_nan=False)
+    joint_targets_rad: Optional[list[float]] = Field(default=None, min_length=6, max_length=6)   # absolute targets for all 6 joints
+    gripper_aperture: Optional[float] = Field(default=None, ge=0.0, le=0.07, allow_inf_nan=False)
+    arm_speed_scale: Optional[float] = Field(default=None, ge=0.1, le=1.0, allow_inf_nan=False)
     pick: Optional[bool] = None
     place: Optional[bool] = None
+
+    @field_validator("action")
+    @classmethod
+    def _known_action(cls, v: Optional[str]) -> Optional[str]:
+        if v is not None and v not in DRIVE_ACTIONS:
+            raise ValueError(f"unknown action {v!r}; expected one of {sorted(DRIVE_ACTIONS)}")
+        return v
+
+    @field_validator("joint_targets_rad")
+    @classmethod
+    def _finite_targets(cls, v: Optional[list[float]]) -> Optional[list[float]]:
+        if v is not None and not all(abs(x) <= 10.0 and x == x for x in v):
+            raise ValueError("joint_targets_rad must be 6 finite angles in radians")
+        return v
 
 
 class ReleaseRequest(StrictWire):

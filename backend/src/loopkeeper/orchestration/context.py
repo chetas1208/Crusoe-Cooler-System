@@ -95,6 +95,7 @@ class AgentContext:
         self._waiters: list[tuple[Callable[[], bool], asyncio.Future, float | None]] = []
         self._sems: dict[str, asyncio.Semaphore] = {}
         self.suppress: dict[str, float] = {}
+        self.suppress_owner: dict[str, str] = {}
         self.open_keys: dict[str, str] = {}
         self.command_count = 0
         self.approvals: dict[str, Json] = {}
@@ -211,9 +212,23 @@ class AgentContext:
         return len([w for w in self._waiters if not w[1].done()])
 
     # ── suppression of detectors during repair ──
-    def lock_suppress(self, ids: list[str], until: float | None = None) -> None:
+    def lock_suppress(self, ids: list[str], until: float | None = None, owner: str | None = None) -> None:
         for i in ids:
             self.suppress[i] = float("inf") if until is None else until
+            if until is None and owner:
+                self.suppress_owner[i] = owner                     # an open-ended suppression is tied to the incident that asked for it
+            elif until is not None:
+                self.suppress_owner.pop(i, None)
+
+    def release_suppress(self, owner: str, grace_s: float | None = None) -> None:
+        """The owning incident ended (escalated by the liveness guard, crashed, cancelled): shorten its open-ended suppressions to a settle grace so a
+        recurrence of the asset's fault can be detected again."""
+        until = self.now + (self.limits.settle_grace_s if grace_s is None else grace_s)
+        for i, o in list(self.suppress_owner.items()):
+            if o == owner:
+                del self.suppress_owner[i]
+                if self.suppress.get(i) == float("inf"):
+                    self.suppress[i] = until
 
     def racks_in_maintenance(self, except_incident: str) -> set[str]:
         """Racks another incident is cordoning/isolating (or recently restored): their margins/flows are transient, not evidence."""

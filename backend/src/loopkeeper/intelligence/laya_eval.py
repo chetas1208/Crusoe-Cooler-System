@@ -315,8 +315,8 @@ def prob_scores(P: np.ndarray, y: np.ndarray) -> Dict[str, float]:
             "brier": round(float(np.mean(np.sum((P - onehot) ** 2, axis=1))), 4)}
 
 
-def pct(a: List[float], q: float) -> float:
-    return round(float(np.percentile(a, q)), 2) if a else float("nan")
+def pct(a: List[float], q: float) -> Optional[float]:
+    return round(float(np.percentile(a, q)), 2) if a else None          # None, never NaN: the artifact must stay valid JSON
 
 
 # ---------------- fitting (TRAIN only) ----------------
@@ -392,15 +392,35 @@ def fit_policy(train_cases: List[Dict[str, Any]], M: Dict[Tuple[str, str], Dict[
     noul_auc = auroc([members_for(M[(c["id"], crit)], ens)[1] for c in train_cases], [c["ground_truth"] == HR for c in train_cases])
     noul_grid: List[Optional[float]] = [None] + ([round(x, 2) for x in np.arange(0.1, 0.95, 0.05)] if noul_auc >= 0.70 else [])
     cons_grid = [0.0] if ens == "single" else [0.0, 0.5, 0.67, 0.99]
+    # vectorised grid over the TRAIN rows (equivalent to apply_policy_rows + utility_of, which a test cross-checks)
+    T_, b_ = base.temperature, (np.asarray(base.bias) if base.bias else None)
+    n = len(train_cases)
+    conf = np.zeros(n)
+    raw = np.zeros(n, dtype=int)
+    cons = np.zeros(n)
+    noul = np.zeros(n)
+    ovr = np.zeros(n, dtype=bool)
+    for i, c in enumerate(train_cases):
+        mem, nl = members_for(M[(c["id"], crit)], ens)
+        pe, cs = _L.ensemble_probs(mem)
+        pc = _L.calibrate(pe, T_, b_)
+        raw[i], conf[i], cons[i], noul[i] = int(pc.argmax()), float(pc.max()), cs, nl
+        ovr[i] = _L.safety_override(c["summary"], "x")[1] is not None
+    hr_i = FAM.index(HR)
+    truth = y
     best = None
     for tau in [round(x, 2) for x in np.arange(0.0, 0.96, 0.05)]:
         for mc in cons_grid:
             for nt in noul_grid:
-                cal = _L.Calibration(**{**base.to_dict(), "tau": tau, "min_consistency": mc, "noul_threshold": nt})
-                u = utility_of(apply_policy_rows(train_cases, M, crit, ens, cal))
-                key = (u, tau, mc, 0 if nt is None else 1)
+                ab = (conf < tau) | (cons < mc if ens != "single" else np.zeros(n, dtype=bool)) | ((noul > nt) if nt is not None else np.zeros(n, dtype=bool))
+                pred = np.where(ab, hr_i, raw)
+                pred = np.where(ovr, hr_i, pred)
+                ab_eff = ab & ~ovr
+                u = np.where(ab_eff, np.where(truth == hr_i, UTILITY["abstain_on_human_review_truth"], UTILITY["abstain_otherwise"]),
+                             np.where(pred == truth, UTILITY["correct_answer"], UTILITY["wrong_answer"])).mean()
+                key = (float(u), tau, mc, 0 if nt is None else 1)
                 if best is None or key > best[0]:                # ties -> higher tau / stricter consistency (conservative advisory)
-                    best = (key, cal)
+                    best = (key, _L.Calibration(**{**base.to_dict(), "tau": tau, "min_consistency": mc, "noul_threshold": nt}))
     cal = best[1]
     cal.provenance = f"fitted on TRAIN only: temperature{' + class bias' if with_bias else ''}, abstention tau / consistency / noul (train utility {best[0][0]:.3f}; noul AUROC on train {noul_auc:.2f})"
     return cal
@@ -492,11 +512,14 @@ def arm_report(rows: List[Dict[str, Any]], latencies: List[float], extra: Option
         "human_review_recall": f"{sum(r['pred'] == HR for r in rows if r['truth'] == HR)}/{sum(r['truth'] == HR for r in rows)}",
         "unsafe_requests_to_human": f"{sum(r['pred'] == HR for r in unsafe)}/{len(unsafe)}",
         "overrides_fired": sum(1 for r in rows if r.get("overridden")), "utility_per_case": round(utility_of(rows), 4),
+        "raw_argmax_accuracy": round(sum(r["raw"] == r["truth"] for r in rows) / n, 4) if all("raw" in r for r in rows) else None,
         "confusion_matrix_rows_truth_cols_pred": m, "per_class": pc,
         "accuracy_by_tag": {t: {"n": sum(1 for r in rows if r.get("tag") == t), "accuracy": round(sum(1 for r in rows if r.get("tag") == t and r["truth"] == r["pred"]) /
                                                                                           max(1, sum(1 for r in rows if r.get("tag") == t)), 3)}
                             for t in sorted({r.get("tag") for r in rows if r.get("tag")})},
         "latency_ms": {"p50": pct(latencies, 50), "p95": pct(latencies, 95), "n": len(latencies)},
+        "case_details": [{"case_id": r["id"], "tag": r.get("tag"), "ground_truth": r["truth"], "raw_family": r.get("raw"), "predicted": r["pred"], "confidence": r.get("conf"),
+                          "consistency": r.get("consistency"), "abstained": r["abstained"], "overridden": bool(r.get("overridden"))} for r in rows],
     }
     if extra:
         out.update(extra)
@@ -701,14 +724,17 @@ def run_v12_evaluation(write: bool = True, measure_latency: bool = True) -> Dict
                     "the rule baseline and Nano see text only (no asset ids / numerics)",
                     "Nano confidence is verbalised, uncalibrated, and gets no abstention gate",
                     "criteria wording v12 was written after reading Agent C's V11 cases (not the new set's outputs)"],
-        "engines_summary": {"laya_v12_final": "see laya_v12", "laya_v11_shipped": "old single-pass path", "rules": "keyword baseline, NOT Laya", "nano": "Crusoe Nemotron Nano"},
-        "laya_v12": laya_final, "laya_v12_without_safety_override": laya_no_override, "laya_v11_shipped_policy": laya_v11_shipped, "rules_NOT_LAYA": rules,
+        "engines_summary": {"laya_router": "V12 final: calibrated order/paraphrase ensemble + abstention + safety override", "laya_v11_shipped_policy": "old single-pass path", "rule_fallback_NOT_LAYA": "keyword baseline, NOT Laya", "crusoe_nano": "Crusoe Nemotron Nano, one call"},
+        "laya_router_loaded": bool(lat_laya) or bool(shipped_rows), "laya_sdk_importable": _L.HAS_LAYA_SDK,
+        "laya_router": {**laya_final, "latency_ms_p50": laya_final["latency_ms"]["p50"], "latency_ms_p95": laya_final["latency_ms"]["p95"]},
+        "laya_router_without_safety_override": laya_no_override, "laya_v11_shipped_policy": laya_v11_shipped, "rule_fallback_NOT_LAYA": rules,
         "crusoe_nano": nano_rep, "legacy_v11_heldout_36": legacy_rep,
         "dev_candidates": cand_rows, "chosen_candidate": {k: best[k] for k in ("criteria", "ensemble", "class_bias", "dev_utility", "dev_nll")},
         "ablation_held_out_all_candidates": [],
         "safety_override": {"rules": [p.pattern for p in _L._UNSAFE + _L._UNSAFE_V12], "train_unsafe_recall": override_recall(train), "dev_unsafe_recall": override_recall(dev),
                             "held_out_unsafe_recall": override_recall(test), "held_out_false_positives_on_non_unsafe": override_false_positives(test),
                             "note": "deterministic, applied after every engine; recall below 100% means the regexes miss phrasing: the advisory is not a safety system"},
+        "note_compat": "keys laya_router / rule_fallback_NOT_LAYA / laya_router_loaded keep the V11 artifact shape that tests/test_v11_eval.py and /api/v1/eval/scorecard?laya=1 consumers expect",
         "calibration_params_file": "backend/src/loopkeeper/intelligence/laya_calibration.json",
         "laya_sdk_commit": "4ac226d5ee88ed6df8db288a05c766d7a34ee682", "laya_checkpoint": _L.LayaIncidentClassifier.CHECKPOINT,
         "hardware": "CPU (torch %s), load average %s" % (__import__("torch").__version__ if _has("torch") else "n/a", _loadavg()),
@@ -737,7 +763,7 @@ def status_block_from(rep: Dict[str, Any]) -> Dict[str, Any]:
                 "selective_accuracy": a["selective_accuracy"], "coverage": a["coverage"], "accuracy_ci95": a["accuracy_ci95"]}
     nano = rep.get("crusoe_nano", {})
     return {"source": "artifacts/v11/laya_eval.json", "available": True, "generated_at": rep["generated_at"], "split": f"held-out n={rep['dataset']['splits']['test']} of {rep['dataset']['n_cases']}",
-            "laya_router": pick(rep["laya_v12"]), "rule_fallback": pick(rep["rules_NOT_LAYA"]), "crusoe_nano": pick(nano) if nano.get("available", True) else {"available": False},
+            "laya_router": pick(rep["laya_router"]), "rule_fallback": pick(rep["rule_fallback_NOT_LAYA"]), "crusoe_nano": pick(nano) if nano.get("available", True) else {"available": False},
             "caveats": rep["caveats"][:2]}
 
 
@@ -771,5 +797,5 @@ if __name__ == "__main__" and len(__import__("sys").argv) > 1:
         print(collect_nano())
     elif cmd == "run":
         r = run_v12_evaluation()
-        print(json.dumps({"chosen": r["chosen_candidate"], "laya_v12": {k: r["laya_v12"][k] for k in ("accuracy_advisory", "accuracy_ci95", "abstention_rate", "selective_accuracy", "macro_f1")},
-                          "rules": r["rules_NOT_LAYA"]["accuracy_advisory"], "nano": r["crusoe_nano"].get("accuracy_advisory")}, indent=1))
+        print(json.dumps({"chosen": r["chosen_candidate"], "laya_router": {k: r["laya_router"][k] for k in ("accuracy_advisory", "accuracy_ci95", "abstention_rate", "selective_accuracy", "macro_f1")},
+                          "rules": r["rule_fallback_NOT_LAYA"]["accuracy_advisory"], "nano": r["crusoe_nano"].get("accuracy_advisory")}, indent=1))

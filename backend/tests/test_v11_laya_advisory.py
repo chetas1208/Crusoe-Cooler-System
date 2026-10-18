@@ -160,7 +160,7 @@ def test_artifact_is_consistent_with_frozen_dataset():
     assert d["dataset"]["splits"] == {s: len(C.split(s)) for s in ("train", "dev", "test")}
     assert d["advisory_only"] is True and d["never_gates_actions"] is True
     n = d["dataset"]["splits"]["test"]
-    for arm in ("laya_v12", "laya_v12_without_safety_override", "rules_NOT_LAYA"):
+    for arm in ("laya_router", "laya_router_without_safety_override", "rule_fallback_NOT_LAYA"):
         m = d[arm]["confusion_matrix_rows_truth_cols_pred"]
         assert sum(map(sum, m)) == d[arm]["n"] == n, arm
         assert math.isclose(d[arm]["accuracy_advisory"], sum(m[i][i] for i in range(6)) / n, abs_tol=1e-3), arm
@@ -170,14 +170,18 @@ def test_artifact_is_consistent_with_frozen_dataset():
     if nano.get("n"):
         assert sum(map(sum, nano["confusion_matrix_rows_truth_cols_pred"])) == nano["n"]
     assert len(d["dev_candidates"]) == len(E.CANDIDATES) == len(d["ablation_held_out_all_candidates"])
-    assert d["laya_v12"]["config"]["criteria"] == d["chosen_candidate"]["criteria"]
+    assert d["laya_router"]["config"]["criteria"] == d["chosen_candidate"]["criteria"]
+    # V11-artifact compatibility (tests/test_v11_eval.py reads these)
+    assert d["laya_router_loaded"] is True and "rule_fallback_NOT_LAYA" in d
+    assert d["laya_router"]["case_details"] and all(r["raw_family"] in C.CATEGORIES for r in d["laya_router"]["case_details"])
+    assert d["laya_router"]["latency_ms_p50"] > 50
 
 
 def test_calibration_file_matches_artifact_and_was_fitted_on_the_frozen_set():
     d = _artifact()
     cal = L.Calibration.load()
     assert cal.fitted and cal.dataset_sha256 == C.DATASET_SHA256
-    cfg = d["laya_v12"]["config"]
+    cfg = d["laya_router"]["config"]
     assert (cal.criteria, cal.temperature, cal.tau, cal.min_consistency, cal.noul_threshold) == (cfg["criteria"], cfg["temperature"], cfg["tau"], cfg["min_consistency"], cfg["noul_threshold"])
     assert "TRAIN" in cal.provenance
 
@@ -189,5 +193,46 @@ def test_status_block_matches_artifact_and_ui_shape():
     # the web app reads evaluation[engine].{accuracy, abstention_rate, latency_p95_ms}
     for eng in ("laya_router", "rule_fallback"):
         assert {"accuracy", "abstention_rate", "latency_p95_ms"} <= set(blk[eng])
-    assert blk["laya_router"]["accuracy"] == d["laya_v12"]["accuracy_advisory"]
-    assert blk["laya_router"]["abstention_rate"] == d["laya_v12"]["abstention_rate"]
+    assert blk["laya_router"]["accuracy"] == d["laya_router"]["accuracy_advisory"]
+    assert blk["laya_router"]["abstention_rate"] == d["laya_router"]["abstention_rate"]
+
+
+def test_fit_policy_uses_train_only_and_matches_row_policy():
+    """The vectorised train grid must score exactly what apply_policy_rows scores; and shuffling dev/test member data must not change the fit."""
+    rng = np.random.default_rng(3)
+
+    def mem():
+        out = []
+        for _ in range(3):
+            p = rng.dirichlet(np.ones(6) * 0.5)
+            out.append(p)
+        return np.array(out)
+
+    def build(seed_shift):
+        M = {}
+        for c in C.CASES:
+            y = L.FAMILIES.index(c["ground_truth"])
+            m0, m1 = mem(), mem()
+            if c["split"] == "train":
+                m0[:, y] += 0.5
+                m1[:, y] += 0.5
+                m0 /= m0.sum(axis=1, keepdims=True)
+                m1 /= m1.sum(axis=1, keepdims=True)
+            M[(c["id"], "v12")] = {"v0": m0, "v1": m1, "noul": [float(rng.random()), float(rng.random())]}
+        return M
+
+    rng = np.random.default_rng(3)
+    M1 = build(0)
+    train = C.split("train")
+    cal = E.fit_policy(train, M1, "v12", "orders3x2", True)
+    rows = E.apply_policy_rows(train, M1, "v12", "orders3x2", cal)
+    assert cal.fitted and cal.dataset_sha256 == C.DATASET_SHA256 and 0.2 <= cal.temperature <= 8.0
+    u = E.utility_of(rows)
+    assert f"train utility {u:.3f}" in cal.provenance
+    # dev / test member data replaced by noise: the fitted calibration is identical
+    M2 = dict(M1)
+    for c in C.CASES:
+        if c["split"] != "train":
+            M2[(c["id"], "v12")] = {"v0": mem(), "v1": mem(), "noul": [0.5, 0.5]}
+    cal2 = E.fit_policy(train, M2, "v12", "orders3x2", True)
+    assert cal2.to_dict() == cal.to_dict()

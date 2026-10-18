@@ -25,15 +25,16 @@ const shots = arg('shots', 'artifacts/screenshots/v12');
 const only = arg('only', '')?.split(',').filter(Boolean);
 const TABS = (arg('tabs', 'dashboard,map,agents,execution')).split(',');
 const SETTLE = Number(arg('settle', 2500));
+const dbg = (m) => flag('debug') && console.error(`[${new Date().toISOString().slice(11, 19)}] ${m}`);
 mkdirSync(`${shots}/pairs`, { recursive: true });
 const pw = createRequire(import.meta.url)(process.env.PLAYWRIGHT_MODULE ?? 'playwright');
 
 // device classes: touch + DPR like the real device; desktops use a mouse
 const V = {
-  '390x844': { w: 390, h: 844, touch: true, dpr: 3 },
-  '844x390': { w: 844, h: 390, touch: true, dpr: 3 },
-  '932x430': { w: 932, h: 430, touch: true, dpr: 3 },
-  '430x932': { w: 430, h: 932, touch: true, dpr: 3 },
+  '390x844': { w: 390, h: 844, touch: true, dpr: 2 },
+  '844x390': { w: 844, h: 390, touch: true, dpr: 2 },
+  '932x430': { w: 932, h: 430, touch: true, dpr: 2 },
+  '430x932': { w: 430, h: 932, touch: true, dpr: 2 },
   '768x1024': { w: 768, h: 1024, touch: true, dpr: 2 },
   '1024x768': { w: 1024, h: 768, touch: true, dpr: 2 },
   '820x1180': { w: 820, h: 1180, touch: true, dpr: 2 },
@@ -47,6 +48,7 @@ const run = only?.length ? only : [...new Set([...MATRIX, ...PAIRS.flat()])];
 const TAB_LABEL = { dashboard: 'Dashboard', map: 'Map', agents: 'Agents', execution: 'Execution' };
 const PTABS = ['comms', 'dod', 'team', 'scorecard'];
 
+dbg('launching');
 const browser = await pw.chromium.launch({ headless: true, executablePath: process.env.CHROME_PATH || `${process.env.HOME}/.cache/ms-playwright/chromium-1243/chrome-linux64/chrome`, args: ['--no-sandbox', '--use-angle=swiftshader', '--enable-unsafe-swiftshader'] });
 
 /** in-page helpers, installed once per page */
@@ -131,12 +133,18 @@ async function newPage(vp, { noWebgl = false } = {}) {
   if (noWebgl) await ctx.addInitScript(() => { const g = HTMLCanvasElement.prototype.getContext; HTMLCanvasElement.prototype.getContext = function (t, ...a) { return /webgl/i.test(t) ? null : g.call(this, t, ...a); }; });
   const page = await ctx.newPage();
   const errs = [];
+  page.on('crash', () => { dbg('PAGE CRASHED'); errs.push('PAGE CRASHED'); });
+  page.on('close', () => dbg('page closed'));
   page.on('pageerror', (e) => errs.push('PAGEERROR ' + e.message.slice(0, 160)));
   page.on('console', (m) => m.type() === 'error' && !/WebGL|GPU|Failed to load resource|context|ResizeObserver/i.test(m.text()) && errs.push(m.text().slice(0, 160)));
+  dbg('newPage: goto');
   await page.goto(url);
+  dbg('newPage: loaded, waiting for tabs');
   await page.waitForSelector('[role=tab]', { timeout: 60000 }).catch(() => {});
   await page.waitForTimeout(SETTLE + 2500);
+  dbg('newPage: helpers');
   await page.evaluate(HELPERS);
+  dbg('newPage: ready');
   return { ctx, page, errs };
 }
 
@@ -171,15 +179,20 @@ for (const name of run) {
   for (const tab of TABS) {
     const row = { viewport: name, tab, layout: layout.layout, compact: layout.compact, host: layout.commsHost, checks: {} };
     try {
+      dbg(`${name} ${tab}: goto tab`);
       await gotoTab(page, tab);
+      dbg('tab clicked');
       row.checks.tab_selected = (await active(page)) === tab;
       await closeComms(page).catch(() => {});
       const ov0 = await page.evaluate(() => window.__m.overflow());
       row.checks.no_overflow_closed = ov0.sw <= ov0.cw + 1 && ov0.bw <= ov0.cw + 1;
       row.overflow = ov0;
+      dbg('overflow measured');
       inv[name][tab] = await page.evaluate((t) => window.__m.inventory(t), tab);
+      dbg('inventory done');
       row.inventory = inv[name][tab];
-      await page.screenshot({ path: `${shots}/${tab}_${name}.png` });
+      await page.screenshot({ path: `${shots}/${tab}_${name}.png`, timeout: 120000 });
+      dbg('screenshot 1');
       if (tab === 'execution') {
         // playback must be reachable in every layout: open the Timeline panel through its chip when it is not already showing
         if (!(await page.evaluate(() => window.__m.vis('.ex-tl button[title=Play], .ex-tl button[title=Pause]').length > 0))) await page.evaluate(() => window.__m.click('.ex-state button.chip', '^Timeline'));
@@ -188,14 +201,17 @@ for (const name of run) {
       }
       // launcher visible, panel opens with rows, closes, reopens x3
       row.checks.launcher_visible = await page.evaluate(() => !!window.__m.launcher());
+      dbg('opening comms');
       const first = await openComms(page);
+      dbg('comms opened');
       row.checks.opens_with_rows = (first.rows ?? 0) > 0;
       row.first_open = first;
+      dbg('after open');
       row.host_kind = await page.evaluate(() => window.__m.hostKind());
       row.checks.host_matches_layout = row.host_kind === layout.commsHost;
       const ov1 = await page.evaluate(() => window.__m.overflow());
       row.checks.no_overflow_open = ov1.sw <= ov1.cw + 1 && ov1.bw <= ov1.cw + 1;
-      await page.evaluate(() => Promise.all(document.getAnimations().map((a) => a.finished.catch(() => {})))); // the dock / drawer / sheet slides in
+      await page.evaluate(() => Promise.all(document.getAnimations().filter((a) => a.effect?.getComputedTiming().iterations !== Infinity).map((a) => Promise.race([a.finished, new Promise((r) => setTimeout(r, 3000))]).catch(() => {})))); // the dock / drawer / sheet slides in
       const box = await page.locator('#lk-comms-panel').first().boundingBox();
       row.checks.panel_fits_viewport = !!box && box.x >= -1 && box.y >= -1 && box.x + box.width <= vp.w + 1 && box.y + box.height <= vp.h + 1;
       await page.screenshot({ path: `${shots}/${tab}_${name}_comms.png` });

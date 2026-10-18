@@ -1,7 +1,7 @@
 # Provenance
 
 This public repository is a **clean export** of a private development repository. This tree was produced by a scripted export of the private repository's commit
-`388ff61` (committed 2026-10-18), and the public history starts fresh. The private repository keeps the full development history
+`107bae8` (committed 2026-10-18), and the public history starts fresh. The private repository keeps the full development history
 (including every intermediate state); a bundle of it is retained by the maintainer.
 
 * Pre-existing / earlier work: the simulator, mock API, web console and iOS app that predate the work listed in `PROGRESS.md` sections dated

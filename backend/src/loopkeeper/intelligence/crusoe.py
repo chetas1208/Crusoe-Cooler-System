@@ -150,7 +150,33 @@ class IntelligenceConfig:
             raise ValueError("MODEL_BASE_URL must be https (http only for localhost)")
         if not u.hostname or u.username or u.password:
             raise ValueError("MODEL_BASE_URL invalid")
+        if not local:
+            reject_private_host(u.hostname)
         return self.base_url
+
+
+_BLOCKED_SUFFIXES = (".internal", ".local", ".localdomain", ".localhost", ".nip.io", ".sslip.io", ".xip.io", ".traefik.me", ".lvh.me")
+
+
+def reject_private_host(host: str) -> None:
+    """Raise ValueError for hosts a model endpoint must never be: loopback / link-local / private / metadata IPs (dotted, decimal, hex, IPv6) and
+    names that resolve to them by construction (`*.internal`, `*.nip.io`, ...). The base URL is env-controlled, not user-controlled: defence in depth."""
+    import ipaddress
+    h = (host or "").strip("[]").lower().rstrip(".")
+    if not h or h in ("localhost", "metadata", "instance-data") or h.endswith(_BLOCKED_SUFFIXES):
+        raise ValueError("base url host is not allowed")
+    ip = None
+    try:
+        ip = ipaddress.ip_address(h)
+    except ValueError:
+        try:
+            ip = ipaddress.ip_address(int(h, 0)) if h.replace("0x", "").isalnum() and (h.isdigit() or h.startswith("0x")) else None
+        except ValueError:
+            ip = None
+    if ip is not None and not ip.is_global:
+        raise ValueError("base url host is not allowed")
+    if ip is None and re.fullmatch(r"(?:\d{1,3}\.){3}\d{1,3}", h) is None and re.search(r"(?:^|\.)(?:\d{1,3}\.){3}\d{1,3}(?:\.|$)", h):
+        raise ValueError("base url host is not allowed")      # a name that embeds an IPv4 literal (`169.254.169.254.example`)
 
 
 class ModelStatus:

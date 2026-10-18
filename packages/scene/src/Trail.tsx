@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import * as THREE from 'three';
 import { useFrame, useThree } from '@react-three/fiber';
 import { isLiveWorldSource, samplePose, useWorld } from '@loopkeeper/core/store';
@@ -128,6 +128,7 @@ export function RobotTrail() {
 
 /* ───────────────────────────── V12 route + traffic overlay ───────────────────────────── */
 
+const HALL_CENTER = new THREE.Vector3(7, 0, 0);
 const ROUTE = { preview: '#38bdf8', reserved: '#22c55e', paused: '#f59e0b', stale: '#64748b', yield: '#f59e0b', blocked: '#ef4444', node: '#2fd3e8' } as const;
 
 /** Text sprite (canvas texture): used for the "PREVIEW ONLY" tag; no extra dependency. */
@@ -247,6 +248,7 @@ function RouteOverlay() {
     if (typeof window === 'undefined' || !new URLSearchParams(window.location.search).has('e2e')) return;
     const w = window as unknown as { __lkRouteScreen?: (id: string) => { x: number; y: number } | null };
     w.__lkRouteScreen = (id) => {
+      if (id === '?') return { x: candRef.current.length, y: Object.keys(useNav.getState().graphs).length };
       const c = candRef.current.find((k) => k.id === id);
       if (!c) return null;
       const v = new THREE.Vector3(c.p[0], c.p[1] + (exterior ? 0.1 : 0), c.p[2]).project(camera);
@@ -258,25 +260,42 @@ function RouteOverlay() {
     };
   }, [camera, gl, exterior]);
   const [hover, setHover] = useState<number | null>(null);
-  useEffect(() => {
+  // markers grow with camera distance so they stay a usable click target from the overview (about 20 px) down to close-up
+  const sizeF = useRef(1);
+  const hoverRef = useRef<number | null>(null);
+  hoverRef.current = hover;
+  const writeInstances = useCallback(() => {
     const m = inst.current;
     if (!m) return;
     const d = new THREE.Object3D();
     const col = new THREE.Color();
+    const f = sizeF.current;
     cand.forEach((c, i) => {
       d.position.set(c.p[0], c.p[1] + (exterior ? 0.1 : 0), c.p[2]);
-      d.scale.setScalar(c.kind === 'service' ? 0.5 : c.kind === 'segment' ? 0.9 : 0.75);
+      d.scale.setScalar((c.kind === 'service' ? 1.4 : c.kind === 'segment' ? 2.2 : 1.8) * f);
       d.updateMatrix();
       m.setMatrixAt(i, d.matrix);
-      m.setColorAt(i, col.set(hover === i ? '#ffffff' : c.kind === 'service' ? ROUTE.node : c.kind === 'segment' ? '#a78bfa' : '#fbbf24'));
+      m.setColorAt(i, col.set(hoverRef.current === i ? '#ffffff' : c.kind === 'service' ? ROUTE.node : c.kind === 'segment' ? '#a78bfa' : '#fbbf24'));
     });
     m.count = cand.length;
     m.instanceMatrix.needsUpdate = true;
     if (m.instanceColor) m.instanceColor.needsUpdate = true;
-  }, [cand, exterior, hover]);
+    m.computeBoundingSphere();
+  }, [cand, exterior]);
+  useEffect(() => {
+    writeInstances();
+  }, [writeInstances, hover, armed]);
 
   useFrame((state) => {
     const n = useNav.getState();
+    if (inst.current && cand.length) {
+      const dist = state.camera.position.distanceTo(HALL_CENTER);
+      const f = Math.min(3.4, Math.max(1, dist / 16));
+      if (Math.abs(f - sizeF.current) > 0.1) {
+        sizeF.current = f;
+        writeInstances();
+      }
+    }
     const live = navLinkLive();
     const r = n.robotId ? useWorld.getState().robots[n.robotId] : undefined;
     const showPlan = n.plan && (n.phase === 'planned' || n.phase === 'committing' || n.phase === 'refused' || n.phase === 'planning') ? n.plan : null;
@@ -336,7 +355,7 @@ function RouteOverlay() {
             if (c) void navActions.planTo(c.id);
           }}
         >
-          <sphereGeometry args={[0.2, 14, 10]} />
+          <sphereGeometry args={[0.1, 14, 10]} />
           <meshBasicMaterial toneMapped={false} depthTest={false} transparent opacity={0.92} />
         </instancedMesh>
       )}

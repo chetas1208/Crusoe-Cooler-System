@@ -76,7 +76,7 @@ async def run_recursive(scenario_id: str, seed: int, *, use_model: bool, calls_d
     os.environ["MEMORY_ENABLED"] = "1" if memory else "0"
     # Laya (advisory triage) runs the router on CPU in a worker thread: its wall time would be charged to SIMULATED time by this wall-clock-stepped harness and make
     # sim-time metrics depend on CPU load. It is benchmarked separately (laya_bench), so the runtime's labelled rule fallback answers here (same as tests/agents).
-    os.environ["LOOPKEEPER_LAYA_ROUTER"] = "0"
+    os.environ.setdefault("LOOPKEEPER_LAYA_ROUTER", "0")        # set LOOPKEEPER_LAYA_ROUTER=1 to run the router (sim-time metrics then depend on CPU load)
     if calls_dir:
         Path(calls_dir).mkdir(parents=True, exist_ok=True)
         os.environ["INFERENCE_CALLS_JSONL"] = str(calls_dir)
@@ -131,7 +131,11 @@ async def run_recursive(scenario_id: str, seed: int, *, use_model: bool, calls_d
         incs = list(eng.track.incidents.values())
         if not incs or any(i["status"] == "escalated" for i in incs):
             return False
-        return all(i["status"] in ("resolved", "dismissed") for i in incs) and any(i["status"] == "resolved" for i in incs)
+        if not all(i["status"] in ("resolved", "dismissed") for i in incs):
+            return False
+        # a claim = the runtime closed the incident AND its contract is VERIFIED; a closed-but-PARTIAL contract ("recovered by measurement, not independently reviewed")
+        # is the runtime explicitly NOT claiming verification (current runtime rule for runs without a model reviewer)
+        return any(i["status"] == "resolved" and (eng.track.contracts.get(i["id"]) or {}).get("terminal_state") in (None, "VERIFIED") for i in incs)
 
     async def step() -> None:
         await eng.step_ticks(int(round(STEP_S / eng.dt)))

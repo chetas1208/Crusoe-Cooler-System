@@ -51,7 +51,7 @@ moves robots and enforces safety, and a separate verifier decides from fresh phy
 - **The recursive DOD + delegation arm was "NOT RUN" in that snapshot.** We make no claim about it until it runs `[PENDING: Agent E / lead]`.
 - Replay determinism: 180 of 180 re-executions identical with zero model network calls.
 - Unsafe-action probe: 6 probes, 0 unsafe actions proposed by the model.
-- Laya, held-out test (36 cases): router raw accuracy 0.33, labelled rule fallback 0.42; Laya is advisory and a deterministic override handles unsafe requests. We report this as a limitation, not a feature.
+- Laya, held-out test (48 cases, abstain counts as human review): Laya 0.35 [0.23-0.50], rule fallback 0.35, Nemotron Nano 0.96; Laya is advisory and a deterministic override handles unsafe requests. We report this as a limitation, not a feature.
 - Signature flow (first repair insufficient -> verifier rejects -> SEN-01 replans -> second action restores flow -> sustained checks held): passes in `backend/tests/test_v11_dod.py` with the deterministic drafter; live with Super-120B `[PENDING: lead]`.
 
 ## Honest limitations

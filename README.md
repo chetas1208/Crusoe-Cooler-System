@@ -1,6 +1,6 @@
 <div align="center">
 
-# Cruso Cooler System
+# Crusoe Cooler System
 
 ### AI agent teams that find, repair and *independently prove* the fix in a liquid-cooled data center — in simulation.
 
@@ -178,7 +178,7 @@ flowchart TB
 | Postgres checkpoint resume | graph interrupted at an approval node, resumed by a fresh process from the database |
 | Multi-robot stress (8 outrigs + 10 crawlers, blocked aisle, closed pipe) | Jain fairness 0.94–0.999 over three seeds, no overlaps, no failed missions |
 | Evaluation harness | 9 scenarios × 10 held-out seeds × 3 agent setups, replay identical on 180/180 runs; first arms cost $0.055 in model calls — see [`docs/engineering/V11_EVAL.md`](docs/engineering/V11_EVAL.md) |
-| Laya triage | benchmarked on 48 cases: raw accuracy 0.33, so it stays **advisory**; a deterministic safety override routes unsafe requests to a human 4/4 |
+| Laya triage | benchmarked on 48 held-out cases: Laya 0.35 vs Nemotron Nano 0.96 (abstentions count as human review), so it stays **advisory**; a deterministic safety override routes unsafe requests to a human 3/3 |
 
 The scorecard, its denominators and its caveats (for example, that the effective sample is smaller than the seed count because seeds barely vary model output) live in [`docs/engineering/V11_EVAL.md`](docs/engineering/V11_EVAL.md). Nothing here is a claim about a real plant.
 

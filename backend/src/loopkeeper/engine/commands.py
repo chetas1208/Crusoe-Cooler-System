@@ -276,8 +276,7 @@ class CommandBus:
         r = eng.robots.get(target)
         if not r:
             return False, "unknown_robot", {}
-        ok, why, m = eng.missions.create({"robot_id": target, "kind": "return", "target_id": r.home_id, "title": f"Return {target} home"}, issuer, cid)
-        return (True, "", {"mission_id": m["id"]}) if ok else (False, why, {})
+        return eng.control.send_to_dock(target, issuer, cid)         # releases a manual lease first; empty packs queue for recovery
 
     def _switch_duty(self, a, target, issuer, cid):
         if self.eng.physics_degraded():

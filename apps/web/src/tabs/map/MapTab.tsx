@@ -11,7 +11,7 @@ import { useDriveController } from './useDriveController';
 import { useStageInsetsProbe } from './stageInsets';
 
 /**
- * Cruso Cooler System Map Tab: Controllable, physically coherent spatial interface
+ * Crusoe Cooler System Map Tab: Controllable, physically coherent spatial interface
  * supporting both virtual robot classes (INPIPE Crawler & OUTRIG Exterior Rover)
  * with First-Person (Robot POV), Third-Person (Chase, Orbit, Cutaway), and Tactical views.
  */
@@ -39,12 +39,34 @@ export function MapTab() {
   useEffect(() => bindNavEvents(), []);
   useEffect(() => {
     if (!live) return;
-    const g = useNav.getState().graphs;
-    if (!g.exterior || graphStale) void navActions.loadGraph('exterior');
-    if (!g.interior || graphStale) void navActions.loadGraph('interior');
+    let stop = false;
+    let timer: ReturnType<typeof setTimeout> | undefined;
+    // load what is missing; a failed read (slow host, backend restart) is retried with backoff instead of leaving the map without graphs
+    const tick = async (delay: number) => {
+      const g = useNav.getState().graphs;
+      const want = (['exterior', 'interior'] as const).filter((k) => !g[k] || useNav.getState().graphStale);
+      if (!want.length || stop) return;
+      await Promise.all(want.map((k) => navActions.loadGraph(k)));
+      const left = (['exterior', 'interior'] as const).some((k) => !useNav.getState().graphs[k]);
+      if (left && !stop) timer = setTimeout(() => void tick(Math.min(delay * 2, 15000)), delay);
+    };
+    void tick(2000);
+    return () => {
+      stop = true;
+      if (timer) clearTimeout(timer);
+    };
   }, [live, graphStale]);
   useEffect(() => () => navActions.dismiss(), []);
   useStageInsetsProbe();
+  // verification seam (only with ?e2e in the URL): the control session's transitions, so a browser test can say WHY a session ended
+  useEffect(() => {
+    if (!new URLSearchParams(window.location.search).has('e2e')) return;
+    const log: Array<{ t: number; state: string; stop?: string; notice?: string; linkOk: boolean }> = [];
+    (window as unknown as { __lkControlLog: typeof log }).__lkControlLog = log;
+    return useControl.subscribe((s, p) => {
+      if (s.state !== p.state || s.stop !== p.stop || s.notice !== p.notice) log.push({ t: Math.round(performance.now()), state: s.state, stop: s.stop?.reason, notice: s.notice?.text, linkOk: s.linkOk });
+    });
+  }, []);
 
   // Game-style drive controls, camera switching, tool triggers, and blur safe-stop
   useDriveController(true);

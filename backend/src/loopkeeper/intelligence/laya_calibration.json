@@ -1,0 +1,20 @@
+{
+ "criteria": "v12",
+ "orders": "orders3",
+ "text_variants": 2,
+ "temperature": 0.4326,
+ "bias": [
+  -0.0281,
+  0.7967,
+  -0.4881,
+  -1.2356,
+  0.0903,
+  0.8649
+ ],
+ "tau": 0.5,
+ "min_consistency": 0.5,
+ "noul_threshold": 0.35,
+ "fitted": true,
+ "dataset_sha256": "2b0fb79bf719fb00d5e6928474ee72c66f36c3311c9e408b3cd5155b79f8a28c",
+ "provenance": "fitted on TRAIN only: temperature + class bias, abstention tau / consistency / noul (train utility 0.493; noul AUROC on train 0.80)"
+}
