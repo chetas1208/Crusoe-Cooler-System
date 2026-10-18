@@ -8,6 +8,7 @@
 
 <br/>
 
+![live demo](https://img.shields.io/badge/live%20demo-open%20the%20console-5be3d0?logo=vercel&logoColor=white)
 ![simulation](https://img.shields.io/badge/virtual%20facility-not%20a%20real%20plant-informational)
 ![models](https://img.shields.io/badge/LLM-NVIDIA%20Nemotron%20on%20Crusoe-76b900)
 ![physics](https://img.shields.io/badge/physics-pandapipes%20%2B%20CompOpt%20%2B%20MuJoCo-blue)
@@ -15,6 +16,9 @@
 ![license](https://img.shields.io/badge/license-MIT-green)
 
 <br/>
+
+### [▶ Open the live console](https://loopkeeper-delta.vercel.app)
+<sub>Runs in your browser. It connects to the project's live backend when that server is up (the console says so in its status bar); otherwise it falls back to the built-in simulator and labels itself MOCK.</sub>
 
 <img src="docs/images/dashboard.jpg" alt="Five rack rows, four robot roads, CDU and mechanical bay with a live incident" width="92%"/>
 
