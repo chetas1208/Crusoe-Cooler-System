@@ -8,6 +8,7 @@ import { filterIndex, useDashView } from './dashView';
 import { box, mergeParts, xf } from './merge';
 import { makeShader } from './tube';
 import { siteModel, type Pod } from './siteModel';
+import { C } from './theme';
 
 /* ──────────────────────────────────────────────────────────────────────────────
  * Server-hall furniture, per pod (hall): cold-aisle glow + hot-aisle bands, aisle containment with end doors and
@@ -32,7 +33,7 @@ const HOT_FRAG = /* glsl */ `
     float band = smoothstep(0.0, 0.12, t) * (1.0 - smoothstep(0.55, 1.0, t));
     vec2 tc = abs(fract(vP.xz / 0.6) - 0.5);
     float seam = step(0.488, max(tc.x, tc.y));
-    vec3 col = vec3(1.0, 0.52, 0.2) * band * (0.07 + 0.34 * uAmt) + vec3(1.0, 0.7, 0.4) * seam * band * 0.10;
+    vec3 col = vec3(0.78, 0.42, 0.26) * band * (0.05 + 0.3 * uAmt) + vec3(0.85, 0.6, 0.45) * seam * band * 0.08;
     gl_FragColor = vec4(col * uDim, 1.0);
   }
 `;
@@ -42,7 +43,7 @@ const COLD_GLOW_FRAG = /* glsl */ `
   void main(){
     float t = clamp((vP.z - uZ.x) / (uZ.y - uZ.x), 0.0, 1.0);
     float c = 1.0 - abs(t - 0.5) * 2.0;
-    vec3 col = vec3(0.1, 0.62, 0.8) * pow(c, 0.7) * (0.05 + 0.24 * uAmt);
+    vec3 col = vec3(0.3, 0.52, 0.72) * pow(c, 0.7) * (0.04 + 0.22 * uAmt);
     gl_FragColor = vec4(col * uDim, 1.0);
   }
 `;
@@ -133,16 +134,23 @@ function Chevrons({ pods }: { pods: Pod[] }) {
       q.setFromAxisAngle(new THREE.Vector3(0, 1, 0), towardsMinusZ ? Math.PI : 0);
       mat.compose(new THREE.Vector3(it.x, 0.015, it.z), q, new THREE.Vector3(1, 1, 1));
       m.setMatrixAt(i, mat);
-      m.setColorAt(i, c.set(it.hot ? '#ff9a3c' : '#2fd3e8'));
+      m.setColorAt(i, c.set(it.hot ? C.airHot : C.airCold));
     });
     m.instanceMatrix.needsUpdate = true;
     if (m.instanceColor) m.instanceColor.needsUpdate = true;
     m.computeBoundingSphere();
   }, [items]);
+  // air arrows are an explanation layer, not decoration: shown in the thermal view, or while a row / rack / road is picked
+  useFrame(() => {
+    const m = ref.current;
+    if (!m) return;
+    const v = useView.getState();
+    m.visible = v.mode !== 'pipe' && (filterIndex(useDashView.getState().filter) === 3 || !!v.selectedId?.match(/^(row:|road:|rack)/));
+  });
   if (!items.length) return null;
   return (
     <instancedMesh ref={ref} args={[geo, undefined, items.length]} frustumCulled={false}>
-      <meshBasicMaterial transparent opacity={0.62} side={THREE.DoubleSide} depthWrite={false} toneMapped={false} />
+      <meshBasicMaterial transparent opacity={0.7} side={THREE.DoubleSide} depthWrite={false} toneMapped={false} />
     </instancedMesh>
   );
 }
@@ -222,7 +230,7 @@ function Overhead({ pod }: { pod: Pod }) {
     const { h, w, d } = pod.dims;
     const steel = rgb('#8d98aa');
     const rung = rgb('#6b7485');
-    const bus = rgb('#d9a42a');
+    const bus = rgb('#8791a1');
     const pitch = w + 0.1;
     for (const row of pod.rows) {
       const frontSign = Math.cos(row.yaw) >= 0 ? 1 : -1;
@@ -232,14 +240,15 @@ function Overhead({ pod }: { pod: Pod }) {
       const yt = h + 0.34;
       for (const s of [-1, 1]) parts.push({ geo: box(len, 0.06, 0.025), m: xf(cx, yt, zt + s * 0.17), c: steel });
       for (let x = row.x0; x <= row.x1; x += 0.35) parts.push({ geo: box(0.025, 0.02, 0.34), m: xf(x, yt - 0.02, zt), c: rung });
-      parts.push({ geo: box(len - 0.1, 0.07, 0.08), m: xf(cx, yt + 0.045, zt - 0.09), c: rgb('#121316') });
-      parts.push({ geo: box(len - 0.1, 0.05, 0.06), m: xf(cx, yt + 0.035, zt + 0.02), c: rgb('#e5b823') });
-      parts.push({ geo: box(len - 0.1, 0.05, 0.06), m: xf(cx, yt + 0.035, zt + 0.1), c: rgb('#2d6ad9') });
+      parts.push({ geo: box(len - 0.1, 0.07, 0.08), m: xf(cx, yt + 0.045, zt - 0.09), c: rgb('#15171b') });
+      parts.push({ geo: box(len - 0.1, 0.05, 0.06), m: xf(cx, yt + 0.035, zt + 0.02), c: rgb('#cdd1d8') });
+      parts.push({ geo: box(len - 0.1, 0.045, 0.05), m: xf(cx, yt + 0.033, zt + 0.1), c: rgb('#3a404b') });
       // busway over the rear third: housing + a tap box above each cabinet
       const zb = row.z - frontSign * (d / 2 - 0.4);
       const yb = h + 0.62;
       parts.push({ geo: box(len, 0.13, 0.15), m: xf(cx, yb, zb), c: bus });
       parts.push({ geo: box(len, 0.02, 0.17), m: xf(cx, yb + 0.075, zb), c: rgb('#333a46') });
+      for (let jx = row.x0 + 1.2; jx < row.x1; jx += 2.4) parts.push({ geo: box(0.05, 0.15, 0.17), m: xf(jx, yb, zb), c: rgb('#2a303a') });
       for (let k = 0, x = row.x0 + w / 2; x < row.x1; k++, x += pitch) {
         parts.push({ geo: box(0.2, 0.16, 0.14), m: xf(x, yb - 0.14, zb), c: rgb('#46505f') });
         parts.push({ geo: box(0.05, h + 0.62 - 0.14 - h, 0.05), m: xf(x, h + (0.62 - 0.14) / 2, zb), c: rgb('#16181c') });
@@ -291,13 +300,13 @@ function SideGear({ pod, topo }: { pod: Pod; topo: Topology }) {
       const big = i % 4 === 0;
       lit.push({ geo: box(big ? 1.2 : 0.8, 2.2, 0.9), m: xf(x, 1.1, zElec), c: big ? ups : pdu });
       lit.push({ geo: box(big ? 1.0 : 0.62, 1.7, 0.03), m: xf(x, 1.2, zElec - face2 * 0.46), c: dark });
-      led.push({ geo: box(big ? 0.7 : 0.4, 0.04, 0.02), m: xf(x, 2.0, zElec - face2 * 0.47), c: i % 7 === 3 ? rgb('#ffb347') : rgb('#41d6a3') });
+      led.push({ geo: box(big ? 0.7 : 0.4, 0.04, 0.02), m: xf(x, 2.0, zElec - face2 * 0.47), c: rgb('#41d6a3') });
     }
     // row-end PDUs
     for (const row of pod.rows) {
       for (const x of [row.x0 - 0.4, row.x1 + 0.4]) {
         lit.push({ geo: box(0.55, 2.25, 1.0), m: xf(x, 1.125, row.z), c: pdu });
-        led.push({ geo: box(0.3, 0.04, 0.02), m: xf(x, 1.9, row.z + (x < row.x0 ? 0.51 : 0.51)), c: rgb('#5be3d0') });
+        led.push({ geo: box(0.3, 0.04, 0.02), m: xf(x, 1.9, row.z + 0.51), c: rgb('#41d6a3') });
       }
     }
     return { lit: mergeParts(lit), led: mergeParts(led) };
@@ -320,8 +329,8 @@ function Markings({ pods, topo }: { pods: Pod[]; topo: Topology }) {
   const geo = useMemo(() => {
     const parts: Part[] = [];
     const y = 0.017;
-    const yel = rgb('#e8b93b');
-    const cyan = rgb('#2fd3e8');
+    const yel = rgb('#8f8a6a');
+    
     for (const d of siteModel(topo).docks) {
       const [dx, , dz] = d.position_xyz_m;
       const [sx, , sz] = d.size_m ?? [1.4, 0.05, 1.8];
@@ -356,12 +365,25 @@ function ContextEquipment({ topo }: { topo: Topology }) {
       const [sx, sy, sz] = e.size_m;
       const n = e.name.toLowerCase();
       if (/vessel|tank/.test(n)) {
+        // TCS expansion tank: bladder vessel on a four-leg skirt with dished heads, a gauge, a relief valve and a cyan collar on the TCS connection
         const r = Math.min(sx, sz) / 2;
-        lit.push({ geo: new THREE.CylinderGeometry(r, r, sy - r, 24), m: xf(x, (sy - r) / 2 + 0.1, z), c: rgb('#7d8a9c') });
-        const dome = new THREE.SphereGeometry(r, 24, 12, 0, Math.PI * 2, 0, Math.PI / 2);
-        lit.push({ geo: dome, m: xf(x, sy - r + 0.1, z), c: rgb('#8e9bad') });
-        for (const a of [0, 1, 2, 3]) lit.push({ geo: box(0.1, 0.5, 0.1), m: xf(x + Math.cos((a * Math.PI) / 2 + 0.78) * r * 0.85, 0.25, z + Math.sin((a * Math.PI) / 2 + 0.78) * r * 0.85), c: rgb('#3b4350') });
-        lit.push({ geo: new THREE.CylinderGeometry(r * 0.98, r * 0.98, 0.06, 24), m: xf(x, 0.55, z), c: rgb('#2563eb') });
+        const body = sy - 0.5 - r * 0.5;
+        const y0 = 0.5;
+        lit.push({ geo: new THREE.CylinderGeometry(r, r, body, 28), m: xf(x, y0 + body / 2, z), c: rgb('#8a97a9') });
+        const dome = new THREE.SphereGeometry(r, 28, 10, 0, Math.PI * 2, 0, Math.PI / 2);
+        lit.push({ geo: dome, m: xf(x, y0 + body, z, 0, 0, 0, 1, 0.5, 1), c: rgb('#97a3b4') });
+        lit.push({ geo: dome, m: xf(x, y0, z, Math.PI, 0, 0, 1, 0.5, 1), c: rgb('#7b8798') });
+        for (let a = 0; a < 4; a++) {
+          const ax = Math.cos((a * Math.PI) / 2 + Math.PI / 4) * r * 0.82;
+          const az = Math.sin((a * Math.PI) / 2 + Math.PI / 4) * r * 0.82;
+          lit.push({ geo: box(0.1, y0 + 0.2, 0.1), m: xf(x + ax, (y0 + 0.2) / 2, z + az), c: rgb('#3b4350') });
+          lit.push({ geo: box(0.22, 0.03, 0.22), m: xf(x + ax, 0.015, z + az), c: rgb('#2c333e') });
+        }
+        lit.push({ geo: new THREE.CylinderGeometry(r * 1.01, r * 1.01, 0.1, 28), m: xf(x, y0 + body * 0.62, z), c: rgb('#2b8a9b') });
+        lit.push({ geo: new THREE.CylinderGeometry(r * 1.01, r * 1.01, 0.03, 28), m: xf(x, y0 + body * 0.15, z), c: rgb('#6c7788') });
+        lit.push({ geo: new THREE.CylinderGeometry(0.05, 0.05, 0.3, 10), m: xf(x + r * 0.55, y0 + body + r * 0.5 + 0.1, z), c: rgb('#a9b3c2') });
+        lit.push({ geo: new THREE.CylinderGeometry(0.06, 0.06, 0.18, 10), m: xf(x + r + 0.04, y0 + 0.1, z, 0, 0, Math.PI / 2), c: rgb('#a9b3c2') });
+        led.push({ geo: new THREE.CylinderGeometry(0.045, 0.045, 0.02, 14), m: xf(x, y0 + body * 0.8, z + r + 0.015, Math.PI / 2, 0, 0), c: rgb('#e5e9f0') });
       } else if (/switchgear|\bmv\b|line-up/.test(n)) {
         const cab = 0.9;
         const nCab = Math.max(1, Math.round(sx / cab));
@@ -369,13 +391,13 @@ function ContextEquipment({ topo }: { topo: Topology }) {
           const cx = x - sx / 2 + cab / 2 + i * cab;
           lit.push({ geo: box(cab - 0.03, sy, sz), m: xf(cx, sy / 2, z), c: rgb('#8d949f') });
           lit.push({ geo: box(cab - 0.2, sy * 0.55, 0.03), m: xf(cx, sy * 0.55, z + sz / 2 + 0.01), c: rgb('#b2b9c4') });
-          led.push({ geo: box(0.08, 0.04, 0.02), m: xf(cx, sy * 0.9, z + sz / 2 + 0.02), c: i % 5 === 2 ? rgb('#ffb347') : rgb('#41d6a3') });
+          led.push({ geo: box(0.08, 0.04, 0.02), m: xf(cx, sy * 0.9, z + sz / 2 + 0.02), c: rgb('#41d6a3') });
         }
       } else {
         lit.push({ geo: box(sx, 0.16, sz), m: xf(x, 0.08, z), c: rgb('#3b4350') });
         lit.push({ geo: box(sx * 0.9, sy - 0.2, sz * 0.9), m: xf(x, 0.16 + (sy - 0.2) / 2, z), c: rgb('#6f8a8f') });
         for (const s of [-1, 1]) lit.push({ geo: new THREE.CylinderGeometry(0.3, 0.3, sy * 0.8, 16), m: xf(x + s * sx * 0.25, 0.16 + sy * 0.4, z - sz * 0.3), c: rgb('#cfd6e0') });
-        led.push({ geo: box(0.3, 0.04, 0.02), m: xf(x, sy * 0.7, z + sz * 0.45 + 0.01), c: rgb('#5be3d0') });
+        led.push({ geo: box(0.3, 0.04, 0.02), m: xf(x, sy * 0.7, z + sz * 0.45 + 0.01), c: rgb('#41d6a3') });
       }
     }
     return { lit: lit.length ? mergeParts(lit) : null, led: led.length ? mergeParts(led) : null };

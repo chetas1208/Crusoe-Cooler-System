@@ -301,21 +301,7 @@ class PostgresStorage(Storage):
                      _j(child.get("meta", {}))))
             except psycopg.errors.UniqueViolation:
                 raise StorageError("run exists") from None
-        if self.telemetry_pool is not self.pool:
-            try:
-                with self.telemetry_pool.connection() as c_t, c_t.transaction():
-                    c_t.execute(
-                        "INSERT INTO simulation_runs (run_id, parent_run_id, fork_tick, facility_id, config_version, topology_hash, topology_version, "
-                        "scenario_id, seed, rng_stream, kind, label, phase, owner_id, engine_version, schema_version, sim_speed, dt_s, "
-                        "last_tick, last_seq, last_apply_order, meta) VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s) "
-                        "ON CONFLICT (run_id) DO NOTHING",
-                        (child["run_id"], child["parent_run_id"], child["fork_tick"], child["facility_id"], child["config_version"],
-                         child["topology_hash"], child.get("topology_version"), child.get("scenario_id"), child["seed"], child["rng_stream"],
-                         "fork", child.get("label", ""), child["phase"], child.get("owner_id"), child["engine_version"], child["schema_version"],
-                         child["sim_speed"], child["dt_s"], snapshot["tick"], snapshot["last_seq"], child.get("last_apply_order", 0),
-                         _j(child.get("meta", {}))))
-            except Exception:
-                pass
+        self._mirror_run(child["run_id"])
         with self.telemetry_pool.connection() as c_t, c_t.transaction():
             c_t.execute(
                 "INSERT INTO world_snapshots (snapshot_id, run_id, facility_id, tick, last_seq, reason, state, world, rng_state, schema_version, "
@@ -391,20 +377,59 @@ class PostgresStorage(Storage):
                      row.get("last_tick", 0), row.get("last_seq", 0), row.get("last_apply_order", 0), _j(row.get("meta", {}))))
             except psycopg.errors.UniqueViolation:
                 raise StorageError("run exists") from None
-        if self.telemetry_pool is not self.pool:
-            try:
-                with self.telemetry_pool.connection() as c_t, c_t.transaction():
-                    c_t.execute(
-                        "INSERT INTO simulation_runs (run_id, parent_run_id, fork_tick, facility_id, config_version, topology_hash, topology_version, "
-                        "scenario_id, seed, rng_stream, kind, label, phase, owner_id, engine_version, schema_version, sim_speed, dt_s, "
-                        "last_tick, last_seq, last_apply_order, meta) VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s) "
-                        "ON CONFLICT (run_id) DO NOTHING",
-                        (row["run_id"], row.get("parent_run_id"), row.get("fork_tick"), row["facility_id"], row["config_version"],
-                         row["topology_hash"], row.get("topology_version") or f"{row['config_version']}#{row['topology_hash']}", row.get("scenario_id"), row["seed"], row["rng_stream"], row["kind"], row.get("label", ""),
-                         row["phase"], row.get("owner_id"), row["engine_version"], row["schema_version"], row["sim_speed"], row["dt_s"],
-                         row.get("last_tick", 0), row.get("last_seq", 0), row.get("last_apply_order", 0), _j(row.get("meta", {}))))
-            except Exception:
-                pass
+        self._mirror_run(row["run_id"])
+
+    def _mirror_run(self, run_id: str, _depth: int = 0) -> bool:
+        """Make sure the telemetry database holds `run_id`'s simulation_runs row (world_events / world_snapshots / sensor_samples FK to it).
+        The row's own FKs (facility, scenario spec, parent run) are copied from the primary first: a scenario spec that only ever lived in the
+        primary used to make this best-effort insert fail silently and the run's first telemetry commit then died with ForeignKeyViolation
+        (physics halted). Idempotent; returns False (and logs) when it cannot."""
+        if self.telemetry_pool is self.pool:
+            return True
+        try:
+            with self.pool.connection() as c:
+                r = c.execute(f"SELECT {self._RUN_COLS}, nav_graph_revision FROM simulation_runs WHERE run_id=%s", (run_id,)).fetchone()
+                if r is None:
+                    return False
+                fac = c.execute("SELECT id, config_version, topology_hash, dimensions, topology FROM facilities WHERE id=%s", (r["facility_id"],)).fetchone()
+                scn = (c.execute("SELECT scenario_id, spec, creator, safety_policy, provenance FROM scenario_specs WHERE scenario_id=%s",
+                                 (r["scenario_id"],)).fetchone() if r["scenario_id"] else None)
+            if r["parent_run_id"] and _depth < 8:
+                self._mirror_run(r["parent_run_id"], _depth + 1)
+            with self.telemetry_pool.connection() as c_t, c_t.transaction():
+                if fac is not None:
+                    c_t.execute("INSERT INTO facilities (id, config_version, topology_hash, dimensions, topology) VALUES (%s,%s,%s,%s,%s) ON CONFLICT (id) DO NOTHING",
+                                (fac["id"], fac["config_version"], fac["topology_hash"], _j(fac["dimensions"]), _j(fac["topology"])))
+                if scn is not None:
+                    c_t.execute("INSERT INTO scenario_specs (scenario_id, spec, creator, safety_policy, provenance) VALUES (%s,%s,%s,%s,%s) ON CONFLICT (scenario_id) DO NOTHING",
+                                (scn["scenario_id"], _j(scn["spec"]), scn["creator"], _j(scn["safety_policy"]), _j(scn["provenance"])))
+                c_t.execute(
+                    "INSERT INTO simulation_runs (run_id, parent_run_id, fork_tick, facility_id, config_version, topology_hash, topology_version, "
+                    "scenario_id, seed, rng_stream, kind, label, phase, owner_id, engine_version, schema_version, sim_speed, dt_s, "
+                    "last_tick, last_seq, last_apply_order, meta, nav_graph_revision) VALUES "
+                    "(%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s) ON CONFLICT (run_id) DO NOTHING",
+                    (r["run_id"], r["parent_run_id"], r["fork_tick"], r["facility_id"], r["config_version"], r["topology_hash"], r["topology_version"],
+                     r["scenario_id"], r["seed"], r["rng_stream"], r["kind"], r["label"], r["phase"], r["owner_id"], r["engine_version"],
+                     r["schema_version"], r["sim_speed"], r["dt_s"], r["last_tick"], r["last_seq"], r["last_apply_order"], _j(r["meta"]),
+                     r["nav_graph_revision"]))
+            return True
+        except Exception as e:                                   # noqa: BLE001
+            import logging
+            logging.getLogger("loopkeeper.storage").warning("telemetry mirror of run %s failed (%s)", run_id, type(e).__name__)
+            return False
+
+    def backfill_telemetry_runs(self) -> int:
+        """Startup: mirror every primary run the telemetry database lacks (old best-effort mirrors failed silently). Returns how many were added."""
+        if self.telemetry_pool is self.pool:
+            return 0
+        try:
+            with self.pool.connection() as c:
+                ids = [r["run_id"] for r in c.execute("SELECT run_id FROM simulation_runs ORDER BY created_at").fetchall()]
+            with self.telemetry_pool.connection() as c:
+                have = {r["run_id"] for r in c.execute("SELECT run_id FROM simulation_runs").fetchall()}
+        except Exception:                                        # noqa: BLE001
+            return 0
+        return sum(1 for rid in ids if rid not in have and self._mirror_run(rid))
 
     def get_run(self, run_id):
         with self.pool.connection() as c:
@@ -569,37 +594,53 @@ class PostgresStorage(Storage):
                         raise StorageError("field not updatable")
                     self._update_run(conn, b.run_id, b.run_update)
 
-            # 2. Telemetry & Historian plane commit on self.telemetry_pool
-            with self.telemetry_pool.connection() as conn_t, conn_t.transaction():
-                with conn_t.cursor() as cur_t:
-                    if b.events:
-                        cur_t.executemany(
-                            "INSERT INTO world_events (run_id, seq, event_id, facility_id, tick, sim_time_s, world_version, kind, entity_id, "
-                            "actor_type, actor_id, payload, causal_parent_id, command_id, ts, schema_version, event_hash) "
-                            "VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s::timestamptz,%s,%s) ON CONFLICT (run_id, seq) DO NOTHING",
-                            [(b.run_id, e["seq"], e["event_id"], e["facility_id"], e["tick"], e["sim_time_s"], e["world_version"], e["kind"],
-                              e["entity_id"], e.get("actor_type", "system"), e.get("actor_id"), _j(e["payload"]), e.get("causal_parent_id"),
-                              e.get("command_id"), e["ts"], e["schema_version"], e["event_hash"]) for e in b.events])
-                    if b.snapshots:
-                        cur_t.executemany(
-                            "INSERT INTO world_snapshots (snapshot_id, run_id, facility_id, tick, last_seq, reason, state, world, rng_state, schema_version, "
-                            "engine_version, content_hash, world_hash, state_hash) VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s) ON CONFLICT DO NOTHING",
-                            [(s["snapshot_id"], b.run_id, b.facility_id, s["tick"], s["last_seq"], s["reason"], s["state"], _j(s["world"]), _j(s["rng_state"]),
-                              s["schema_version"], s["engine_version"], s["content_hash"], s["world_hash"], s["state_hash"]) for s in b.snapshots])
-                    if b.sensor_samples:
-                        cur_t.executemany(
-                            "INSERT INTO sensor_samples (run_id, tick, sim_time_s, sensor_id, metric, value, units, source, quality) VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s)",
-                            [(b.run_id, s["tick"], s["sim_time_s"], s["sensor_id"], s["metric"], s["value"], s.get("units", ""),
-                              s.get("source", "plant.readings"), s.get("quality", "good")) for s in b.sensor_samples])
-                        max_tick = b.sensor_samples[-1]["tick"]
-                        now = time.monotonic()
-                        if max_tick > 3600 and now - self._last_sample_prune.get(b.run_id, 0.0) > 60.0:
-                            self._last_sample_prune[b.run_id] = now
-                            cur_t.execute("DELETE FROM sensor_samples WHERE run_id = %s AND tick < %s", (b.run_id, max_tick - 3600))
+            # 2. Telemetry & Historian plane commit on self.telemetry_pool (its own database in the split topology; every row
+            #    FKs to ITS simulation_runs, so a run row the best-effort mirror missed is healed once and the plane retried)
+            try:
+                self._telemetry(b)
+            except psycopg.errors.ForeignKeyViolation:
+                if self.telemetry_pool is self.pool or not self._mirror_run(b.run_id):
+                    raise
+                self._telemetry(b)
         except (LeadershipLost, StorageError):
             raise
         except Exception as e:
-            raise StorageError(f"commit failed ({type(e).__name__})") from None
+            diag = getattr(e, "diag", None)                              # constraint / table names only: never a value or the DSN
+            where = ": " + str(getattr(diag, "constraint_name", None) or getattr(diag, "table_name", None)) if (
+                diag is not None and (getattr(diag, "constraint_name", None) or getattr(diag, "table_name", None))) else ""
+            raise StorageError(f"commit failed ({type(e).__name__}{where})") from None
+
+    def _telemetry(self, b: CommitBatch) -> None:
+        g = getattr(self, "size_guard", None)
+        return g.commit_telemetry(b, self._commit_telemetry) if g else self._commit_telemetry(b)
+
+    def _commit_telemetry(self, b: CommitBatch) -> None:
+        with self.telemetry_pool.connection() as conn_t, conn_t.transaction():
+            with conn_t.cursor() as cur_t:
+                if b.events:
+                    cur_t.executemany(
+                        "INSERT INTO world_events (run_id, seq, event_id, facility_id, tick, sim_time_s, world_version, kind, entity_id, "
+                        "actor_type, actor_id, payload, causal_parent_id, command_id, ts, schema_version, event_hash) "
+                        "VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s::timestamptz,%s,%s) ON CONFLICT (run_id, seq) DO NOTHING",
+                        [(b.run_id, e["seq"], e["event_id"], e["facility_id"], e["tick"], e["sim_time_s"], e["world_version"], e["kind"],
+                          e["entity_id"], e.get("actor_type", "system"), e.get("actor_id"), _j(e["payload"]), e.get("causal_parent_id"),
+                          e.get("command_id"), e["ts"], e["schema_version"], e["event_hash"]) for e in b.events])
+                if b.snapshots:
+                    cur_t.executemany(
+                        "INSERT INTO world_snapshots (snapshot_id, run_id, facility_id, tick, last_seq, reason, state, world, rng_state, schema_version, "
+                        "engine_version, content_hash, world_hash, state_hash) VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s) ON CONFLICT DO NOTHING",
+                        [(s["snapshot_id"], b.run_id, b.facility_id, s["tick"], s["last_seq"], s["reason"], s["state"], _j(s["world"]), _j(s["rng_state"]),
+                          s["schema_version"], s["engine_version"], s["content_hash"], s["world_hash"], s["state_hash"]) for s in b.snapshots])
+                if b.sensor_samples:
+                    cur_t.executemany(
+                        "INSERT INTO sensor_samples (run_id, tick, sim_time_s, sensor_id, metric, value, units, source, quality) VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s)",
+                        [(b.run_id, s["tick"], s["sim_time_s"], s["sensor_id"], s["metric"], s["value"], s.get("units", ""),
+                          s.get("source", "plant.readings"), s.get("quality", "good")) for s in b.sensor_samples])
+                    max_tick = b.sensor_samples[-1]["tick"]
+                    now = time.monotonic()
+                    if max_tick > 3600 and now - self._last_sample_prune.get(b.run_id, 0.0) > 60.0:
+                        self._last_sample_prune[b.run_id] = now
+                        cur_t.execute("DELETE FROM sensor_samples WHERE run_id = %s AND tick < %s", (b.run_id, max_tick - 3600))
 
     # ---- snapshots -----------------------------------------------------
     _SNAP_META = ("snapshot_id, run_id, tick, last_seq, reason, schema_version, engine_version, content_hash, world_hash, state_hash, created_at")
@@ -662,6 +703,73 @@ class PostgresStorage(Storage):
         for r in rows:
             r["ts"] = _iso(r["ts"])
         return rows
+
+    # ---- V12 replay read paths (migration 0011 indexes; every query is bounded by run_id + a tick range, never a scan from seq 0) ----------
+    _REPLAY_WORLD_KEYS = ("sim_time_s", "sim_speed", "sim_status", "assets", "robots", "kpis", "incidents", "missions")
+
+    def replay_snapshot_window(self, run_id, lo, hi, max_frames):
+        """ONE round trip: the (thinned) snapshots inside [lo, hi], the newest snapshot before lo (the state the window starts from) and the first recorded tick."""
+        cols = "snapshot_id, tick, last_seq, reason, schema_version, content_hash, world_hash, state_hash"
+        with self.telemetry_pool.connection() as c:
+            rows = c.execute(
+                f"WITH win AS (SELECT {cols}, row_number() OVER (ORDER BY tick, last_seq) AS rn, count(*) OVER () AS cnt FROM world_snapshots "
+                "WHERE run_id=%s AND tick BETWEEN %s AND %s), "
+                f"base AS (SELECT {cols} FROM world_snapshots WHERE run_id=%s AND tick < %s ORDER BY tick DESC, last_seq DESC LIMIT 1) "
+                f"SELECT 'frame' AS part, {cols}, cnt, rn FROM win WHERE (rn - 1) %% GREATEST(1, ceil(cnt / %s::numeric)::int) = 0 "
+                f"UNION ALL SELECT 'base', {cols}, NULL, NULL FROM base "
+                "UNION ALL SELECT 'first', NULL, (SELECT min(tick) FROM world_snapshots WHERE run_id=%s), NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL "
+                "ORDER BY 1, rn",
+                (run_id, lo, hi, run_id, lo, max(1, int(max_frames)), run_id)).fetchall()
+        frames, base, first, total = [], None, None, 0
+        for r in rows:
+            part = r.pop("part")
+            if part == "first":
+                first = r["tick"]
+                continue
+            r.pop("rn", None)
+            n = r.pop("cnt", None)
+            if part == "frame":
+                total = int(n or 0)
+                frames.append(r)
+            else:
+                base = r
+        frames.sort(key=lambda x: (x["tick"], x["last_seq"]))
+        return {"frames": frames, "total": total, "base": base, "first_tick": int(first) if first is not None else None}
+
+    def get_snapshot_replay_worlds(self, run_id, snapshot_ids):
+        """Only the keys a replay frame carries (assets / robots / kpis / incidents / missions / clock), cut server-side: the rest of a world doc is dead weight here."""
+        if not snapshot_ids:
+            return {}
+        keys = ", ".join(f"'{k}', world->'{k}'" for k in self._REPLAY_WORLD_KEYS)           # static identifiers
+        with self.telemetry_pool.connection() as c:
+            rows = c.execute(f"SELECT snapshot_id, jsonb_build_object({keys}) AS world FROM world_snapshots "
+                             "WHERE run_id=%s AND snapshot_id = ANY(%s)", (run_id, list(snapshot_ids))).fetchall()
+        if not rows and self.telemetry_pool is not self.pool:
+            return self.get_snapshot_worlds(run_id, snapshot_ids)
+        return {r["snapshot_id"]: r["world"] for r in rows}
+
+    def replay_events(self, run_id, lo, hi, after=None, limit=1000):
+        at, aseq = (int(after[0]), int(after[1])) if after else (int(lo), -1)       # (tick, seq) > (lo, -1)  <=>  tick >= lo
+        with self.telemetry_pool.connection() as c:
+            rows = c.execute(
+                "SELECT seq, event_id, facility_id, tick, sim_time_s, world_version, kind, entity_id, actor_type, actor_id, payload, "
+                "causal_parent_id, command_id, ts, schema_version, event_hash FROM world_events "
+                "WHERE run_id=%s AND tick <= %s AND (tick, seq) > (%s, %s) AND kind NOT IN ('world.diff', 'heartbeat', 'engine.health') "
+                "ORDER BY tick, seq LIMIT %s", (run_id, hi, max(at, int(lo)), aseq if at >= int(lo) else -1, limit)).fetchall()
+        for r in rows:
+            r["ts"] = _iso(r["ts"])
+        return rows
+
+    def replay_commands(self, run_id, lo, hi, limit=5000):
+        with self.pool.connection() as c:
+            return c.execute(
+                f"SELECT {self._CMD_COLS} FROM commands WHERE run_id=%s AND actor_type='operator' AND COALESCE(applied_tick, issued_tick) BETWEEN %s AND %s "
+                "ORDER BY apply_order NULLS LAST LIMIT %s", (run_id, lo, hi, limit)).fetchall()
+
+    def event_watermark(self, run_id):
+        with self.telemetry_pool.connection() as c:
+            r = c.execute("SELECT tick, seq FROM world_events WHERE run_id=%s ORDER BY seq DESC LIMIT 1", (run_id,)).fetchone()
+        return {"tick": int(r["tick"]), "seq": int(r["seq"])} if r else {"tick": 0, "seq": 0}
 
     def load_communications(self, run_id, *, after_seq=0, before_seq=None, until_tick=None, limit=100, message_type=None, agent_class=None,
                             thread_id=None, newest_first=False, event_id=None):

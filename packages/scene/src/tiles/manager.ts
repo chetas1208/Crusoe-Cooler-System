@@ -1,6 +1,6 @@
 import * as THREE from 'three';
 import { AssetCache, type DecodedTile } from './cache';
-import type { Manifest, ManifestTile, ManifestZone, TileStats } from './types';
+import type { Manifest, ManifestTile, ManifestZone, TileEvent, TileStats } from './types';
 
 /**
  * Progressive tile streaming.
@@ -25,6 +25,12 @@ export const TUNE: Record<'high' | 'medium' | 'low', TuneOptions> = {
 
 const _box = new THREE.Box3();
 
+/**
+ * The contact LOD (pipe bore surface, inward normals) can only be seen from inside a pipe. It is requested only when the camera is
+ * this close to the zone (or about to be, by the look-ahead): otherwise every rack close-up pulled in dozens of invisible bore tiles.
+ */
+export const CONTACT_RANGE_M = 2.0;
+
 interface Resident {
   dec: DecodedTile;
   attachedAt: number;
@@ -37,6 +43,7 @@ export class TileStreamingManager {
   private zones = new Map<string, ManifestZone>();
   private byZoneLod = new Map<string, ManifestTile>();
   private levelErr: number[] = [];
+  private levelName: string[] = [];
   private resident = new Map<string, Resident>();
   private loading = new Map<string, AbortController>();
   private lowSince = new Map<string, number>();
@@ -46,16 +53,31 @@ export class TileStreamingManager {
   private tokens = 0;
   private lastTick = performance.now();
   featureEntity = new Map<string, string>();
+  featureKind = new Map<string, string>();
   tune: TuneOptions = TUNE.medium;
+  /** how long a tile that failed to fetch/decode is left alone before it is retried (lower LODs stay visible meanwhile) */
+  failBackoffMs = 30_000;
+  /** ring buffer of load/attach/detach/abort/fail/evict events: what the in-browser verification reads */
+  events: TileEvent[] = [];
+  private t0 = performance.now();
   private disposed = false;
 
   constructor(public manifest: Manifest, base: string) {
     this.group.name = 'tiles';
     this.cache = new AssetCache(base);
-    for (const l of manifest.levels) this.levelErr[l.lod] = l.geometric_error_m;
+    for (const l of manifest.levels) {
+      this.levelErr[l.lod] = l.geometric_error_m;
+      this.levelName[l.lod] = l.name;
+    }
     for (const z of manifest.zones) this.zones.set(z.zone_id, z);
     for (const t of manifest.tiles) this.byZoneLod.set(`${t.zone_id}|${t.lod}`, t);
-    this.stats = { manifest_id: manifest.manifest_id, resident_tiles: 0, resident_by_lod: {}, encoded_bytes: 0, decoded_gpu_bytes: 0, triangles_resident: 0, inflight: 0, queued: 0, fetched: 0, fetched_bytes: 0, aborted: 0, evicted: 0, decode_failures: 0, cache_hits: 0, state: 'ready', error: null };
+    this.stats = { manifest_id: manifest.manifest_id, resident_tiles: 0, resident_by_lod: {}, encoded_bytes: 0, decoded_gpu_bytes: 0, triangles_resident: 0, inflight: 0, queued: 0, fetched: 0, fetched_bytes: 0, aborted: 0, evicted: 0, decode_failures: 0, cache_hits: 0, decode_ms_total: 0, decode_ms_max: 0, decoded_tiles: 0, lod0_ms: null, attached: 0, detached: 0, load_failures: 0, state: 'ready', error: null };
+    this.cache.onEvict = (_sha, tile) => this.log('evict', tile.tile_id);
+  }
+
+  private log(kind: TileEvent['kind'], tile: string, detail?: string) {
+    this.events.push({ t: Math.round(performance.now() - this.t0), kind, tile, detail });
+    if (this.events.length > 400) this.events.splice(0, this.events.length - 400);
   }
 
   setQuality(tier: 'high' | 'medium' | 'low') {
@@ -72,13 +94,17 @@ export class TileStreamingManager {
     const dec = await this.cache.decode(shellTile, buf);
     if (this.disposed) return;
     this.attach(dec);
+    this.stats.lod0_ms = Math.round(performance.now() - this.t0);
     this.shell = { dec, attachedAt: performance.now() };
     this.resident.set(shellTile.tile_id, this.shell);
     this.cache.retain(shellTile.sha256);
     void fetch(this.cache.base + this.manifest.features.url, { signal, credentials: 'omit' })
       .then((r) => r.json())
-      .then((j: { features?: Record<string, { entity_id: string }> }) => {
-        for (const [fid, v] of Object.entries(j.features ?? {})) this.featureEntity.set(fid, v.entity_id);
+      .then((j: { features?: Record<string, { entity_id: string; kind?: string }> }) => {
+        for (const [fid, v] of Object.entries(j.features ?? {})) {
+          this.featureEntity.set(fid, v.entity_id);
+          if (v.kind) this.featureKind.set(fid, v.kind);
+        }
       })
       .catch(() => undefined);
   }
@@ -153,6 +179,8 @@ export class TileStreamingManager {
       o.userData.lkTile = dec.tile.tile_id;
     });
     this.group.add(dec.root);
+    this.stats.attached++;
+    this.log('attach', dec.tile.tile_id);
   }
 
   private setShellGroup(zone: ManifestZone | undefined, visible: boolean) {
@@ -178,6 +206,30 @@ export class TileStreamingManager {
     const fid = idx !== undefined ? table[idx] : undefined;
     if (!fid) return null;
     return this.featureEntity.get(fid) ?? fid.split('#')[0];
+  }
+
+  /**
+   * Entity under the pointer from a sorted intersection list. The see-through hall walls (opacity 0.14, depthWrite off) are
+   * skipped so a rack behind the glass is still pickable; a wall is returned only when nothing else is under the pointer.
+   * Intersections that belong to other layers (procedural meshes, robots) are ignored: they do not carry the tile feature table.
+   */
+  pick(hits: THREE.Intersection[]): { id: string; hit: THREE.Intersection } | null {
+    let wall: { id: string; hit: THREE.Intersection } | null = null;
+    for (const h of hits) {
+      const id = this.entityAt(h);
+      if (!id) continue;
+      if (this.isWall(h)) {
+        wall ??= { id, hit: h };
+        continue;
+      }
+      return { id, hit: h };
+    }
+    return wall;
+  }
+
+  private isWall(hit: THREE.Intersection): boolean {
+    const mat = (hit.object as THREE.Mesh).material as THREE.Material | undefined;
+    return mat?.name === 'lk.wall' || mat?.name === 'lk.floor.wall';
   }
 
   private distTo(z: ManifestZone, p: THREE.Vector3) {
@@ -208,6 +260,13 @@ export class TileStreamingManager {
         const tile = this.byZoneLod.get(`${z.zone_id}|${lod}`);
         if (!tile) continue;
         const have = this.resident.has(tile.tile_id);
+        if (this.levelName[lod] === 'contact') {
+          const range = have ? CONTACT_RANGE_M * 1.5 : CONTACT_RANGE_M; // same hysteresis idea as the pixel threshold
+          if (d0 > range && d1 > range) {
+            if (!have) break;
+            continue;
+          }
+        }
         const thr = have ? this.tune.loadPx * 0.5 : this.tune.loadPx;
         const err = this.levelErr[lod - 1] ?? 1;
         const sse0 = (err * k) / d0;
@@ -247,6 +306,16 @@ export class TileStreamingManager {
     this.refreshStats();
   }
 
+  /** tile ids the viewer needs right now (not prefetch): what the in-browser hysteresis check compares detach times against */
+  wantedTileIds(): string[] {
+    return [...this.wanted.values()].filter((w) => !w.prefetch).map((w) => w.tile.tile_id);
+  }
+
+  /** ms on the same clock as `events[].t` */
+  clock(): number {
+    return Math.round(performance.now() - this.t0);
+  }
+
   /** zones currently wanted at a finer level than the shell (what the viewer is actually looking at) */
   visibleZones(): string[] {
     return [...new Set([...this.wanted.values()].filter((w) => !w.prefetch).map((w) => w.tile.zone_id))].sort();
@@ -256,10 +325,13 @@ export class TileStreamingManager {
     const ctl = new AbortController();
     this.loading.set(tile.tile_id, ctl);
     try {
-      const buf = await this.cache.fetchBytes(tile, ctl.signal);
-      if (ctl.signal.aborted || this.disposed) return;
-      const dec = await this.cache.decode(tile, buf);
-      if (ctl.signal.aborted || this.disposed || !this.wanted.has(tile.tile_id)) return; // keep the bytes cached, do not attach
+      // a tile detached earlier and still in the decoded LRU re-attaches with no fetch and no decode
+      const warm = this.cache.get(tile.sha256);
+      const buf = warm ? new ArrayBuffer(0) : await this.cache.fetchBytes(tile, ctl.signal);
+      if (ctl.signal.aborted || this.disposed) return this.log('abort', tile.tile_id, 'after fetch');
+      const dec = warm ?? (await this.cache.decode(tile, buf));
+      if (warm) this.log('cache_hit', tile.tile_id, 'decoded');
+      if (ctl.signal.aborted || this.disposed || !this.wanted.has(tile.tile_id)) return this.log('abort', tile.tile_id, 'after decode'); // keep the bytes cached, do not attach
       this.attach(dec);
       this.cache.retain(tile.sha256);
       this.resident.set(tile.tile_id, { dec, attachedAt: performance.now() });
@@ -267,9 +339,11 @@ export class TileStreamingManager {
       if (tile.refine === 'replace_group') this.setShellGroup(this.zones.get(tile.zone_id), false);
     } catch (e) {
       if ((e as Error).name !== 'AbortError') {
-        this.failedUntil.set(tile.tile_id, performance.now() + 30_000); // decode/network failure: the lower LOD simply stays
+        this.failedUntil.set(tile.tile_id, performance.now() + this.failBackoffMs); // decode/network failure: the lower LOD simply stays
         this.stats.error = (e as Error).message;
-      }
+        this.stats.load_failures++;
+        this.log('fail', tile.tile_id, (e as Error).message);
+      } else this.log('abort', tile.tile_id, 'network');
     } finally {
       this.loading.delete(tile.tile_id);
     }
@@ -282,8 +356,11 @@ export class TileStreamingManager {
     this.resident.delete(id);
     this.lowSince.delete(id);
     this.cache.release(r.dec.tile.sha256);
+    this.stats.detached++;
+    this.log('detach', r.dec.tile.tile_id);
     if (r.dec.tile.refine === 'replace_group') this.setShellGroup(this.zones.get(r.dec.tile.zone_id), true);
-    this.cache.drop(r.dec.tile.sha256);
+    // not disposed here: the decoded tile stays in the cache (refs 0 = LRU candidate), so coming back is a re-attach without a re-decode;
+    // cache.trim() disposes the least recently used ones once decoded GPU bytes exceed the quota
   }
 
   private refreshStats() {
@@ -306,6 +383,9 @@ export class TileStreamingManager {
       evicted: this.cache.evicted,
       decode_failures: this.cache.decodeFailures,
       cache_hits: this.cache.hits,
+      decode_ms_total: Math.round(this.cache.decodeMsTotal * 10) / 10,
+      decode_ms_max: Math.round(this.cache.decodeMsMax * 10) / 10,
+      decoded_tiles: this.cache.decodedCount,
     });
   }
 

@@ -5,6 +5,8 @@
 //   node scripts/bench/run.mjs --out artifacts/benchmarks/before.json --label before [--url http://127.0.0.1:5184/]
 //        [--presets high,balanced,performance] [--duration 8000] [--warmup 1500] [--w 1440 --h 900]
 //        [--scenarios dashboard_orbit,map_pipe_pov,...] [--gpu]   (--gpu: try the host GPU via ANGLE/Vulkan instead of SwiftShader)
+//        [--tile-modes off,on]   (run each preset x scenario once per server-tile mode: off = procedural hall, on = streamed tiles, auto = default policy)
+//        [--query '&api=http://127.0.0.1:8820&shadowhz=0']   (extra URL query: backend, A/B switches)
 //
 // env: PLAYWRIGHT_MODULE (path to playwright package), CHROME_PATH (browser executable)
 //
@@ -26,7 +28,9 @@ const h = Number(arg('h', 900));
 const label = String(arg('label', 'run'));
 const scenarios = arg('scenarios', undefined);
 const gpu = arg('gpu', false) === true;
+const tileModes = arg('tile-modes', undefined);
 const seed = String(arg('seed', 8));
+const query = String(arg('query', '')); // extra query string, e.g. "&tiles=0&api=http://127.0.0.1:8820"
 
 const require = createRequire(import.meta.url);
 const pw = require(process.env.PLAYWRIGHT_MODULE ?? 'playwright');
@@ -37,18 +41,18 @@ const browser = await pw.chromium.launch({ headless: true, executablePath: proce
 const ctx = await browser.newContext({ viewport: { width: w, height: h }, deviceScaleFactor: 1 });
 const page = await ctx.newPage();
 page.on('pageerror', (e) => console.error('pageerror', e.message));
-await page.goto(`${base}?bench=1&seed=${seed}`, { waitUntil: 'load' });
+await page.goto(`${base}?bench=1&seed=${seed}${query}`, { waitUntil: 'load' });
 await page.waitForFunction(() => window.__lkBench?.ready === true, null, { timeout: 90000 });
 await page.waitForTimeout(8000); // let the mock world produce some history and shaders compile
 const report = await page.evaluate(
   ([o]) => window.__lkBench.run(o),
-  [{ presets, durationMs, warmupMs, label, ...(scenarios ? { scenarios: String(scenarios).split(',') } : {}) }],
+  [{ presets, durationMs, warmupMs, label, ...(tileModes ? { tileModes: String(tileModes).split(',') } : {}), ...(scenarios ? { scenarios: String(scenarios).split(',') } : {}) }],
 );
 await browser.close();
 mkdirSync(dirname(out), { recursive: true });
 writeFileSync(out, JSON.stringify(report, null, 2));
 console.log(`wrote ${out}`);
 for (const r of report.results)
-  console.log(`${r.preset.padEnd(12)} ${r.scenario.padEnd(18)} frames=${String(r.frames).padStart(4)} interval p50/p95/p99=${r.frame_interval_ms.p50}/${r.frame_interval_ms.p95}/${r.frame_interval_ms.p99}ms cpu p50/p95=${r.cpu_frame_ms.p50}/${r.cpu_frame_ms.p95}ms calls=${r.draw_calls.p50} tris=${r.triangles.p50}`);
+  console.log(`${r.preset.padEnd(12)} ${String(r.tile_mode_requested ?? '').padEnd(4)} ${r.scenario.padEnd(18)} frames=${String(r.frames).padStart(4)} interval p50/p95/p99=${r.frame_interval_ms.p50}/${r.frame_interval_ms.p95}/${r.frame_interval_ms.p99}ms cpu p50/p95=${r.cpu_frame_ms.p50}/${r.cpu_frame_ms.p95}ms calls=${r.draw_calls.p50} tris=${r.triangles.p50}`);
 console.log('gl:', report.environment.gl?.renderer, '| software:', report.environment.gl?.software_rasteriser, '| refresh~', report.environment.display_refresh_estimate.hz, 'Hz');
 console.log('verdict:', report.verdict.can_claim_120fps, '-', report.verdict.reason);

@@ -116,6 +116,15 @@ def create_engine(
         backfill_topologies(storage, facility_id)
     except Exception:
         pass
+    backfill = getattr(storage, "backfill_telemetry_runs", None)
+    if callable(backfill):
+        try:
+            n = backfill()
+            if n:
+                import logging
+                logging.getLogger("loopkeeper.engine").info("telemetry database: mirrored %d run row(s) it was missing", n)
+        except Exception:                                  # noqa: BLE001
+            pass
 
     # a process restart that starts a NEW run id leaves the previous baseline "running" in the database forever: mark it stopped (history untouched)
     try:

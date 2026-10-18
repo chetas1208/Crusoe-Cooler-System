@@ -39,6 +39,7 @@ class SolveResult:
     ext_grid_mdot: float = 0.0
     junction_p_pa: dict[str, float] = field(default_factory=dict)
     active: dict[str, bool] = field(default_factory=dict)       # element carries flow (after pruning)
+    boundary_mdot: dict[str, float] = field(default_factory=dict)  # fixed-pressure boundary junction -> injected kg/s (negative = leaves the loop)
 
 
 class PipeNetwork:
@@ -53,6 +54,7 @@ class PipeNetwork:
         self.valves: dict[str, dict] = {}
         self.pumps: dict[str, dict] = {}
         self.ext_grid_junction: str | None = None
+        self.boundaries: dict[str, dict] = {}   # extra fixed-pressure boundaries (e.g. ambient for a leak orifice): junction -> {idx, p_bar}
         self._rho = rho
         self._dirty_tables = True
         self.last: SolveResult | None = None
@@ -102,6 +104,14 @@ class PipeNetwork:
         self.ext_grid_junction = junction
         pp.create_ext_grid(self.net, self.junction(junction), p_bar=P_REF_BAR, t_k=300.0)
 
+    def add_boundary(self, junction: str, p_bar: float) -> None:
+        """Extra fixed-pressure boundary (V12 leak boundary: ambient, atmospheric). Flow through it leaves/enters the loop; the
+        reference ext_grid (expansion tank) supplies the make-up, so a leak is a real mass loss with real pressure consequences.
+        Must be created AFTER set_ext_grid (the reference stays ext_grid row 0). Out of service whenever nothing alive touches it."""
+        idx = pp.create_ext_grid(self.net, self.junction(junction), p_bar=float(p_bar), t_k=300.0)
+        self.boundaries[junction] = dict(idx=int(idx), p_bar=float(p_bar))
+        self._dirty_tables = True
+
     @staticmethod
     def _pump_coeffs(h0_pa: float) -> list[float]:
         # pandapipes: lift[bar] = c2*q^2 + c1*q + c0 with q in m3/h; constant lift -> c2=c1=0
@@ -117,8 +127,9 @@ class PipeNetwork:
         if in_service is not None: p["in_service"] = bool(in_service)
         self._dirty_tables = True
 
-    def set_valve(self, name: str, *, k_loss: float | None = None, opened: bool | None = None) -> None:
+    def set_valve(self, name: str, *, k_loss: float | None = None, opened: bool | None = None, d_mm: float | None = None) -> None:
         v = self.valves[name]
+        if d_mm is not None: v["d_mm"] = float(d_mm)
         if k_loss is not None: v["k"] = float(k_loss)
         if opened is not None: v["opened"] = bool(opened)
         self._dirty_tables = True
@@ -144,6 +155,9 @@ class PipeNetwork:
         for n in alive:
             for j in elems[n]:
                 deg[j] = deg.get(j, 0) + 1
+        for j in self.boundaries:               # a fixed-pressure boundary is a connection (it can source/sink flow)
+            if j in deg:
+                deg[j] += 1
         changed = True
         while changed:
             changed = False
@@ -169,10 +183,15 @@ class PipeNetwork:
             names = [n for n, _ in sorted(self.valves.items(), key=lambda kv: kv[1]["idx"])]
             order = [self.valves[n] for n in names]
             net.valve["loss_coefficient"] = np.array([v["k"] for v in order], dtype=float)
+            net.valve["inner_diameter_mm"] = np.array([v["d_mm"] for v in order], dtype=float)
             net.valve["opened"] = np.array([active[n] for n in names], dtype=bool)
         for n, p in self.pumps.items():
             net.std_types["pump"][n].reg_par = np.array(self._pump_coeffs(p["h0"]), dtype=float)
             net.pump.loc[p["idx"], "in_service"] = bool(active[n])
+        for j, b in self.boundaries.items():
+            live = any(active[n] and j in (e["a"], e["b"]) for coll in (self.pipes, self.valves) for n, e in coll.items())
+            net.ext_grid.loc[b["idx"], "in_service"] = bool(live)
+            b["live"] = bool(live)
 
     def solve(self) -> SolveResult:
         t0 = time.perf_counter()
@@ -243,6 +262,10 @@ class PipeNetwork:
             mdot[n] = float(r["mdot_from_kg_per_s"])
             dp[n] = float(r["deltap_bar"]) * 1e5
         eg_m = float(net.res_ext_grid["mdot_kg_per_s"].iloc[0]) if len(net.res_ext_grid) else 0.0
+        bnd: dict[str, float] = {}
+        for j, b in self.boundaries.items():
+            if b.get("live"):
+                bnd[j] = float(net.res_ext_grid.loc[b["idx"], "mdot_kg_per_s"])
         jp = {n: float(net.res_junction.loc[i, "p_bar"]) * 1e5 for n, i in self.junctions.items()
               if not np.isnan(net.res_junction.loc[i, "p_bar"])}
         # junction mass-balance residual (relative to the largest loop flow)
@@ -253,8 +276,10 @@ class PipeNetwork:
                 if active[n]:
                     acc(e["a"], -mdot[n]); acc(e["b"], mdot[n])
         if self.ext_grid_junction:
-            acc(self.ext_grid_junction, eg_m)
+            acc(self.ext_grid_junction, -eg_m)     # pandapipes: ext_grid mdot > 0 = flow leaves the network into the grid
+        for j, m in bnd.items():
+            acc(j, -m)
         scale = max(max((abs(v) for v in mdot.values()), default=0.0), 0.1)
         resid = max((abs(v) for v in bal.values()), default=0.0) / scale
-        resid = max(resid, abs(eg_m) / scale)
-        return SolveResult(True, float(resid), None, 0, 0.0, mdot, dp, eg_m, jp, active)
+        resid = max(resid, abs(eg_m + sum(bnd.values())) / scale)     # global: make-up in == boundary outflow (0 for a closed loop)
+        return SolveResult(True, float(resid), None, 0, 0.0, mdot, dp, eg_m, jp, active, bnd)

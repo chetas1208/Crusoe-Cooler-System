@@ -1,7 +1,7 @@
 import { useMemo } from 'react';
 import { Crosshair } from 'lucide-react';
 import { useWorld } from '@loopkeeper/core/store';
-import { entityBounds, fitCamera, isRoadSel, isRowSel, measureInsets, selKey, siteModel, useMapCamera, useView } from '@loopkeeper/scene';
+import { entityBounds, fitCamera, isRoadSel, isRowSel, measureInsets, stageSize, selKey, siteModel, useMapCamera, useView } from '@loopkeeper/scene';
 import type { Robot, Topology } from '@loopkeeper/core/contracts';
 import { useUi } from './store';
 
@@ -146,7 +146,7 @@ export function flyTo(id: string, opts?: { fill?: number }) {
   if (!b) return false;
   const v = useView.getState();
   const isRobot = !!w.robots[id];
-  const goal = fitCamera({ boxes: [b], width: window.innerWidth, height: window.innerHeight, insets: measureInsets(), azimuth: 0.35, elevation: isRobot ? 0.9 : 0.85, fov: 32, fill: opts?.fill ?? 0.8 });
+  const goal = fitCamera({ boxes: [b], ...stageSize(), insets: measureInsets(), azimuth: 0.35, elevation: isRobot ? 0.9 : 0.85, fov: 32, fill: opts?.fill ?? 0.8 });
   if (useUi.getState().tab === 'map') useMapCamera.getState().setTactical(goal);
   else v.setCam(goal);
   return true;

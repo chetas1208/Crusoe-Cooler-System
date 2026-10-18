@@ -162,7 +162,7 @@ export function buildTimeline(frames: ReplayFrame[], events: StreamEvent[], comm
         const v = e.payload.verification;
         if (v.status === 'pending') break;
         const tone = v.status === 'verified' ? 'ok' : 'warning';
-        markers.push({ id: `vf:${v.id}`, lane: 'verification', from: e.sim_tick, to: e.sim_tick, label: v.status === 'verified' ? `Verified ${v.incident_id}` : `Rejected repair on ${v.incident_id}`, detail: v.checks.map((c) => `${c.label} ${c.after.toFixed(2)} ${c.unit} ${c.pass ? 'pass' : 'fail'}`).join(' · '), tone, incident_id: v.incident_id, count: 1 });
+        markers.push({ id: `vf:${v.id}`, lane: 'verification', from: e.sim_tick, to: e.sim_tick, label: v.status === 'verified' ? `Verified ${v.incident_id}` : `Rejected repair on ${v.incident_id}`, detail: v.checks.map((c) => `${c.label} ${typeof c.after === 'number' ? c.after.toFixed(2) : 'not measured'} ${c.unit ?? ''} ${c.pass ? 'pass' : 'fail'}`).join(' · '), tone, incident_id: v.incident_id, count: 1 });
         push(v.incident_id, { tick: e.sim_tick, lane: 'verification', label: v.status === 'verified' ? 'Verifier: all physics checks passed' : 'Verifier rejected the repair', tone });
         break;
       }
@@ -181,6 +181,12 @@ export function buildTimeline(frames: ReplayFrame[], events: StreamEvent[], comm
   }
   markers.push(...missions.values(), ...tasks.values());
   markers.sort((a, b) => a.from - b.from || (a.id < b.id ? -1 : 1));
+  // a repeated event (reconnect overlap, a replayed parent segment) must not produce a second marker with the same id: React keys on it
+  const seenIds = new Set<string>();
+  for (let i = markers.length - 1; i >= 0; i--) {
+    if (seenIds.has(markers[i].id)) markers.splice(i, 1);
+    else seenIds.add(markers[i].id);
+  }
 
   const incidents: IncidentSpan[] = [...incLast.values()]
     .map((i) => ({

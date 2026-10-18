@@ -1,0 +1,87 @@
+/* Agents tab: SENTINEL seat cards, envelope tags on edges, panel hide / reopen. Loaded after board.css. */
+.ag-grow { flex: 1; }
+
+/* ---- panel toggles (hide / reopen) ---- */
+.ag-panels { display: inline-flex; align-items: center; flex-wrap: wrap; gap: 4px; font-size: 12px; color: var(--t3); }
+.ag-panels__lab { margin-right: 2px; }
+.ag-ptog { height: 26px; padding: 0 9px; border-radius: 8px; font-size: 12px; font-weight: 550; color: var(--t3); border: 1px solid var(--line); background: transparent; white-space: nowrap; }
+.ag-ptog:hover { background: var(--panel-3); color: var(--t1); }
+.ag-ptog[aria-pressed='true'] { color: var(--t1); background: var(--panel-3); border-color: var(--line-2); }
+.ag-ptog[aria-pressed='false'] { border-style: dashed; }
+.ag-hide { display: inline-flex; align-items: center; gap: 5px; height: 24px; padding: 0 8px; border-radius: 7px; font-size: 12px; color: var(--t3); }
+.ag-hide:hover { background: var(--panel-3); color: var(--t1); }
+
+/* hidden panels give their grid column / row back to the graph (desktop grid only; compact layouts stack panels) */
+html:not([data-compact='1']) .ag[data-hide-roster='true'] { grid-template-columns: 0px minmax(0, 1fr) 356px; }
+html:not([data-compact='1']) .ag[data-hide-inspector='true'] { grid-template-columns: 252px minmax(0, 1fr) 0px; }
+html:not([data-compact='1']) .ag[data-hide-roster='true'][data-hide-inspector='true'] { grid-template-columns: 0px minmax(0, 1fr) 0px; }
+html:not([data-compact='1']) .ag[data-hide-ribbon='true'] { grid-template-rows: minmax(0, 1fr) 0px; }
+html:not([data-compact='1']) .ag[data-hide-roster='true'] > .ag-centre { margin-left: -10px; }
+html:not([data-compact='1']) .ag[data-hide-inspector='true'] > .ag-centre { margin-right: -10px; }
+
+/* ---- seats strip ---- */
+.ag-seats { container-type: inline-size; flex: none; display: flex; flex-direction: column; gap: 6px; padding: 8px 10px 10px; max-height: 42%; overflow-y: auto; scrollbar-width: thin; background: rgba(14, 17, 23, 0.9); border-bottom: 1px solid var(--line); z-index: 3; }
+.ag-seats__head { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
+.ag-seats__head h2 { margin: 0; font: 700 12px var(--mono); letter-spacing: 0.08em; color: var(--sentinel); }
+.ag-seats__inc { font-size: 12px; color: var(--t2); }
+.ag-seats__bud { font-size: 12px; color: var(--t3); }
+.sc-note { margin: 0; font-size: 12px; color: var(--t3); line-height: 1.4; }
+.sc-list { list-style: none; margin: 0; padding: 0; display: grid; grid-template-columns: repeat(auto-fit, minmax(148px, 1fr)); gap: 6px; }
+@container (min-width: 700px) { .sc-list { grid-template-columns: repeat(5, minmax(0, 1fr)); } }
+.sc { --seat: var(--t3); display: flex; flex-direction: column; gap: 5px; min-width: 0; padding: 8px 8px 9px; border-radius: 10px; background: rgba(255, 255, 255, 0.03); border: 1px solid var(--line); border-top: 3px solid var(--seat); }
+.sc[data-state='run'] { --seat: var(--sentinel); }
+.sc[data-state='warn'] { --seat: var(--warning); }
+.sc[data-state='bad'] { --seat: var(--critical); background: rgba(255, 79, 79, 0.06); border-color: rgba(255, 79, 79, 0.35); border-top-color: var(--critical); }
+.sc[data-state='nodata'] { border-style: dashed; border-top-style: dashed; }
+.sc header { display: flex; flex-direction: column; gap: 1px; min-width: 0; }
+.sc-id { font-size: 12px; font-weight: 700; letter-spacing: 0.06em; color: var(--seat); }
+.sc-title { font-size: 12.5px; font-weight: 600; line-height: 1.25; color: var(--t1); overflow-wrap: anywhere; }
+.sc-state { display: flex; align-items: center; gap: 6px; margin: 0; font-size: 12px; color: var(--t2); }
+.sc-state i { width: 8px; height: 8px; border-radius: 50%; flex: none; background: var(--t3); }
+.sc-state[data-state='run'] i { background: var(--accent); }
+.sc-state[data-state='warn'] i { background: var(--warning); }
+.sc-state[data-state='bad'] i { background: var(--critical); }
+.sc-state[data-state='bad'] { color: #ff9b9b; }
+.sc-state[data-state='warn'] { color: var(--warning); }
+.sc-task { display: flex; flex-direction: column; gap: 1px; text-align: left; padding: 4px 6px; margin: 0 -6px; border-radius: 8px; min-width: 0; }
+.sc-task:not(:disabled):hover { background: var(--panel-3); }
+.sc-task[aria-pressed='true'] { background: var(--panel-3); box-shadow: inset 2px 0 0 var(--accent); }
+.sc-task:disabled { cursor: default; }
+.sc-k { font-size: 12px; color: var(--t3); }
+.sc-v { font-size: 12px; color: var(--t1); line-height: 1.3; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; overflow-wrap: anywhere; }
+.sc-row { display: flex; flex-direction: column; gap: 2px; min-width: 0; }
+.sc-chips { display: flex; flex-wrap: wrap; gap: 4px; }
+.sc-tier { font-size: 12px; font-weight: 600; padding: 0 6px; border-radius: 999px; border: 1px solid var(--line-2); color: var(--t2); white-space: nowrap; }
+.sc-tier[data-tier='nano'] { color: var(--accent); border-color: rgba(91, 227, 208, 0.45); background: var(--accent-soft); }
+.sc-tier[data-tier='super'] { color: #c9b8ff; border-color: rgba(167, 139, 250, 0.5); background: rgba(167, 139, 250, 0.12); }
+.sc-tier[data-tier='none'] { border-style: dashed; color: var(--t3); }
+.sc-warn { display: flex; align-items: flex-start; gap: 6px; margin: 0; padding: 4px 7px; border-radius: 8px; font-size: 12px; line-height: 1.35; color: #ffbb7a; background: rgba(40, 26, 12, 0.7); border: 1px solid rgba(255, 154, 60, 0.4); }
+.sc-warn svg { flex: none; margin-top: 2px; }
+.sc-warn b { font-weight: 600; }
+.sc-warn--inc { align-self: flex-start; }
+.sc-verdict { margin: 0; font-size: 12px; line-height: 1.35; color: var(--t2); overflow-wrap: anywhere; }
+.sc-verdict b { font-weight: 600; color: var(--t3); margin-right: 4px; }
+.sc-verdict[data-tone='good'] { color: var(--nominal); }
+.sc-verdict[data-tone='warn'] { color: var(--warning); }
+.sc-verdict[data-tone='bad'] { color: #ff9b9b; }
+.sc-verdict[data-tone='bad'] b, .sc-verdict[data-tone='good'] b, .sc-verdict[data-tone='warn'] b { color: inherit; opacity: 0.8; }
+.sc-muted { margin: 0; font-size: 12px; color: var(--t3); line-height: 1.4; }
+
+/* ---- envelope kind on a delegation edge ---- */
+.ag-env { font: 600 12px var(--mono); letter-spacing: 0.02em; padding: 1px 6px; border-radius: 6px; color: #b9c4dd; background: rgba(20, 25, 34, 0.96); border: 1px solid var(--line-2); white-space: nowrap; }
+.ag-env[data-bad='true'] { color: #ffbb7a; background: rgba(40, 26, 12, 0.96); border-color: rgba(255, 154, 60, 0.5); }
+
+/* ---- compact layouts (phone / narrow tablet): stacked, graph hidden by the responsive host ---- */
+html[data-compact='1'] .ag > .ag-seats { max-height: none; overflow: visible; border: 1px solid var(--line); border-radius: var(--r-lg); }
+html[data-compact='1'] .ag > .ag-panels { padding: 4px 0 0; }
+html[data-compact='1'] .sc-list { grid-template-columns: minmax(0, 1fr); }
+html[data-compact='1'] .ag-ptog, html[data-compact='1'] .ag-hide { min-height: 44px; }
+
+/* landscape phone: roster on the left, every other panel stacked in the right column (board.css pins the inspector to column 3 and the ribbon to a row, which the compact grid does not have) */
+html[data-compact='1'][data-orient='landscape'] .ag { grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); grid-template-rows: none; grid-auto-rows: auto; }
+html[data-compact='1'][data-orient='landscape'] .ag > :not(.ag-left) { grid-column: 2; grid-row: auto; }
+html[data-compact='1'][data-orient='landscape'] .ag > .ag-left { grid-column: 1; grid-row: 1 / span 6; }
+html[data-compact='1'][data-orient='landscape'] .ag > .ag-ribbon { height: auto; min-height: 42px; flex-wrap: wrap; padding: 6px 10px; }
+html[data-compact='1'] .ag > .ag-ribbon { height: auto; min-height: 42px; flex-wrap: wrap; padding: 6px 10px; }
+html[data-compact='1'] .ag > .ag-seats { container-type: normal; }
+html[data-compact='1'] .ag > * { min-height: auto; }

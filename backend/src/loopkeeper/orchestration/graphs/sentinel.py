@@ -18,7 +18,7 @@ from langgraph.types import Send
 
 from ..analysis import (compute_metrics, fallback_hypotheses, healthy_reference, hyp_label, pct, rnd)
 from ..context import AgentContext
-from ..policy import ACTIONS, GAUGES, HIGH_IMPACT_STEPS, INPIPE_STEPS, OUTRIG_STEPS
+from ..policy import ACTIONS, GAUGES, HIGH_IMPACT_STEPS, INPIPE_STEPS, L3_STEPS, OUTRIG_STEPS
 from ..session import IncidentSession, PolicyReject, inc_num
 from ..state import RESET, IncState
 from ..world import Json, rd
@@ -315,6 +315,8 @@ def build_incident_graph(ctx: AgentContext, checkpointer: Any):
             title, q = "Decide: no dispatch", "Is a robot dispatch justified, or is this a load-driven thermal event?"
         t = s.task("sentinel", "replan" if attempts > 0 else "decide", title, q, parent=root, asset_ids=[det["target_id"]])
         reason = state.get("contradiction") or ""
+        if contract is None and attempts > 0 and cause != "workload_spike":
+            reason = reason or "The Definition of Done for this incident was lost (for example after a restart), so another repair cannot be judged against it. A person should take over."
         if attempts > lim.max_replans:
             reason = reason or f"The automatic repair attempts reached their limit ({lim.max_replans} retries)."
         if not options:
@@ -408,6 +410,12 @@ def build_incident_graph(ctx: AgentContext, checkpointer: Any):
             "whitelisted": whitelisted, "isolation_required": bool(iso_zone), "cordon": [r.replace("rack_", "").upper() for r in racks],
             "crawler_inside_segment": bool(inside), "thermal_impact": (f"{len(racks)} racks leave service; remaining racks absorb no extra heat" if iso_zone else "none"),
             "other_racks_already_low_margin": low, "isolation_effect": "flow is redirected to the remaining racks", "approval": style if needs_appr else "policy auto-approved"})
+        l3 = sorted(c for c in cmds if c in L3_STEPS)
+        if whitelisted and l3 and lim.l3_requires_human:
+            why = ("This repair is high impact (authority level L3: it isolates or cuts live pipework). Policy does not let the agent do it on its own, "
+                   "so an approval request has been opened for an operator.")
+            s.finish(t, "blocked", why, ("Needs a person", False))
+            return s.patch(safety={"ok": False, "approval": True, "l3_blocked": True, "human_required": True, "task_id": t["id"], "steps": cmds}, esc_reason=why)
         ok = whitelisted
         if not ok:
             why = "The planned action contains steps outside the safety whitelist."
@@ -425,6 +433,8 @@ def build_incident_graph(ctx: AgentContext, checkpointer: Any):
 
     def after_safety(state: IncState) -> str:
         sf = state["safety"]
+        if sf.get("l3_blocked"):
+            return "approval"                       # raise the human approval request, then escalate (no autonomous execution)
         return "escalate" if not sf["ok"] else ("approval" if sf["approval"] else "dispatch_prepare")
 
     # ───────────────────────────── approval / veto window ─────────────────────────────
@@ -435,7 +445,7 @@ def build_incident_graph(ctx: AgentContext, checkpointer: Any):
         task = {**task, "tool_calls": list(task["tool_calls"])}
         action = plan["action"]
         aid = f"ap_{inc_num(s.id)}_{plan['attempt'] + 1}"
-        supervised = pol.mode == "supervised"
+        supervised = pol.mode == "supervised" or bool(sf.get("l3_blocked"))        # L3 is never auto-approved by a veto window
         label = fac.label(det["target_id"])
         text = {"brush_clear": f"Crawler brush-clears {label}", "replace_section": f"Isolate zone and replace the fouled section of {label}",
                 "service_valve": f"Isolate zone and service {label} actuator"}.get(action, f"{action.replace('_', ' ')} on {label}")
@@ -449,9 +459,14 @@ def build_incident_graph(ctx: AgentContext, checkpointer: Any):
         a = dict(existing) if existing else {"id": aid, "incident_id": s.id, "task_id": task["id"], "action": text, "steps": sf.get("steps", []),
                                               "requested_tick": ctx.tick, "auto_approve_at_s": None if supervised else ctx.now + pol.window, "status": "pending"}
         s.inc["approval"] = a
+        if sf.get("l3_blocked"):
+            a["action"] = f"Operator action needed (high-impact L3 work the agent may not run on its own): {text}"
         s.set_status("awaiting_approval", f"Waiting for operator approval: {text}")
         await s.tool(task, "request_approval", {"action": text, "mode": "explicit" if supervised else "veto-window", "window_s": None if supervised else pol.window},
                      lambda: {"approval_id": aid, "status": a["status"]})
+        if sf.get("l3_blocked"):                                              # the request stays PENDING for a person; the agent does not wait or act
+            s.touch()
+            return s.patch(esc_reason=state.get("esc_reason") or "High-impact (L3) work needs a person's approval.", safety={**sf, "ok": False})
 
         def cond() -> bool:
             w = world_ap()
@@ -465,7 +480,7 @@ def build_incident_graph(ctx: AgentContext, checkpointer: Any):
         if not ok or not w or w.get("status") != "approved":
             s.inc["approval"]["status"] = "expired"
             s.touch()
-            return s.patch(esc_reason="The operator hold or approval window ended without an approval.", safety={**sf, "ok": False})
+            return s.patch(esc_reason="The operator hold or approval window ended without an approval.", safety={**sf, "ok": False, "timed_out": True})
         s.touch()
         return s.patch(safety={**sf, "approval_id": aid})
 
@@ -525,7 +540,8 @@ def build_incident_graph(ctx: AgentContext, checkpointer: Any):
         await memory_write(ctx, state)
         if v["ok"]:
             s.stage("verified", "ok")
-            reason = f"Verified: physics recovered within the stabilisation window ({fac.label(det['target_id'])})."
+            reason = (f"Verified: physics recovered within the stabilisation window ({fac.label(det['target_id'])})." if v.get("reviewed", True) else
+                      f"Recovered by measurement for {fac.label(det['target_id'])}, but not independently reviewed, so it is not counted as verified.")
             s.inc.update(status="resolved", severity="nominal", closed_tick=ctx.tick, close_reason=reason, summary=reason)
             ctx.emit("incident.closed", s.id, {"incident": s.inc})
             s.incident_dirty = True
@@ -552,15 +568,16 @@ def build_incident_graph(ctx: AgentContext, checkpointer: Any):
         fb = f"{reason} An operator should review this incident; monitoring continues."
         dec = await s.decide(t, "escalate", {"reason": reason, "cause": det["cause"], "attempts": s.inc["attempts"]}, lambda: {"summary": fb},
                              instruction="State briefly, in plain language, why the autonomous policy cannot continue.")
-        s.finish(t, "blocked", dec["summary"] or fb, ("Escalated", False))
-        s.set_status("escalated", dec["summary"] or fb)
+        s.finish(t, "blocked", fb, ("Escalated", False))                 # deterministic text; the model's phrasing stays in the decision record only
         dc = state.get("dod")
+        sf = state.get("safety") or {}
+        low = reason.lower()
+        timed_out = bool(sf.get("timed_out")) or "ended without" in low or "timed out" in low
+        summary = fb
         if dc is not None and dc.get("terminal_state") != "VERIFIED":
-            low = reason.lower()
-            dc["terminal_state"] = dod_mod.terminal_of(dc, escalated=True, timed_out=("ended without" in low or "timed out" in low or "timeout" in low))
-            dc["state"] = "ESCALATED"
-            dc["escalation_reason"] = reason[:300]
-            dn.emit(ctx, dc)
+            dc["terminal_state"] = await dn.finish_escalated(ctx, s, state, dc, det, reason, human_required=bool(sf.get("human_required")), timed_out=timed_out)
+            summary = dc["outcome_text"]
+        s.set_status("escalated", summary)
         robot = state.get("robot")
         if robot and (ctx.world["robots"].get(robot) or {}).get("mode") != "DOCKED":
             await fire_return(ctx, s, robot, root, "retesc", "Crawler returning to port.")

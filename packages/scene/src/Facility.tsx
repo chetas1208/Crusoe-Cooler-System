@@ -312,7 +312,7 @@ function OutdoorYard() {
       {/* Heavy reinforced concrete equipment pad */}
       <mesh position={[cx, -0.05, cz]} receiveShadow>
         <boxGeometry args={[yw, 0.22, yd]} />
-        <meshStandardMaterial color="#475569" roughness={0.92} metalness={0.05} />
+        <meshStandardMaterial color="#3a414d" roughness={0.95} metalness={0.04} />
       </mesh>
       {/* Vibration isolation equipment curb beneath dry-cooler / chiller_01 */}
       {chiller && (
@@ -348,12 +348,52 @@ function OutdoorYard() {
             <meshStandardMaterial color="#64748b" metalness={0.8} roughness={0.3} />
           </mesh>
         ))}
+        {/* three rails + a kick board join the posts, so the fence reads as a fence and not as a row of antennas (west, north and south sides; the east side is the building) */}
+        {[
+          { c: [cx, z0], s: [yw, 0.03], },
+          { c: [cx, z1], s: [yw, 0.03] },
+          { c: [x0, cz], s: [0.03, yd] },
+        ].flatMap((r, k) =>
+          [2.05, 1.08, 0.12].map((y, j) => (
+            <mesh key={`${k}-${j}`} position={[r.c[0], y, r.c[1]]}>
+              <boxGeometry args={[r.s[0], j === 2 ? 0.2 : 0.035, r.s[1]]} />
+              <meshStandardMaterial color="#6b7789" metalness={0.7} roughness={0.35} />
+            </mesh>
+          )),
+        )}
+        {Array.from({ length: Math.max(0, Math.floor(yw / 2)) + 1 }).map((_, i) => (
+          <mesh key={`pz${i}`} position={[x0 + i * 2, 1.05, z1]} castShadow>
+            <cylinderGeometry args={[0.035, 0.035, 2.1, 10]} />
+            <meshStandardMaterial color="#64748b" metalness={0.8} roughness={0.3} />
+          </mesh>
+        ))}
       </group>
     </group>
   );
 }
 
 /* ───────────────────────────── 7. EXTERIOR WALLS & CUTAWAY ───────────────────────────── */
+
+/** insulated metal wall panel: 1.2 m modules, vertical shadow-gap joints and a faint bevel highlight (vertical features only, so the cut-away scale in y never distorts it) */
+function wallPanelTexture(): THREE.CanvasTexture {
+  const c = document.createElement('canvas');
+  c.width = 128;
+  c.height = 8;
+  const g = c.getContext('2d')!;
+  g.fillStyle = '#ffffff';
+  g.fillRect(0, 0, 128, 8);
+  g.fillStyle = 'rgba(40,46,58,0.55)';
+  g.fillRect(0, 0, 3, 8);
+  g.fillStyle = 'rgba(255,255,255,0.0)';
+  g.fillRect(3, 0, 2, 8);
+  g.fillStyle = 'rgba(40,46,58,0.12)';
+  for (const x of [32, 64, 96]) g.fillRect(x, 0, 1, 8); // micro-rib
+  const t = new THREE.CanvasTexture(c);
+  t.wrapS = THREE.RepeatWrapping;
+  t.colorSpace = THREE.SRGBColorSpace;
+  t.anisotropy = 4;
+  return t;
+}
 
 function Walls({ mn, mx, H }: { mn: number[]; mx: number[]; H: number }) {
   const refs = useRef<Record<string, THREE.Group | null>>({});
@@ -368,6 +408,20 @@ function Walls({ mn, mx, H }: { mn: number[]; mx: number[]; H: number }) {
     ],
     [mn, mx],
   );
+
+  const tex = useMemo(() => {
+    const base = wallPanelTexture();
+    const out: Record<string, THREE.CanvasTexture> = {};
+    for (const wl of defs) {
+      const t = base.clone();
+      t.needsUpdate = true;
+      t.repeat.set(Math.max(wl.size[0], wl.size[2]) / 1.2, 1);
+      out[wl.id] = t;
+    }
+    base.dispose();
+    return out;
+  }, [defs]);
+  useEffect(() => () => Object.values(tex).forEach((t) => t.dispose()), [tex]);
 
   useFrame((_, dt) => {
     const v = useView.getState();
@@ -391,7 +445,7 @@ function Walls({ mn, mx, H }: { mn: number[]; mx: number[]; H: number }) {
           {/* Main wall body: durable concrete plinth base */}
           <mesh position={[0, 0.5, 0]} castShadow receiveShadow>
             <boxGeometry args={[wl.size[0], 1, wl.size[2]]} />
-            <meshStandardMaterial color={C.wall} roughness={0.88} metalness={0.05} />
+            <meshStandardMaterial color="#7d8593" map={tex[wl.id]} roughness={0.8} metalness={0.12} />
           </mesh>
           {/* Upper wall cap / architectural trim reveal */}
           <mesh position={[0, 1.0, 0]}>
@@ -456,52 +510,61 @@ function StructuralFrame({ mn, mx, H }: { mn: number[]; mx: number[]; H: number 
     return list;
   }, [cols, mn, mx]);
 
-  // Open-web structural steel roof trusses spanning North-South across the hall
-  const trussLines = useMemo(() => {
-    const pts: number[] = [];
-    const yTop = H;
-    const yBottom = H - 0.45;
-    const xs: number[] = [];
-    for (let x = mn[0] + 3; x <= mx[0] - 3; x += 6.0) xs.push(x);
-
-    // Perimeter roof beam ring
-    pts.push(mn[0], yTop, mn[2], mx[0], yTop, mn[2]);
-    pts.push(mx[0], yTop, mn[2], mx[0], yTop, mx[2]);
-    pts.push(mx[0], yTop, mx[2], mn[0], yTop, mx[2]);
-    pts.push(mn[0], yTop, mx[2], mn[0], yTop, mn[2]);
-
-    for (const x of xs) {
-      pts.push(x, yTop, mn[2], x, yTop, mx[2]);
-      pts.push(x, yBottom, mn[2], x, yBottom, mx[2]);
-      for (let z = mn[2]; z < mx[2] - 0.1; z += 1.5) {
-        const nextZ = Math.min(z + 1.5, mx[2]);
-        pts.push(x, yBottom, z, x, yTop, nextZ);
-        pts.push(x, yTop, nextZ, x, yBottom, nextZ);
+  // Open-web steel roof trusses spanning North-South across the hall: two chords + a Warren web, with purlins across the top
+  const trussGeo = useMemo(() => {
+    const parts: Array<{ geo: THREE.BufferGeometry; m?: THREE.Matrix4 }> = [];
+    const X = new THREE.Vector3(1, 0, 0);
+    const beam = (a: [number, number, number], b: [number, number, number], t: number) => {
+      const va = new THREE.Vector3(...a);
+      const vb = new THREE.Vector3(...b);
+      const dir = vb.clone().sub(va);
+      const len = dir.length();
+      if (len < 1e-4) return;
+      const q = new THREE.Quaternion().setFromUnitVectors(X, dir.normalize());
+      parts.push({ geo: new THREE.BoxGeometry(len, t, t), m: new THREE.Matrix4().compose(va.clone().add(vb).multiplyScalar(0.5), q, new THREE.Vector3(1, 1, 1)) });
+    };
+    const yTop = H - 0.05;
+    const yBot = H - 0.55;
+    for (let x = mn[0] + 3; x <= mx[0] - 3; x += 6.0) {
+      beam([x, yTop, mn[2]], [x, yTop, mx[2]], 0.09);
+      beam([x, yBot, mn[2]], [x, yBot, mx[2]], 0.07);
+      const n = Math.max(2, Math.round((mx[2] - mn[2]) / 1.8));
+      for (let i = 0; i < n; i++) {
+        const z0 = mn[2] + ((mx[2] - mn[2]) * i) / n;
+        const z1 = mn[2] + ((mx[2] - mn[2]) * (i + 1)) / n;
+        if (i % 2 === 0) beam([x, yBot, z0], [x, yTop, z1], 0.035);
+        else beam([x, yTop, z0], [x, yBot, z1], 0.035);
       }
     }
-    const g = new THREE.BufferGeometry();
-    g.setAttribute('position', new THREE.Float32BufferAttribute(pts, 3));
-    return g;
+    // purlins and the perimeter ring beam
+    for (let z = mn[2]; z <= mx[2] + 0.01; z += 3.67) beam([mn[0], yTop + 0.06, z], [mx[0], yTop + 0.06, z], 0.06);
+    for (const z of [mn[2], mx[2]]) beam([mn[0], yTop, z], [mx[0], yTop, z], 0.14);
+    for (const x of [mn[0], mx[0]]) beam([x, yTop, mn[2]], [x, yTop, mx[2]], 0.14);
+    return mergeParts(parts);
   }, [mn, mx, H]);
-  useEffect(() => () => trussLines.dispose(), [trussLines]);
+  useEffect(() => () => trussGeo.dispose(), [trussGeo]);
+  const trussMat = useRef<THREE.MeshStandardMaterial>(null);
 
   const grp = useRef<THREE.Group>(null);
   useFrame((_, dt) => {
     const v = useView.getState();
     const t = v.mode === 'pipe' || !v.layers.walls ? 0 : v.xray ? 0.35 : 1;
     if (grp.current) {
-      const s = grp.current.scale.x;
-      const n = s + (t - s) * (1 - Math.exp(-dt * 4));
-      grp.current.scale.set(n, n, n);
+      // fade, never scale: scaling a world-space group pulls it towards the origin
+      const m = trussMat.current;
+      const cur = m ? m.opacity : t;
+      const n = cur + (t - cur) * (1 - Math.exp(-dt * 4));
+      if (m) m.opacity = n;
+      grp.current.visible = n > 0.02;
     }
   });
 
   return (
     <group ref={grp}>
       <Columns pos={colPositions} H={H} />
-      <lineSegments geometry={trussLines}>
-        <lineBasicMaterial color="#7a889d" transparent opacity={0.55} />
-      </lineSegments>
+      <mesh geometry={trussGeo} castShadow={false}>
+        <meshStandardMaterial ref={trussMat} color="#8c97a8" metalness={0.5} roughness={0.5} transparent opacity={1} />
+      </mesh>
     </group>
   );
 }

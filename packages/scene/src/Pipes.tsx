@@ -14,12 +14,19 @@ import { filterIndex, pressureColor, useDashView } from './dashView';
 import { isRackDrop } from './Branches';
 import { FLOW_EPS } from './flow';
 import { FlowArrows, PipeFittings } from './PipeFlow';
+import { mergeParts, xf } from './merge';
 
-/** annular flange (a ring, not a disc — a crawler must be able to see down the bore) */
-const FLANGE_GEO = new THREE.LatheGeometry(
-  [new THREE.Vector2(0.74, -0.5), new THREE.Vector2(1, -0.5), new THREE.Vector2(1, 0.5), new THREE.Vector2(0.74, 0.5), new THREE.Vector2(0.74, -0.5)],
-  24,
-);
+/** unit-radius pipe hardware (instances scale it by the pipe's outer radius): a bolted flange pair with a raised face + a thin cladding band */
+const FLANGE_GEO = (() => {
+  const g = mergeParts([
+    { geo: new THREE.CylinderGeometry(1.3, 1.3, 0.16, 20), m: xf(0, -0.12, 0) },
+    { geo: new THREE.CylinderGeometry(1.3, 1.3, 0.16, 20), m: xf(0, 0.12, 0) },
+    { geo: new THREE.CylinderGeometry(1.06, 1.06, 0.12, 20) },
+    ...Array.from({ length: 6 }, (_, i) => ({ geo: new THREE.CylinderGeometry(0.075, 0.075, 0.5, 5), m: xf(Math.cos((i * Math.PI) / 3) * 1.12, 0, Math.sin((i * Math.PI) / 3) * 1.12) })),
+  ]);
+  return g;
+})();
+const BAND_GEO = new THREE.CylinderGeometry(1.055, 1.055, 0.16, 18, 1, true);
 
 const ALERT: Record<string, number> = { nominal: 0, watch: 0.3, warning: 0.65, critical: 1, isolated: 0, service: 0.5, offline: 0 };
 const ALERT_COLOR: Record<string, string> = { watch: C.watch, warning: C.warning, critical: C.critical, service: C.service };
@@ -128,7 +135,14 @@ function Pipe({ edge, path }: { edge: PipeEdge; path: Path }) {
     uniforms.uHi.value = c.hi;
     // cooling cutaway: everything else fades, so the solid pipes get brighter
     uniforms.uDim.value = Math.max(c.dim, 0) * (v.xray ? 1.35 : 1);
-    uniforms.uOpacity.value = Math.min(0.96, Math.max(c.dim, 0) * 1.4);
+    // fully lit pipes are opaque (correct occlusion, early-z, no sort artefacts); they only turn translucent while dimmed
+    const opq = c.dim > 0.97 ? 1 : Math.min(0.96, Math.max(c.dim, 0) * 1.4);
+    uniforms.uOpacity.value = opq;
+    const tr = opq < 0.999;
+    if (coreMat.transparent !== tr) {
+      coreMat.transparent = tr;
+      coreMat.depthWrite = !tr;
+    }
     const alertT = (ALERT[status] ?? 0) * (status === 'warning' || status === 'critical' ? pulse : 1);
     c.alert += (alertT - c.alert) * k;
     uniforms.uAlertAmt.value = c.alert;
@@ -165,45 +179,58 @@ function Pipe({ edge, path }: { edge: PipeEdge; path: Path }) {
   );
 }
 
-/** couplings + flanges: one InstancedMesh for the whole network */
+/** flanges (bolted pair every 2.6 m and at every end) and cladding bands (every 1.3 m between them): two InstancedMeshes for the whole network */
 function PipeHardware({ paths }: { paths: Record<string, Path> }) {
   const topo = useWorld((s) => s.topology);
-  const ref = useRef<THREE.InstancedMesh>(null);
-  const mats = useMemo(() => {
-    const out: THREE.Matrix4[] = [];
-    if (!topo) return out;
+  const refF = useRef<THREE.InstancedMesh>(null);
+  const refB = useRef<THREE.InstancedMesh>(null);
+  const { fl, bd } = useMemo(() => {
+    const fl: THREE.Matrix4[] = [];
+    const bd: THREE.Matrix4[] = [];
+    if (!topo) return { fl, bd };
     const up = new THREE.Vector3(0, 1, 0);
+    const at = (p: Path, s: number, r: number, thick: number, into: THREE.Matrix4[]) => {
+      let seg = 0;
+      while (seg < p.cum.length - 2 && p.cum[seg + 1] < s) seg++;
+      const a = p.points[seg];
+      const b = p.points[seg + 1];
+      const f = (s - p.cum[seg]) / (p.cum[seg + 1] - p.cum[seg] || 1);
+      const pos = new THREE.Vector3(a[0] + (b[0] - a[0]) * f, a[1] + (b[1] - a[1]) * f, a[2] + (b[2] - a[2]) * f);
+      const tan = new THREE.Vector3(b[0] - a[0], b[1] - a[1], b[2] - a[2]).normalize();
+      into.push(new THREE.Matrix4().compose(pos, new THREE.Quaternion().setFromUnitVectors(up, tan), new THREE.Vector3(r, r * thick, r)));
+    };
     for (const e of topo.edges) {
       const p = paths[e.id];
       if (!p || isRackDrop(e)) continue;
       const r = outerR(e.diameter_mm);
-      const stops: number[] = [0.05, p.length - 0.05];
+      const stops: number[] = [0.07, p.length - 0.07];
       for (let s = 2.6; s < p.length - 1.2; s += 2.6) stops.push(s);
-      for (const s of stops) {
-        let seg = 0;
-        while (seg < p.cum.length - 2 && p.cum[seg + 1] < s) seg++;
-        const a = p.points[seg];
-        const b = p.points[seg + 1];
-        const f = (s - p.cum[seg]) / (p.cum[seg + 1] - p.cum[seg] || 1);
-        const pos = new THREE.Vector3(a[0] + (b[0] - a[0]) * f, a[1] + (b[1] - a[1]) * f, a[2] + (b[2] - a[2]) * f);
-        const tan = new THREE.Vector3(b[0] - a[0], b[1] - a[1], b[2] - a[2]).normalize();
-        const q = new THREE.Quaternion().setFromUnitVectors(up, tan);
-        const scale = new THREE.Vector3(r * 1.3, 0.045 + (e.diameter_mm > 120 ? 0.015 : 0), r * 1.3);
-        out.push(new THREE.Matrix4().compose(pos, q, scale));
-      }
+      for (const s of stops) at(p, s, r, 1, fl);
+      for (let s = 1.3; s < p.length - 0.4; s += 1.3) if (stops.every((x) => Math.abs(x - s) > 0.35)) at(p, s, r, 1, bd);
     }
-    return out;
+    return { fl, bd };
   }, [topo, paths]);
   useEffect(() => {
-    if (!ref.current) return;
-    mats.forEach((m, i) => ref.current!.setMatrixAt(i, m));
-    ref.current.instanceMatrix.needsUpdate = true;
-  }, [mats]);
-  if (!mats.length) return null;
+    if (refF.current) {
+      fl.forEach((m, i) => refF.current!.setMatrixAt(i, m));
+      refF.current.instanceMatrix.needsUpdate = true;
+    }
+    if (refB.current) {
+      bd.forEach((m, i) => refB.current!.setMatrixAt(i, m));
+      refB.current.instanceMatrix.needsUpdate = true;
+    }
+  }, [fl, bd]);
+  if (!fl.length) return null;
   return (
-    <instancedMesh ref={ref} args={[undefined, undefined, mats.length]} castShadow={false}>
-      <primitive object={FLANGE_GEO} attach="geometry" />
-      <meshStandardMaterial color="#aab3c1" metalness={0.45} roughness={0.42} />
-    </instancedMesh>
+    <>
+      <instancedMesh key={`f${fl.length}`} ref={refF} args={[FLANGE_GEO, undefined, fl.length]} castShadow={false} frustumCulled={false} raycast={() => null}>
+        <meshStandardMaterial color="#8a94a5" metalness={0.65} roughness={0.38} />
+      </instancedMesh>
+      {bd.length > 0 && (
+        <instancedMesh key={`b${bd.length}`} ref={refB} args={[BAND_GEO, undefined, bd.length]} castShadow={false} frustumCulled={false} raycast={() => null}>
+          <meshStandardMaterial color="#c3cad5" metalness={0.7} roughness={0.35} />
+        </instancedMesh>
+      )}
+    </>
   );
 }

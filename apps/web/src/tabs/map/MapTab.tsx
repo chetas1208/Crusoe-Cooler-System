@@ -1,15 +1,17 @@
 import { useEffect } from 'react';
 import { useMapCamera } from '@loopkeeper/scene';
-import { controlActions, useControl } from '@loopkeeper/core/control';
+import { bindNavEvents, controlActions, navActions, useControl, useNav } from '@loopkeeper/core/control';
+import { useWorld } from '@loopkeeper/core/store';
 import { RobotFleetDrawer } from './RobotFleetDrawer';
 import { RobotInspector } from './RobotInspector';
 import { ControlHUD } from './ControlHUD';
 import { MapPresets } from './MapPresets';
 import { MapLayers } from './MapLayers';
 import { useDriveController } from './useDriveController';
+import { useStageInsetsProbe } from './stageInsets';
 
 /**
- * LOOPKEEPER Map Tab: Controllable, physically coherent spatial interface
+ * Cruso Cooler System Map Tab: Controllable, physically coherent spatial interface
  * supporting both virtual robot classes (INPIPE Crawler & OUTRIG Exterior Rover)
  * with First-Person (Robot POV), Third-Person (Chase, Orbit, Cutaway), and Tactical views.
  */
@@ -30,6 +32,19 @@ export function MapTab() {
       }
     };
   }, [setActive]);
+
+  // V12 navigation: route / traffic events from the live stream, and the published graphs (for the road name and destination nodes)
+  const live = useWorld((s) => s.connection === 'live');
+  const graphStale = useNav((s) => s.graphStale);
+  useEffect(() => bindNavEvents(), []);
+  useEffect(() => {
+    if (!live) return;
+    const g = useNav.getState().graphs;
+    if (!g.exterior || graphStale) void navActions.loadGraph('exterior');
+    if (!g.interior || graphStale) void navActions.loadGraph('interior');
+  }, [live, graphStale]);
+  useEffect(() => () => navActions.dismiss(), []);
+  useStageInsetsProbe();
 
   // Game-style drive controls, camera switching, tool triggers, and blur safe-stop
   useDriveController(true);
@@ -70,7 +85,7 @@ export function MapTab() {
       </MapPresets>
 
       {/* Floating Control HUD: Mode Switcher, Reticle, Driving Telemetry & Key Hints */}
-      <div style={{ position: 'absolute', inset: 0, zIndex: 25, pointerEvents: 'none' }}>
+      <div className="map-hudwrap" style={{ position: 'absolute', inset: 0, zIndex: 25, pointerEvents: 'none' }}>
         <ControlHUD immersive={immersive} onToggleImmersive={toggleImmersive} />
       </div>
 

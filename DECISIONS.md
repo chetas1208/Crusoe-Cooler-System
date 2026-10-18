@@ -1,5 +1,14 @@
 # Decisions
 
+## 2026-10-18 — Cruso Cooler System: Safe Whole-Repository Rename
+
+96. **Public Product Name Rebrand with Machine-Contract Decoupling:**
+    - The canonical public-facing product name is `Cruso Cooler System` (spelled deliberately **Cruso**, not **Crusoe**).
+    - To guarantee zero downtime, non-disruptive concurrent execution, and zero broken database records, external and internal contracts are strictly decoupled:
+      (1) Partner Preservation: References to `Crusoe`, `Crusoe Cloud`, `Crusoe Managed Inference`, and `CRUSOE_API_KEY` remain untouched.
+      (2) Machine Contracts: Monorepo package scopes (`@loopkeeper/*`), Python modules (`loopkeeper.*`), PostgreSQL database names/tables (`neondb`, `control-db`), and API routes (`/api/v1/*`) are preserved to prevent runtime failures.
+      (3) Single Source of Truth: `packages/core/src/brand.ts` exports `PRODUCT_BRAND` consumed across UI, topbars, modals, mobile companion, and public documentation.
+
 ## 2026-10-17 — LOOPKEEPER V9: Natural-Language Crisis Launcher, Live Robot Autonomy, and Non-Destructive Manual Drive
 
 1. **Deterministic ScenarioCompiler as Autonomous Firewall:** LLMs (Crusoe Nemotron) and classification models (Laya) are strictly prohibited from mutating physics matrices or injecting untested actuator commands directly. Instead, `ScenarioCompiler` acts as a deterministic compiler that parses model output into verified `ScenarioDefinition` records with exact topology localization, declared assumptions, and 3 measurable `DefinitionOfDone` invariants.

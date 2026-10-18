@@ -33,3 +33,7 @@ where = ["src"]
 [tool.pytest.ini_options]
 asyncio_mode = "auto"
 testpaths = ["tests"]
+markers = [
+  "slow: long real-plant agent loops (>= ~10 s serial); excluded by scripts/test_fast.sh (-m 'not slow'). Assigned in tests/conftest.py SLOW_PREFIXES.",
+  "db: needs the embedded Postgres server (pgserver); skipped when it cannot start.",
+]

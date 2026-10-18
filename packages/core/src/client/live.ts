@@ -108,6 +108,10 @@ export class LiveTransport implements Transport {
           if (typeof window !== 'undefined') window.dispatchEvent(new CustomEvent('lk-manifest-changed', { detail: (ev as unknown as { payload: unknown }).payload }));
           return;
         }
+        // V12: navigation / traffic events feed the Map tab's route + traffic overlays (control/nav.ts); they are also ordinary events below
+        if (typeof window !== 'undefined' && (t.startsWith('robot.route_') || t === 'robot.arrived' || t.startsWith('traffic.') || t === 'nav.graph_changed')) {
+          window.dispatchEvent(new CustomEvent('lk-nav-event', { detail: ev }));
+        }
         // every event (heartbeats included) carries a seq; a jump means we missed something. Poses the server elided under
         // interest throttling are announced in `elided` and are not a gap.
         const elided = (ev as unknown as { elided?: number }).elided ?? 0;

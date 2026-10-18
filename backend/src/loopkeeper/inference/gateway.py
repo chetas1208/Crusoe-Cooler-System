@@ -21,7 +21,7 @@ from typing import Any, Awaitable, Callable
 import httpx
 
 from ..intelligence.crusoe import ModelError, ModelResponse, extract_json
-from .calls import CallSink, Fanout, MemorySink, ModelCallRow, sha
+from .calls import CallSink, Fanout, LogSink, MemorySink, ModelCallRow, sha
 from .catalog import Catalog, ModelInfo, load_cache, now_iso, parse_models, save_cache
 from .config import GatewayConfig, role_for_kind
 
@@ -61,6 +61,7 @@ class Breaker:
         self.failures = 0
         self.opened_at: float | None = None
         self.trial = False
+        self.trial_at = 0.0
 
     @property
     def state(self) -> str:
@@ -72,8 +73,10 @@ class Breaker:
         s = self.state
         if s == "closed":
             return True
-        if s == "half_open" and not self.trial:
-            self.trial = True      # exactly one probe call
+        if s == "half_open" and (not self.trial or self.clock() - self.trial_at >= self.cooldown):
+            # exactly one probe call; a probe that never reported back (cancelled, queue_full / queue_timeout before the HTTP call) expires after
+            # one more cooldown so the model can never stay half-open (= down) forever
+            self.trial, self.trial_at = True, self.clock()
             return True
         return False
 
@@ -135,7 +138,8 @@ class ModelGateway:
         self.cfg = cfg or GatewayConfig.from_env()
         self.run_id, self.replay = run_id, replay
         self.mem = MemorySink()
-        self.sink: CallSink = Fanout([self.mem] + ([sink] if sink is not None else []))
+        self.sink: CallSink = Fanout([self.mem, LogSink()] + ([sink] if sink is not None else []))
+        self.last_error_class: str | None = None     # class of the most recent failed call (error code, never a provider body); surfaced by /health/detail
         self.clock, self.sleep = clock, sleep
         self.rng = rng or random.Random()
         self.catalog: Catalog | None = None
@@ -150,6 +154,8 @@ class ModelGateway:
         self.waiting = 0
         self.calls = 0                          # logical calls (budget)
         self.spend_usd = 0.0
+        self.reserved_usd = 0.0                 # worst-case cost of calls currently in flight (reserved before the call, released after)
+        self.incident_reserved: dict[str, float] = {}
         self.incident_spend: dict[str, float] = {}
         self.stats = {"http_attempts": 0, "retries": 0, "frozen_hits": 0, "repairs": 0, "failures": 0}
         self._inflight: dict[str, asyncio.Future] = {}
@@ -169,6 +175,12 @@ class ModelGateway:
         return self._http
 
     async def aclose(self) -> None:
+        fl = getattr(self.sink, "flush", None)                                 # background writers (ThreadedSink) drain before the run ends
+        if callable(fl):
+            try:
+                await asyncio.to_thread(fl)
+            except Exception:  # noqa: BLE001
+                pass
         if self._http is not None:
             await self._http.aclose()
             self._http = None
@@ -226,18 +238,50 @@ class ModelGateway:
                 "seed": self.cfg.seed, "thinking": self.cfg.thinking, "limits": {k: getattr(self.cfg, k) for k in (
                     "max_requests_per_min", "max_concurrency_high", "max_concurrency_low", "run_call_budget", "run_spend_ceiling_usd", "incident_spend_ceiling_usd")}}
 
+    def audit_stats(self) -> Json:
+        """Audit-row health: bounded memory sink counters and, for background writers, queue overflow / spill / write errors (nothing is dropped silently)."""
+        out: Json = {}
+        for s in (self.sink.leaves() if isinstance(self.sink, Fanout) else [self.sink]):
+            st = getattr(s, "stats", None)
+            if callable(st):
+                out[type(s).__name__] = st()
+        return out
+
     def status(self) -> Json:
         return {"configured": self.configured, "calls": self.calls, "spend_usd": round(self.spend_usd, 6), "waiting": self.waiting, **self.stats,
-                "breakers": {m: b.state for m, b in self.breakers.items()}, "replay": self.replay, "sink_failures": getattr(self.sink, "failures", 0)}
+                "breakers": {m: b.state for m, b in self.breakers.items()}, "replay": self.replay, "last_error_class": self.last_error_class, "sink_failures": getattr(self.sink, "failures", 0),
+                "reserved_usd": round(self.reserved_usd, 6), "audit": self.audit_stats()}
 
     # ---- request shaping -----------------------------------------------
+    def _thinking(self, role: str, thinking: bool | None) -> bool:
+        return (self.cfg.thinking_reviewer if role in ("reviewer", "reasoner") else self.cfg.thinking) if thinking is None else bool(thinking)
+
+    def _effective_max_tokens(self, role: str, max_tokens: int, thinking: bool | None) -> int:
+        return max(max_tokens, 2048) if self._thinking(role, thinking) else max_tokens
+
+    # ---- cost: FAIL CLOSED ----------------------------------------------
+    def price_of(self, model: str) -> tuple[float, float, str]:
+        """(USD per 1M prompt tokens, USD per 1M completion tokens, basis). An unknown price is NOT free: worst-case config prices are charged."""
+        info = self.model_info(model)
+        if info is not None and info.price_in_per_mtok is not None and info.price_out_per_mtok is not None:
+            return info.price_in_per_mtok, info.price_out_per_mtok, "catalog"
+        return self.cfg.worst_case_in_per_mtok, self.cfg.worst_case_out_per_mtok, "assumed_worst_case"
+
+    @staticmethod
+    def estimate_prompt_tokens(system: str, user: str) -> int:
+        return (len(system) + len(user)) // 3 + 16            # deliberately high (real text is ~4 chars/token)
+
+    def worst_case_cost(self, model: str, prompt_tokens: int, max_tokens: int) -> float:
+        pin, pout, _ = self.price_of(model)
+        return (prompt_tokens * pin + max_tokens * pout) / 1_000_000
+
     def build_payload(self, *, model: str, role: str, system: str, user: str, max_tokens: int, json_mode: bool, thinking: bool | None,
                       tools: list[Json] | None = None, schema: Json | None = None) -> Json:
         info = self.model_info(model)
         sp = (lambda p: info.supports(p) if info and info.supported_parameters else True)
-        think = (self.cfg.thinking_reviewer if role in ("reviewer", "reasoner") else self.cfg.thinking) if thinking is None else thinking
+        think = self._thinking(role, thinking)
         body: Json = {"model": model, "messages": [{"role": "system", "content": system}, {"role": "user", "content": user}], "temperature": 0.0,
-                      "max_tokens": max(max_tokens, 2048) if think else max_tokens}
+                      "max_tokens": self._effective_max_tokens(role, max_tokens, thinking)}
         if sp("chat_template_kwargs"):
             body["chat_template_kwargs"] = {"enable_thinking": bool(think)}
         if self.cfg.seed is not None and sp("seed"):
@@ -298,29 +342,34 @@ class ModelGateway:
                 self._inflight.pop(idem_key, None)
 
     async def _frozen(self, key: str) -> ModelCallRow | None:
-        for s in getattr(self.sink, "sinks", []):
+        """Frozen output for an idempotency key from any sink that can answer (memory, JSONL, Postgres). A failing lookup RAISES (`frozen_lookup_failed`):
+        treating a database error as a miss would pay for a duplicate inference after a restart."""
+        sinks = self.sink.leaves() if isinstance(self.sink, Fanout) else [self.sink]
+        for s in sinks:
             f = getattr(s, "frozen", None)
             if f is None:
                 continue
             try:
                 r = f(key) if isinstance(s, MemorySink) else await asyncio.to_thread(f, self.run_id, key)
-            except Exception:  # noqa: BLE001
-                r = None
+            except Exception as e:  # noqa: BLE001
+                self.stats["frozen_lookup_failures"] = self.stats.get("frozen_lookup_failures", 0) + 1
+                self.last_error_class = "frozen_lookup_failed"
+                raise GatewayError("frozen_lookup_failed", type(e).__name__) from None
             if r is not None:
                 return r
         return None
 
-    def _gate(self, base: Json) -> None:
+    def _gate(self, base: Json, reserve: float = 0.0) -> None:
         if self.calls >= self.cfg.run_call_budget:
             self._fail_row(base, "call_budget", None, 0, 0)
             raise GatewayError("call_budget", f"run call budget {self.cfg.run_call_budget} reached")
-        if self.spend_usd >= self.cfg.run_spend_ceiling_usd:
+        if self.spend_usd + self.reserved_usd + reserve > self.cfg.run_spend_ceiling_usd:
             self._fail_row(base, "spend_ceiling", None, 0, 0)
-            raise GatewayError("spend_ceiling", f"run spend ceiling ${self.cfg.run_spend_ceiling_usd:.2f} reached")
+            raise GatewayError("spend_ceiling", f"run spend ceiling ${self.cfg.run_spend_ceiling_usd:.2f} would be exceeded (spent + in-flight reservations + worst case of this call)")
         inc = base.get("incident_id")
-        if inc and self.incident_spend.get(inc, 0.0) >= self.cfg.incident_spend_ceiling_usd:
+        if inc and self.incident_spend.get(inc, 0.0) + self.incident_reserved.get(inc, 0.0) + reserve > self.cfg.incident_spend_ceiling_usd:
             self._fail_row(base, "spend_ceiling", None, 0, 0)
-            raise GatewayError("spend_ceiling", f"incident spend ceiling ${self.cfg.incident_spend_ceiling_usd:.2f} reached")
+            raise GatewayError("spend_ceiling", f"incident spend ceiling ${self.cfg.incident_spend_ceiling_usd:.2f} would be exceeded")
         br = self.breakers.setdefault(base["model"], Breaker(self.cfg.breaker_threshold, self.cfg.breaker_cooldown_s, self.clock))
         if not br.allow():
             self._fail_row(base, "circuit_open", None, 0, 0)
@@ -328,11 +377,26 @@ class ModelGateway:
 
     async def _execute(self, base: Json, model: str, role: str, system: str, user: str, kind: str, max_tokens: int, json_mode: bool,
                        thinking: bool | None, timeout_s: float | None, schema: Json | None = None) -> GatewayResult:
-        self._gate(base)
+        eff = self._effective_max_tokens(role, max_tokens, thinking)
+        reserve = self.worst_case_cost(model, self.estimate_prompt_tokens(system, user), eff)       # RESERVED before the call: max_tokens at the output price
+        self._gate(base, reserve)
         if self.waiting >= self.cfg.queue_max:
             self._fail_row(base, "queue_full", None, 0, 0)
             raise GatewayError("queue_full", f"{self.waiting} requests already waiting")
         self.calls += 1
+        self.reserved_usd += reserve
+        inc = base.get("incident_id")
+        if inc:
+            self.incident_reserved[inc] = self.incident_reserved.get(inc, 0.0) + reserve
+        try:
+            return await self._execute_reserved(base, model, role, system, user, kind, eff, json_mode, thinking, timeout_s, schema, max_tokens)
+        finally:
+            self.reserved_usd = max(0.0, self.reserved_usd - reserve)
+            if inc:
+                self.incident_reserved[inc] = max(0.0, self.incident_reserved.get(inc, 0.0) - reserve)
+
+    async def _execute_reserved(self, base: Json, model: str, role: str, system: str, user: str, kind: str, eff_max: int, json_mode: bool, thinking: bool | None,
+                                timeout_s: float | None, schema: Json | None, max_tokens: int) -> GatewayResult:
         sem = self.sem_low if role == "specialist" else self.sem_high
         self.waiting += 1
         t_queue = self.clock()
@@ -369,7 +433,7 @@ class ModelGateway:
             else:
                 lat = int((time.perf_counter() - t1) * 1000)
                 if r.status_code == 200:
-                    return self._finish(base, model, role, r, lat, attempts, br, t0)
+                    return self._finish(base, model, role, r, lat, attempts, br, t0, self.estimate_prompt_tokens(system, user), int(body.get("max_tokens") or max_tokens))
                 last = (f"http_{r.status_code}", r.status_code)
                 retry_after = parse_retry_after(r.headers.get("retry-after"), self.cfg.retry_after_cap_s)
                 if r.status_code not in RETRY_STATUS:
@@ -386,7 +450,7 @@ class ModelGateway:
         self._fail_row(base, last[0], last[1], attempts, int((self.clock() - t0) * 1000))
         raise GatewayError(last[0].split(":")[0] if last[0].startswith("network") else last[0], status=last[1], attempts=attempts)
 
-    def _finish(self, base: Json, model: str, role: str, r: httpx.Response, lat: int, attempts: int, br: Breaker, t0: float) -> GatewayResult:
+    def _finish(self, base: Json, model: str, role: str, r: httpx.Response, lat: int, attempts: int, br: Breaker, t0: float, est_in: int = 0, eff_max: int = 0) -> GatewayResult:
         try:
             d = r.json()
             msg = d["choices"][0]["message"]
@@ -398,10 +462,19 @@ class ModelGateway:
             raise GatewayError("bad_response", "unparseable provider response", 200, attempts) from None
         tin, tout = usage.get("prompt_tokens"), usage.get("completion_tokens")
         info = self.model_info(model)
-        cost = info.cost_usd(tin, tout) if info else None
-        self.spend_usd += cost or 0.0
+        pin, pout, basis = self.price_of(model)
+        usage_missing = not isinstance(tin, int) or not isinstance(tout, int)
+        if not isinstance(tin, int):
+            tin = est_in                       # FAIL CLOSED: missing usage is charged at the worst case (estimated prompt, max_tokens completion)
+        if not isinstance(tout, int):
+            tout = eff_max
+        cost = (tin * pin + tout * pout) / 1_000_000
+        self.spend_usd += cost
         if base.get("incident_id"):
-            self.incident_spend[base["incident_id"]] = self.incident_spend.get(base["incident_id"], 0.0) + (cost or 0.0)
+            self.incident_spend[base["incident_id"]] = self.incident_spend.get(base["incident_id"], 0.0) + cost
+        if usage_missing:
+            self.stats["usage_missing"] = self.stats.get("usage_missing", 0) + 1
+        price_basis = (self.catalog.fetched_at if (self.catalog and basis == "catalog") else basis) + (";usage_missing_charged_worst_case" if usage_missing else "")
         # a provider 200 with unusable content still counts as spend but not as a healthy call for the breaker
         stripped = text.strip()
         err = None
@@ -412,19 +485,20 @@ class ModelGateway:
         if err:
             br.failure()
             self.stats["failures"] += 1
-            self._fail_row(base, err, 200, attempts, lat, tin, tout, cost, info)
+            self._fail_row(base, err, 200, attempts, lat, tin, tout, cost, info, price_basis)
             raise GatewayError(err, status=200, attempts=attempts)
         br.success()
         row = ModelCallRow(call_id=_cid(), ts=now_iso(), http_status=200, latency_ms=lat, attempts=attempts, tokens_in=tin, tokens_out=tout,
-                           est_cost_usd=cost, price_basis=self.catalog.fetched_at if self.catalog and info else None, output_hash=sha(text),
+                           est_cost_usd=cost, price_basis=price_basis, output_hash=sha(text),
                            output_text=text, **base)
         self.sink.record(row)
         return GatewayResult(text, d.get("model") or model, role, row.call_id, tin, tout, lat, cost, attempts)
 
     def _fail_row(self, base: Json, code: str, status: int | None, attempts: int, lat: int, tin: int | None = None, tout: int | None = None,
-                  cost: float | None = None, info: ModelInfo | None = None) -> None:
+                  cost: float | None = None, info: ModelInfo | None = None, price_basis: str | None = None) -> None:
+        self.last_error_class = code
         self.sink.record(ModelCallRow(call_id=_cid(), ts=now_iso(), http_status=status, latency_ms=lat, attempts=attempts, tokens_in=tin, tokens_out=tout,
-                                      est_cost_usd=cost, error=code, fallback_reason=code, **base))
+                                      est_cost_usd=cost, price_basis=price_basis, error=code, fallback_reason=code, **base))
 
     # ---- structured output (<= 1 repair) -----------------------------------
     async def complete_structured(self, *, system: str, user: str, kind: str, validate: Callable[[Any], Any], schema_version: str = "v1",
@@ -450,6 +524,7 @@ class ModelGateway:
             res2.repaired = True
             return res2
         except Exception as e:  # noqa: BLE001
+            self.last_error_class = "invalid_output"
             self.sink.record(ModelCallRow(call_id=_cid(), ts=now_iso(), provider=self.provider, model=res2.model, role=res2.role, kind=kind,
                                           schema_version=schema_version, run_id=self.run_id, parent_call_id=res2.call_id, repair=True,
                                           error="invalid_output", fallback_reason="invalid_output_after_repair", source="network"))

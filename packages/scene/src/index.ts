@@ -11,7 +11,7 @@ export type { CameraMode, ThirdPersonMode, MapCameraState } from './mapCamera';
 export { CAMERA_MOUNTS, getCameraMount } from './MountedCameraTransforms';
 export { computeMountTransform } from './mountTransform';
 export type { RobotCameraClass, MountedDirection, CameraMountConfig } from './MountedCameraTransforms';
-export { fitCamera, overviewBoxes, measureInsets, OVERVIEW_VIEW } from './fit';
+export { fitCamera, overviewBoxes, measureInsets, stageSize, OVERVIEW_VIEW } from './fit';
 export type { FitOptions } from './fit';
 export { useDashView, SCENE_FILTERS, PRESSURE_MAX_KPA, pressureColor } from './dashView';
 export type { SceneFilter, Structure } from './dashView';
@@ -22,7 +22,8 @@ export { entityBounds, roadSel, rowSel, isRoadSel, isRowSel, selKey, boundsCente
 export type { Bounds } from './entityBounds';
 export { topologyIssues } from './validate';
 export type { TopologyIssue } from './validate';
-export { tilesRequested } from './tiles/TiledFacility';
+export { tilesRequested, useTileMode, tilesWanted, DEFAULT_TILE_MODE, parseTileMode, readTileMode } from './tiles/mode';
+export type { TileMode } from './tiles/mode';
 export type { TileStats } from './tiles/types';
 export { HazardZones } from './HazardZones';
 export type { HazardZone } from './HazardZones';

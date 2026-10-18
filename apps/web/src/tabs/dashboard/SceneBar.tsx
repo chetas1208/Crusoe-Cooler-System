@@ -1,9 +1,10 @@
-import { Maximize2 } from 'lucide-react';
+import { EyeOff, Maximize2 } from 'lucide-react';
 import { C, PRESSURE_MAX_KPA, SCENE_FILTERS, marginColor, pressureColor, useDashView, useView, type SceneFilter } from '@loopkeeper/scene';
 import { useWorld } from '@loopkeeper/core/store';
 import { Segmented } from '../../ui/kit';
 import { PresetBar } from '../../ui/PresetBar';
 import { applyPreset } from '../../ui/presets';
+import { IconButton } from '../../ui/kit/index';
 
 const FILTER_LABEL: Record<SceneFilter, string> = { overview: 'Overview', loops: 'Cooling loops', robots: 'Robots', thermal: 'Thermal', pressure: 'Pressure' };
 
@@ -78,7 +79,7 @@ function Toggle({ on, onClick, children }: { on: boolean; onClick: () => void; c
 }
 
 /** Bottom bar: view-only scene filters and structure toggles. Nothing here sends a command. */
-export function SceneBar({ onFit }: { onFit: () => void }) {
+export function SceneBar({ onFit, onHide }: { onFit: () => void; onHide: () => void }) {
   const filter = useDashView((s) => s.filter);
   const setFilter = useDashView((s) => s.setFilter);
   const st = useDashView((s) => s.structure);
@@ -101,9 +102,8 @@ export function SceneBar({ onFit }: { onFit: () => void }) {
           <Toggle on={st.hall} onClick={() => setStructure('hall', !st.hall)}>Server hall</Toggle>
           <Toggle on={st.plant} onClick={() => setStructure('plant', !st.plant)}>Cooling plant</Toggle>
         </div>
-        <button className="icon-btn" onClick={() => (onFit(), applyPreset('fit'))} title="Fit whole facility" aria-label="Fit whole facility">
-          <Maximize2 size={15} />
-        </button>
+        <IconButton size="sm" onClick={() => (onFit(), applyPreset('fit'))} aria-label="Fit whole facility" icon={<Maximize2 size={15} />} />
+        <IconButton size="sm" onClick={onHide} aria-label="Hide view controls" icon={<EyeOff size={15} />} />
       </div>
     </div>
   );

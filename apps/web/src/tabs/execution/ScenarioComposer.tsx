@@ -124,8 +124,25 @@ export function ScenarioComposer({ onCompleted, compact = false }: ScenarioCompo
   };
 
   // Poll request status until READY or FAILED
+  // the final latency / incident fields are written after the request flips to READY: look once more shortly after
   useEffect(() => {
-    if (!requestId || status === 'READY' || status === 'FAILED' || status === 'CANCELED') {
+    if (!requestId || status !== 'READY') return;
+    const t = setTimeout(async () => {
+      try {
+        const res = await apiFetch(`/scenario-requests/${requestId}`);
+        if (!res.ok) return;
+        const data = await res.json();
+        usePromptRequest.getState().update(data);
+        if (data.interpretation) setInterpretation(data.interpretation);
+      } catch {
+        /* the strip keeps what it has */
+      }
+    }, 1500);
+    return () => clearTimeout(t);
+  }, [requestId, status]);
+
+  useEffect(() => {
+    if (!requestId || status === 'READY' || status === 'FAILED' || status === 'REJECTED' || status === 'CANCELED') {
       return;
     }
 
@@ -149,9 +166,10 @@ export function ScenarioComposer({ onCompleted, compact = false }: ScenarioCompo
           setLoading(false);
           useExec.getState().select(data.run_id);
           onCompleted?.(data.run_id);
-        } else if (data.status === 'FAILED') {
+        } else if (data.status === 'FAILED' || data.status === 'REJECTED' || data.status === 'CANCELED') {
+          // REJECTED = refused by the backend (unsupported fault, rate limit, quota): its reason, verbatim, and stop polling
           setLoading(false);
-          setError(data.error_message || 'Scenario pipeline execution failed');
+          setError(`${data.status}${data.error_code ? ` (${data.error_code})` : ''}: ${data.error_message || 'no message from the backend'}`);
         }
       } catch (e) {
         // network retry
@@ -375,7 +393,7 @@ export function ScenarioComposer({ onCompleted, compact = false }: ScenarioCompo
                   Derived Crisis Scenario: {interpretation.crusoe?.proposal?.summary ?? 'Localized Anomaly'}
                 </span>
                 <span style={{ fontSize: 10, color: 'var(--t3)' }}>
-                  Total: {interpretation.latencies_ms?.total_pipeline_ms ?? 0} ms
+                  Total: {interpretation.latencies_ms?.total_pipeline_ms !== undefined ? `${interpretation.latencies_ms.total_pipeline_ms} ms` : 'not reported yet'}
                 </span>
               </div>
 

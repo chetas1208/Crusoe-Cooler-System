@@ -5,6 +5,7 @@ import { useWorld } from '@loopkeeper/core/store';
 import { labelOfId } from '@loopkeeper/core';
 import { useView } from '@loopkeeper/scene';
 import { Chip, Eyebrow, Segmented } from './kit';
+import { Button, Kbd } from './kit/index';
 import { MiniMap } from './MiniMap';
 import { SegmentStrip } from './Inspector';
 
@@ -101,9 +102,9 @@ export function PipeHud() {
               <input className="slider" type="range" min={0.2} max={Math.max(edge.length_m - 0.4, 0.5)} step={0.1} value={s} onChange={(e) => setProbe(Number(e.target.value))} aria-label="Probe position along the segment" />
             </div>
           )}
-          <button className="btn" style={{ width: '100%', marginTop: 14 }} onClick={exit}>
-            <ArrowLeft size={14} /> Return to facility <span className="kbd">esc</span>
-          </button>
+          <Button style={{ width: '100%', marginTop: 14 }} icon={<ArrowLeft size={14} />} iconRight={<Kbd>esc</Kbd>} onClick={exit}>
+            Return to facility
+          </Button>
         </aside>
 
         <div className="pipehud__tele panel">

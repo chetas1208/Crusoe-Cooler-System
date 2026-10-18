@@ -9,7 +9,7 @@
  *
  * Rules this file enforces (backend.md §10):
  *  - input is enabled ONLY after the server accepted a lease; nothing is sent before that;
- *  - intents are sent at ≤ 15 Hz, sequence-numbered, with a 200 ms TTL — never per frame, never REST-per-keypress;
+ *  - intents are sent at ≤ 20 Hz, sequence-numbered, with a 200 ms TTL — never per frame, never REST-per-keypress;
  *  - the pose shown is the server's; this module only reconciles readouts against drive acks;
  *  - blur / hidden tab / disconnect / lost acks → zero input, SAFE_STOP and a release request immediately;
  *  - after a stop, controls stay disabled until a NEW lease is granted.
@@ -89,7 +89,7 @@ export const useControl = create<ControlSessionState>()(() => initial);
 
 /* ───────────────────────────── internals ───────────────────────────── */
 
-const DRIVE_HZ = 15;
+const DRIVE_HZ = 20; // 15..30 Hz band (backend drive bucket: 25/s incl. heartbeats)
 const INTENT_TTL_MS = 200;
 const LINK_LOST_MS = 1000;
 
@@ -108,6 +108,9 @@ let hbMs = 500;
 let sources: Record<string, { throttle: number; steer: number; brake: boolean }> = {};
 let releaseKey: string | null = null;
 let releasingLease: { robotId: string; leaseId: string; epoch: number } | null = null;
+
+/** Seams filled by control/nav.ts (which imports this module): the graph revision every intent is stamped with, and a refresh on a stale one. */
+export const controlHooks: { graphRevision: () => string | null; onStaleGraph: () => void } = { graphRevision: () => null, onStaleGraph: () => undefined };
 
 const set = (p: Partial<ControlSessionState>) => useControl.setState(p);
 const get = () => useControl.getState();
@@ -199,7 +202,11 @@ function startLoops(robotId: string) {
     if (useReplay.getState().active) return safeStop('operator_stop');
     if (w.connection !== 'live' || w.stale) return safeStop('client_disconnect');
     const c = w.robots[s.robotId]?.control;
-    if (c && prev.robots[s.robotId]?.control !== c && (c.authority !== 'HUMAN' || (c.lease_id && c.lease_id !== s.leaseId))) {
+    if (!c || prev.robots[s.robotId]?.control === c) return;
+    // our own lease is granted but the server flips AUTO -> HUMAN / MANUAL only when it acks the first intent (~200 ms): that update is not a revocation
+    const ownPending = c.controller_state === 'LEASE_PENDING' && (!c.lease_id || c.lease_id === s.leaseId);
+    if (ownPending) return;
+    if (c.authority !== 'HUMAN' || (c.lease_id && c.lease_id !== s.leaseId)) {
       safeStop(c.last_reason ?? 'link_lost', true);
     }
   });
@@ -213,6 +220,7 @@ async function sendDrive(robotId: string) {
   if (!api || !isManual(s.state) || !s.leaseId) return;
   if (inFlight >= 2) return; // never queue behind a slow link
   const w = useWorld.getState();
+  const outrig = w.robots[robotId]?.class === 'outrig';
   const intent: DriveIntent = {
     lease_id: s.leaseId,
     lease_epoch: s.epoch,
@@ -223,7 +231,10 @@ async function sendDrive(robotId: string) {
     throttle: clamp1(s.input.throttle),
     steer: clamp1(s.input.steer),
     brake: s.input.brake,
-    selected_exit_segment_id: s.exit,
+    // exterior robots pick a legal junction branch ('left'|'right'|'straight' or an edge id); crawlers pick an exit segment
+    selected_exit_segment_id: outrig ? null : s.exit,
+    branch: outrig && s.exit ? s.exit : undefined,
+    graph_revision: controlHooks.graphRevision() ?? undefined,
     duration_ms: INTENT_TTL_MS,
     tool: pendingTool,
     action: pendingManipulation?.action,
@@ -263,11 +274,19 @@ async function sendDrive(robotId: string) {
       else if (m?.place && m.place.ok && m.place.cartridge_seated === false && m.place.message) note('warn', `Released: ${m.place.message}`);
       return;
     }
-    set({ refused: get().refused + 1, ackAt: r.code === 'stale_seq' ? get().ackAt : now });
+    // an out-of-order ack (two intents in flight) is benign: the newer intent already won; the real backend words it `command_seq_not_increasing`
+    const staleSeq = r.code === 'stale_seq' || /command_seq_not_increasing|^lease_not_active/.test(r.reason);
+    set({ refused: staleSeq ? get().refused : get().refused + 1, ackAt: staleSeq ? get().ackAt : now });
     if (sentTool) pendingTool = undefined;
     if (r.code === 'lease_revoked' || r.code === 'no_lease' || r.code === 'stale_epoch') {
       safeStop(r.revoked_reason ?? 'link_lost', true, r.reason);
-    } else if (r.code !== 'stale_seq') {
+    } else if (/^stale_graph_revision/.test(r.reason)) {
+      // the graph changed under us: the intent was NOT applied (robot keeps the previous, short-lived intent then brakes). Re-read and carry on.
+      controlHooks.onStaleGraph();
+      note('warn', r.reason);
+    } else if (/^lease_not_active/.test(r.reason)) {
+      // the robot is still acquiring (server holds the lease in LEASE_PENDING until it settles): keep the 20 Hz loop going, say nothing
+    } else if (!staleSeq) {
       note('warn', r.reason);
     }
   } catch {

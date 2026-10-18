@@ -4,6 +4,7 @@ import { Bot, Box, Cable, Cpu, Eye, History, Search, Sparkles, TriangleAlert } f
 import { enterReplay, useWorld } from '@loopkeeper/core/store';
 import { useView } from '@loopkeeper/scene';
 import { useUi } from './store';
+import { Kbd } from './kit/index';
 
 interface Item {
   id: string;
@@ -111,7 +112,7 @@ export function CommandPalette() {
                   else if (e.key === 'Escape') setOpen(false);
                 }}
               />
-              <span className="kbd">esc</span>
+              <Kbd>esc</Kbd>
             </div>
             <div className="palette__list scroll">
               {results.length === 0 && <div className="empty__s" style={{ padding: 20 }}>No match.</div>}

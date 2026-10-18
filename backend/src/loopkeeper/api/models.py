@@ -265,7 +265,8 @@ IncidentStatus = Literal[
 ]
 FaultKind = Literal[
     "fouling", "strainer_blockage", "valve_stuck", "pump_degradation", "sensor_drift",
-    "workload_spike", "leak",
+    "workload_spike", "leak", "manifold_leak", "power_failure", "rack_thermal_runaway",
+    "cdu_pump_backup_failure", "facility_heat_rejection_loss",
 ]
 
 
@@ -479,6 +480,61 @@ class MechanicalFixtureState(Wire):
     pos_xyz: Vec3
 
 
+class HazardZone(Wire):
+    zone_id: str
+    kind: str
+    severity: str
+    status: str
+    center_xyz: Vec3
+    radius_m: float
+    polygon: list[list[float]]
+    road_blocked: Optional[bool] = None
+    rate_kg_s: Optional[float] = None
+    total_lost_kg: Optional[float] = None
+    edge_id: Optional[str] = None
+    reserve_remaining_pct: Optional[float] = None
+    repair_requires: Optional[str] = None
+    escalated: Optional[bool] = None
+    alarm_sounding: Optional[bool] = None
+    heat_kw: Optional[float] = None
+    smoke_obscuration_pct_m: Optional[float] = None
+    prohibit_robot_entry: Optional[bool] = None
+    escalation_required: Optional[bool] = None
+    depowered: Optional[bool] = None
+    supported_outcomes: Optional[list[str]] = None
+    autonomous_firefighting: Optional[bool] = None
+
+
+class PowerRowFeed(Wire):
+    failed: bool
+    on_ups: bool
+    racks_tripped: bool
+    ups_remaining_s: Optional[float] = None
+    it_load_kw: float
+    supply_available: bool
+    restored: bool
+
+
+class PumpFeedState(Wire):
+    failed: bool
+    pumps_unpowered: list[str]
+    supply_available: bool
+    restored: bool
+
+
+class PowerState(Wire):
+    utility_online: Optional[bool] = None
+    backup_gen_available: Optional[bool] = None
+    ups_runtime_remaining_s: Optional[float] = None
+    primary_pumps_powered: Optional[bool] = None
+    robot_chargers_online: Optional[bool] = None
+    telemetry_online: Optional[bool] = None
+    compute_curtailed: Optional[bool] = None
+    row_feeds: Optional[dict[str, PowerRowFeed]] = None
+    pump_feed_a: Optional[PumpFeedState] = None
+    racks_depowered: Optional[list[str]] = None
+
+
 class WorldSnapshot(Wire):
     facility_id: str
     version: int
@@ -495,6 +551,8 @@ class WorldSnapshot(Wire):
     last_seq: int
     rigid_objects: Optional[dict[str, RigidObjectState]] = None
     mechanical_fixtures: Optional[dict[str, MechanicalFixtureState]] = None
+    hazard_zones: Optional[list[HazardZone]] = None
+    power_state: Optional[PowerState] = None
 
 
 # ────────────────────────────── Streaming ──────────────────────────────
@@ -741,7 +799,7 @@ CONTRACT_MODELS: dict[str, type[BaseModel]] = {
         VerificationResult, ModelMeta, ToolCall, AgentTask, EngineHealth, Kpis, WorldSnapshot,
         WorldDiffPayload, RobotPosePayload, MissionTransitionPayload, IncidentTrace,
         TelemetrySeries, CommandRequest, CommandAck, ReplayPage, ReadingMeta,
-        RigidObjectState, MechanicalFixtureState,
+        RigidObjectState, MechanicalFixtureState, HazardZone, PowerRowFeed, PumpFeedState, PowerState,
     )
 }
 

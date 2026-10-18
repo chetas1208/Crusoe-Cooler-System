@@ -293,7 +293,13 @@ export type FaultKind =
   | 'pump_degradation'
   | 'sensor_drift'
   | 'workload_spike'
-  | 'leak';
+  | 'leak'
+  // V12 hazard kinds (backend physics: hazards.py, faults.py). Older clients must tolerate kinds they do not know (see faultLabels.ts).
+  | 'manifold_leak'
+  | 'power_failure'
+  | 'rack_thermal_runaway'
+  | 'cdu_pump_backup_failure'
+  | 'facility_heat_rejection_loss';
 
 export interface Hypothesis {
   id: string;
@@ -495,6 +501,65 @@ export interface MechanicalFixtureState {
   pos_xyz: Vec3;
 }
 
+/** Hazard zone emitted in `world.hazard_zones` (leak puddle, smoke/fire exclusion). Fields beyond the core set depend on `kind`. */
+export interface HazardZone {
+  zone_id: string;
+  kind: string; // 'leak' | 'smoke' | 'fire' today; clients must tolerate new kinds
+  severity: string; // 'high' | 'critical'
+  status: string; // 'active' | 'contained'
+  center_xyz: Vec3;
+  radius_m: number;
+  polygon: number[][]; // [x, z] corners
+  road_blocked?: boolean;
+  rate_kg_s?: number;
+  total_lost_kg?: number;
+  edge_id?: string;
+  reserve_remaining_pct?: number;
+  repair_requires?: string;
+  escalated?: boolean;
+  alarm_sounding?: boolean;
+  heat_kw?: number;
+  smoke_obscuration_pct_m?: number;
+  prohibit_robot_entry?: boolean;
+  escalation_required?: boolean;
+  depowered?: boolean;
+  supported_outcomes?: string[];
+  /** Always false: the facility has no autonomous fire suppression; response is detect / depower / contain / escalate to humans. */
+  autonomous_firefighting?: boolean;
+}
+
+/** Per power-row feed state (V12 hazards.py). */
+export interface PowerRowFeed {
+  failed: boolean;
+  on_ups: boolean;
+  racks_tripped: boolean;
+  ups_remaining_s?: number | null;
+  it_load_kw: number;
+  supply_available: boolean;
+  restored: boolean;
+}
+
+export interface PumpFeedState {
+  failed: boolean;
+  pumps_unpowered: string[];
+  supply_available: boolean;
+  restored: boolean;
+}
+
+/** `world.power_state`: legacy summary flags plus the V12 modelled domains (present only while a power hazard is active). */
+export interface PowerState {
+  utility_online?: boolean;
+  backup_gen_available?: boolean;
+  ups_runtime_remaining_s?: number;
+  primary_pumps_powered?: boolean;
+  robot_chargers_online?: boolean;
+  telemetry_online?: boolean;
+  compute_curtailed?: boolean;
+  row_feeds?: Record<string, PowerRowFeed>;
+  pump_feed_a?: PumpFeedState;
+  racks_depowered?: string[];
+}
+
 export interface WorldSnapshot {
   facility_id: string;
   version: number;
@@ -511,6 +576,8 @@ export interface WorldSnapshot {
   last_seq: number;
   rigid_objects?: Record<string, RigidObjectState>;
   mechanical_fixtures?: Record<string, MechanicalFixtureState>;
+  hazard_zones?: HazardZone[];
+  power_state?: PowerState;
 }
 
 /* ────────────────────────────── Streaming ────────────────────────────── */

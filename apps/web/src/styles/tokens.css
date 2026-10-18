@@ -12,8 +12,8 @@
 
   --t1: #eef1f6;
   --t2: #a9b1c0;
-  --t3: #707889;
-  --t4: #4b5263;
+  --t3: #8a93a6; /* AA on --bg/--panel/--panel-2 (was #707889, 4.2:1) */
+  --t4: #707889; /* disabled / decorative only */
 
   --accent: #5be3d0;
   --accent-soft: rgba(91, 227, 208, 0.14);
@@ -43,4 +43,68 @@
 
   --gutter: 16px;
   --topbar-h: 52px;
+
+  /* ───────── LOOPKEEPER design system v1 (lk-*) — see docs/engineering/V12_DESIGN_SYSTEM.md ───────── */
+  /* spacing: 4 / 8 / 12 / 16 / 24 (+32 for page rhythm) */
+  --lk-space-1: 4px;
+  --lk-space-2: 8px;
+  --lk-space-3: 12px;
+  --lk-space-4: 16px;
+  --lk-space-5: 24px;
+  --lk-space-6: 32px;
+  /* radius */
+  --lk-r-xs: 4px;
+  --lk-r-sm: 8px;
+  --lk-r-md: 10px;
+  --lk-r-lg: 14px;
+  --lk-r-xl: 18px;
+  --lk-r-pill: 999px;
+  /* border opacities (white on graphite). --lk-bd-ctl is the >=3:1 boundary for inputs, switches, sliders (WCAG 1.4.11) */
+  --lk-bd-1: rgba(255, 255, 255, 0.07);
+  --lk-bd-2: rgba(255, 255, 255, 0.13);
+  --lk-bd-3: rgba(255, 255, 255, 0.22);
+  --lk-bd-ctl: rgba(255, 255, 255, 0.4);
+  /* surfaces */
+  --lk-surface-0: var(--panel-solid);
+  --lk-surface-1: #161a22;
+  --lk-surface-2: #1c212b;
+  --lk-fill-1: rgba(255, 255, 255, 0.045);
+  --lk-fill-2: rgba(255, 255, 255, 0.075);
+  --lk-fill-3: rgba(255, 255, 255, 0.115);
+  /* elevation: 0 flat, 1 raised control, 2 overlay (menu/popover/toast), 3 modal */
+  --lk-elev-0: none;
+  --lk-elev-1: 0 1px 0 rgba(255, 255, 255, 0.06) inset, 0 1px 2px rgba(0, 0, 0, 0.4);
+  --lk-elev-2: 0 1px 0 rgba(255, 255, 255, 0.06) inset, 0 12px 32px -8px rgba(0, 0, 0, 0.75), 0 2px 6px rgba(0, 0, 0, 0.4);
+  --lk-elev-3: 0 1px 0 rgba(255, 255, 255, 0.07) inset, 0 32px 80px -16px rgba(0, 0, 0, 0.85), 0 4px 14px rgba(0, 0, 0, 0.5);
+  /* type scale: nothing below 12px */
+  --lk-fs-xs: 12px;
+  --lk-fs-sm: 13px;
+  --lk-fs-md: 14px;
+  --lk-fs-lg: 16px;
+  --lk-fs-xl: 20px;
+  --lk-fs-2xl: 28px;
+  --lk-lh-tight: 1.2;
+  --lk-lh-body: 1.45;
+  --lk-fw-regular: 450;
+  --lk-fw-medium: 560;
+  --lk-fw-strong: 640;
+  /* motion: use with --ease. Reduced motion collapses all of these (base.css). */
+  --lk-dur-1: 90ms;
+  --lk-dur-2: 160ms;
+  --lk-dur-3: 240ms;
+  --lk-dur-4: 360ms;
+  /* focus ring */
+  --lk-focus: var(--accent);
+  --lk-focus-w: 2px;
+  --lk-focus-off: 2px;
+  /* control heights; coarse pointers get --lk-hit */
+  --lk-h-sm: 28px;
+  --lk-h-md: 32px;
+  --lk-h-lg: 40px;
+  --lk-hit: 44px;
+  /* layering for overlays */
+  --lk-z-panel: 20;
+  --lk-z-overlay: 200;
+  --lk-z-modal: 300;
+  --lk-z-toast: 400;
 }

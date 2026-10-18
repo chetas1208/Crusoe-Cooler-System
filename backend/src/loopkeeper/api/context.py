@@ -1,6 +1,7 @@
 """Per-app context + request dependencies (authn, per-run authz, rate limits)."""
 from __future__ import annotations
 
+import threading
 from dataclasses import dataclass, field
 from typing import Any, Callable, Optional
 
@@ -25,6 +26,7 @@ class ApiContext:
     idem: IdempotencyCache = field(default_factory=IdempotencyCache)
     projections: dict[str, Projection] = field(default_factory=dict)
     leases: dict[str, tuple[str, str, str]] = field(default_factory=dict)  # lease_id -> (principal, run, robot)
+    _proj_lock: threading.Lock = field(default_factory=threading.Lock, repr=False)
 
     @property
     def active_run_id(self) -> str:
@@ -48,9 +50,13 @@ class ApiContext:
     def projection(self, run_id: str, engine: EngineFacade) -> Projection:
         p = self.projections.get(run_id)
         if p is None:
-            p = self.projections[run_id] = Projection(engine, self.settings.ws_catchup_page)
-            p.catch_up()
-            p.seed_from_world(engine.world())  # after history, so it only adds a point if newer
+            with self._proj_lock:                 # one build per run even when several request threads arrive together
+                p = self.projections.get(run_id)
+                if p is None:
+                    p = Projection(engine, self.settings.ws_catchup_page)
+                    p.catch_up()
+                    p.seed_from_world(engine.world())  # after history, so it only adds a point if newer
+                    self.projections[run_id] = p
         p.catch_up()
         return p
 
@@ -116,3 +122,17 @@ def rate_limit(request: Request, bucket: str, principal: Principal) -> None:
     ok, retry = ctx_of(request).buckets.allow(bucket, principal.id, rate, burst)
     if not ok:
         raise HTTPException(429, "rate limit exceeded", headers={"Retry-After": str(max(1, int(retry + 0.999)))})
+
+
+async def submit_as(engine: Any, cmd: dict) -> Any:
+    """Submit a command the API authenticated: the principal travels as the explicit ``principal=`` argument (Engine.submit stamps it as the issuer and
+    ignores any ``principal`` key inside the command body). Test doubles whose submit() takes only the command still read cmd["principal"]."""
+    import inspect
+    try:
+        takes_principal = "principal" in inspect.signature(engine.submit).parameters
+    except (TypeError, ValueError):
+        takes_principal = False
+    p = cmd.get("principal") if isinstance(cmd, dict) else None
+    if takes_principal and isinstance(p, str):
+        return await engine.submit(cmd, principal=p)
+    return await engine.submit(cmd)

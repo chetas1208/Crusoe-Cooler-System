@@ -30,6 +30,7 @@ import math
 from typing import TYPE_CHECKING, Any, Callable
 
 from .faults import NOT_SUPPORTED_KINDS
+from .hazards import HAZARD_KINDS, HazardRefusal
 
 if TYPE_CHECKING:  # pragma: no cover
     from .plant import FacilityPlant
@@ -146,6 +147,10 @@ def _clear_edge(p, tid, a):
     if tid not in p.faults.occl and tid not in {e["id"] for e in p.topo["edges"] if e["robot_passable"]} | {"strainer_01", "strainer_02"}:
         raise _Reject("target_id must be a serviceable pipe or strainer")
     phi = _num(a, "removed_fraction", 0.0, 1.0)
+    try:
+        p.hazards.check_brush(tid)               # V12 CR-02: brushing can never fix a leak
+    except HazardRefusal as exc:
+        raise _Reject(str(exc))
     before = p.faults.occl.get(tid, 0.0)
     after = before * (1 - phi)
     if after < 0.005:
@@ -162,6 +167,10 @@ def _replace_section(p, tid, a):
     _only(a, set())
     if tid not in {e["id"] for e in p.topo["edges"] if e["robot_passable"]}:
         raise _Reject("target_id must be a serviceable pipe")
+    try:
+        leak_fx = p.hazards.on_replace_section(tid)    # V12 CR-02: a live (un-isolated) leak cannot be repaired
+    except HazardRefusal as exc:
+        raise _Reject(str(exc))
     before = p.faults.occl.get(tid, 0.0)
     p.faults.occl[tid] = 0.0
     p.faults.occl_s.pop(tid, None)
@@ -171,7 +180,7 @@ def _replace_section(p, tid, a):
                 p.leak_sim.repair(lk.leak_id)
     p.fault_mgr.halt(tid, p.time)
     _hard(p)
-    return {"target": tid, "occlusion_before": before, "occlusion_after": 0.0}
+    return {"target": tid, "occlusion_before": before, "occlusion_after": 0.0, **leak_fx}
 
 
 def _replace_strainer(p, tid, a):
@@ -198,6 +207,9 @@ def _service_valve(p, tid, a):
 def _replace_pump(p, tid, a):
     _only(a, set())
     pid = _pump(p, tid)
+    refused = p.fault_mgr.repair_pump(pid, p.time)     # L1/V12: a repair can fail first / be out of scope (CR-01, CR-03)
+    if refused is not None:
+        return refused
     before = p.faults.pump_health.get(pid, 1.0)
     p.faults.pump_health[pid] = 1.0
     p.ctl["tripped"].pop(pid, None)
@@ -287,6 +299,8 @@ def _emergency_trip_rack(p, tid, a):
     if hasattr(p, "fire_sim"):
         p.fire_sim.emergency_trip()
     r_key = rack[5:] if rack.startswith("rack_") else rack
+    if r_key in p.hazards.runaways:              # V12 CR-05: a real thermal event on this rack -> open its breaker
+        p.hazards.depower(r_key)
     if r_key in p.ctl["load_factor"]:
         p.ctl["load_factor"][r_key] = 0.0
     _hard(p)
@@ -314,6 +328,15 @@ def _inject(p, tid, a):
         p.fire_sim.trigger_fire()
         _hard(p)
         return {"fault": "rack_fire", "target": target}
+    if kind in HAZARD_KINDS:                     # V12 hazards B (CR-02/04/05): physics/hazards.py
+        params = a.get("params") or {}
+        if not isinstance(params, dict):
+            raise _Reject("params must be an object")
+        try:
+            got = p.hazards.inject(kind, a.get("target", tid), params)
+        except ValueError as exc:
+            raise _Reject(str(exc))
+        return {"fault": kind, "target": got}
     if kind in NOT_SUPPORTED_KINDS:
         raise _Reject(NOT_SUPPORTED_KINDS[kind])
     target = a.get("target", tid)
@@ -330,6 +353,17 @@ def _inject(p, tid, a):
         raise _Reject("no free target for that fault")
     _hard(p)
     return {"fault": kind, "target": got}
+
+
+def _hazard_cmd(fn_name: str):
+    """V12 hazard operator commands (depower / service / restore / escalate): refusals are returned verbatim, never raised."""
+    def run(p, tid, a):
+        _only(a, set())
+        try:
+            return getattr(p.hazards, fn_name)(tid)
+        except (HazardRefusal, ValueError) as exc:
+            raise _Reject(str(exc))
+    return run
 
 
 def _halt(p, tid, a):
@@ -349,6 +383,9 @@ _TABLE: dict[str, Callable[..., Json]] = {
     "inject_leak": _inject_leak, "isolate_leak": _isolate_leak, "repair_leak": _repair_leak,
     "trigger_power_outage": _trigger_power_outage, "trigger_rack_fire": _trigger_rack_fire,
     "emergency_trip_rack": _emergency_trip_rack,
+    "depower_rack": _hazard_cmd("depower"), "service_rack_power": _hazard_cmd("service_rack"),
+    "restore_rack_power": _hazard_cmd("restore_rack"), "restore_power": _hazard_cmd("restore_power"),
+    "escalate_hazard": _hazard_cmd("escalate"),
 }
 COMMAND_KINDS = tuple(_TABLE)
 

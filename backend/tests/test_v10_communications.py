@@ -75,7 +75,7 @@ def test_assign_ack_tool_verify_fail_replan_in_order_from_persisted_events(flow)
     i_vstart = first("verification.started", i_tool)
     i_vfail = first("verification.failed", i_vstart)
     i_replan = first("task.replan", i_vfail)
-    i_vpass = first("verification.passed", i_replan)
+    i_vpass = first("verification.unreviewed", i_replan)           # no model in this flow: measured recovery, but never "passed" without an independent review
     assert i_deleg < i_ack < i_tool < i_vstart < i_vfail < i_replan < i_vpass
     deleg = flow["rows"][i_deleg]["payload"]
     assert deleg["sender"]["class"] == "SENTINEL" and deleg["recipient"]["class"] in ("INPIPE", "OUTRIG")
@@ -92,9 +92,9 @@ def test_exactly_one_event_per_boundary_and_every_record_validates(flow):
     keys = [r["payload"]["payload"].get("key") for r in rows if r["payload"]["payload"].get("key")]
     assert len(keys) == len(set(keys)), "a boundary was recorded twice"
     vers = sorted(eng.track.verifications.values(), key=lambda v: v["attempt"])
-    assert [v["status"] for v in vers] == ["rejected", "verified"]
+    assert [v["status"] for v in vers] == ["rejected", "rejected"] and vers[1]["dod"]["layer_a"] == "PASS"
     sub = _sub(rows)
-    assert sub.count("verification.failed") == 1 and sub.count("verification.passed") == 1 and sub.count("verification.started") == 2
+    assert sub.count("verification.failed") == 1 and sub.count("verification.unreviewed") == 1 and sub.count("verification.passed") == 0 and sub.count("verification.started") == 2
     kset = [r["payload"]["payload"].get("key") for r in rows]
     for t in eng.track.tasks.values():                           # every tool call of every task: exactly one terminal record (+ one 'started' when the runtime emitted it)
         for c in t["tool_calls"]:
@@ -168,7 +168,7 @@ def test_rest_lists_filters_and_paginates_without_gaps_or_duplicates(client, flo
             break
         after = body["next_after_seq"]
     assert seen == [r["seq"] for r in flow["rows"]] and len(seen) == total
-    assert client.get(f"/api/v1/runs/{rid}/communications", params={"limit": 201}, headers=AUTH).status_code == 422       # bounded
+    assert client.get(f"/api/v1/runs/{rid}/communications", params={"limit": 501}, headers=AUTH).status_code == 422       # bounded
     assert client.get(f"/api/v1/runs/{rid}/communications", params={"kind": "bogus"}, headers=AUTH).status_code == 422
     ver = client.get(f"/api/v1/runs/{rid}/communications", params={"kind": "verification", "limit": 50}, headers=AUTH).json()["events"]
     assert ver and all(e["message_type"] == "verification" for e in ver)

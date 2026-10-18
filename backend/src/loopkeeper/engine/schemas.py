@@ -22,7 +22,8 @@ class SetSpeed(_M):
 
 
 class InjectFault(_M):
-    kind: Literal["fouling", "strainer_blockage", "valve_stuck", "pump_degradation", "sensor_drift", "workload_spike", "leak"]
+    kind: Literal["fouling", "strainer_blockage", "valve_stuck", "pump_degradation", "sensor_drift", "workload_spike", "leak", "manifold_leak", "power_failure", "rack_thermal_runaway",
+                  "cdu_pump_backup_failure", "facility_heat_rejection_loss"]
     target: str | None = Field(default=None, pattern=_ID)
     target_id: str | None = Field(default=None, pattern=_ID)
     severity: float | None = Field(default=None, ge=0.0, le=1.0)
@@ -33,7 +34,9 @@ class InjectFault(_M):
     def _params(cls, v: dict[str, float] | None) -> dict[str, float] | None:
         if v is None:
             return v
-        allowed = {"omax", "tau_s", "opening", "health_end", "duration_s", "rate", "cap", "extra"}
+        allowed = {"omax", "tau_s", "opening", "health_end", "duration_s", "rate", "cap", "extra", "orifice_m2", "reserve_kg", "racks", "pumps", "ups_runtime_s", "restore_after_s", "initial_kw", "growth_tau_s", "max_kw",
+               # L1/V12 hazards A (cdu_pump_backup_failure standby_mode: 0 failed, 1 degraded, 2 fails_on_start)
+               "primary_health_end", "repair_failures", "standby_health", "start_fail_s", "standby_mode", "capacity_frac_end", "flow_health_end", "rated_margin", "buffer_mj_per_k", "rise_max_k"}
         bad = sorted(set(v) - allowed)
         if bad or len(v) > 8:
             raise ValueError(f"params: unknown keys {bad}" if bad else "params: at most 8 keys")

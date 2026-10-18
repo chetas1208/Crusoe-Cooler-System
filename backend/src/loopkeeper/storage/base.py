@@ -127,6 +127,47 @@ class Storage(ABC):
                 out[sid] = row["world"]
         return out
 
+    # ---- V12 replay read paths (generic fallbacks; the Postgres backend overrides them with indexed, single-round-trip queries) ----
+    REPLAY_NOISY_KINDS = ("world.diff", "heartbeat", "engine.health")
+
+    def replay_snapshot_window(self, run_id: str, lo: int, hi: int, max_frames: int) -> Json:
+        """{"frames": [snapshot meta], "total": n in [lo, hi], "base": newest snapshot with tick < lo (or None), "first_tick": oldest recorded tick (or None)}.
+        `frames` is thinned to at most `max_frames` (every k-th, k = ceil(total / max_frames))."""
+        snaps = self.list_snapshots(run_id)
+        win = [s for s in snaps if lo <= s["tick"] <= hi]
+        step = max(1, -(-len(win) // max(1, max_frames)))
+        before = [s for s in snaps if s["tick"] < lo]
+        return {"frames": win[::step], "total": len(win), "base": before[-1] if before else None, "first_tick": snaps[0]["tick"] if snaps else None}
+
+    def replay_events(self, run_id: str, lo: int, hi: int, after: tuple[int, int] | None = None, limit: int = 1000) -> list[Json]:
+        """Persisted events with lo <= tick <= hi, noisy telemetry excluded, ordered (tick, seq), keyset-paged by `after` = (tick, seq)."""
+        out: list[Json] = []
+        cursor = 0
+        while len(out) < limit:
+            page = self.load_events(run_id, after_seq=cursor, until_tick=None, limit=2000, exclude_kinds=list(self.REPLAY_NOISY_KINDS))
+            if not page:
+                break
+            cursor = page[-1]["seq"]
+            out.extend(e for e in page if lo <= e["tick"] <= hi)
+        out.sort(key=lambda e: (e["tick"], e["seq"]))
+        if after is not None:
+            out = [e for e in out if (e["tick"], e["seq"]) > tuple(after)]
+        return out[:limit]
+
+    def replay_commands(self, run_id: str, lo: int, hi: int, limit: int = 5000) -> list[Json]:
+        out = []
+        for c in self.load_commands(run_id, accepted_only=False, limit=None):
+            t = int(c.get("applied_tick") or c.get("issued_tick") or 0)
+            if c.get("actor_type") == "operator" and lo <= t <= hi:
+                out.append(c)
+        return out[:limit]
+
+    def event_watermark(self, run_id: str) -> Json:
+        """{"tick": newest committed event tick, "seq": newest committed seq}: a replay window ending below `tick` can no longer change."""
+        seq = self.last_event_seq(run_id)
+        evs = self.load_events(run_id, after_seq=max(0, seq - 1), limit=1) if seq else []
+        return {"tick": int(evs[-1]["tick"]) if evs else 0, "seq": seq}
+
     @abstractmethod
     def latest_snapshot(self, run_id: str, max_tick: int | None = None, max_seq: int | None = None) -> Json | None: ...
 

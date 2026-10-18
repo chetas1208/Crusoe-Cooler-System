@@ -65,6 +65,17 @@ function strideFor(from: number, to: number) {
   return Math.max(1, Math.ceil((to - from) / 4 / 700));
 }
 
+/** the replay window only lists checkpoints inside its tick range / stride; the run's own checkpoint list is the source for forking */
+async function allCheckpoints(a: RunsApi, runId: string, fromWindow: CheckpointInfo[]): Promise<CheckpointInfo[]> {
+  if (fromWindow.length) return fromWindow;
+  try {
+    const l = await a.checkpoints(runId);
+    return l.checkpoints ?? fromWindow;
+  } catch {
+    return fromWindow;
+  }
+}
+
 async function loadOverview(runId: string) {
   const a = api!;
   const run = await a.getRun(runId);
@@ -73,7 +84,8 @@ async function loadOverview(runId: string) {
   events = w.events;
   commands = w.commands;
   eventTicks = [...new Set([...events.map((e) => e.sim_tick), ...commands.map((c) => c.tick)])].sort((x, y) => x - y);
-  set({ run, from: w.recorded_from_tick, to: w.recorded_to_tick, gaps: w.gaps, checkpoints: w.checkpoints, timeline: buildTimeline(overview, events, commands, (id) => labelOf(id)), eventCount: events.length });
+  const checkpoints = await allCheckpoints(a, runId, w.checkpoints);
+  set({ run, from: w.recorded_from_tick, to: w.recorded_to_tick, gaps: w.gaps, checkpoints, timeline: buildTimeline(overview, events, commands, (id) => labelOf(id)), eventCount: events.length });
 }
 
 let labelOf: (id: string) => string = (id) => id.toUpperCase().replace('_', '-');
@@ -134,7 +146,7 @@ export async function openMonitor(a: RunsApi, runId: string) {
     overview = w.frames;
     events = w.events;
     commands = w.commands;
-    set({ run, gaps: w.gaps, checkpoints: w.checkpoints, phase: 'ready', monitor: true });
+    set({ run, gaps: w.gaps, checkpoints: await allCheckpoints(a, runId, w.checkpoints), phase: 'ready', monitor: true });
     rebuild();
   } catch (e) {
     if (my === token) set({ phase: 'error', problem: problem(e), monitor: true });

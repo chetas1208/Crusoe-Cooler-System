@@ -1,5 +1,5 @@
 import { useWorld, enterReplay, exitReplay, seekReplay, useReplay, replayFrames, activeTransport } from '@loopkeeper/core/store';
-import { useView, useMapCamera, geomCacheStats, type QualityPreset } from '@loopkeeper/scene';
+import { useView, useMapCamera, useTileMode, geomCacheStats, type QualityPreset, type TileMode } from '@loopkeeper/scene';
 import { useUi } from '../ui/store';
 import { applyPreset } from '../ui/presets';
 import { glRenderer, hasRenderer, startSampling, stopSampling, summarize, ensureRaf, type Summary } from './probe';
@@ -13,6 +13,8 @@ const PRESETS: QualityPreset[] = ['high', 'balanced', 'performance'];
 export interface RunOptions {
   scenarios?: ScenarioId[];
   presets?: QualityPreset[];
+  /** run every preset x scenario once per tile mode (off = procedural hall, on = server tiles replace it, auto = default policy) */
+  tileModes?: TileMode[];
   durationMs?: number;
   warmupMs?: number;
   label?: string;
@@ -30,6 +32,40 @@ async function estimateRefresh() {
   for (let i = 1; i < ts.length; i++) iv.push(ts[i] - ts[i - 1]);
   const d = dist(iv);
   return { median_interval_ms: round(d.p50), hz: round(1000 / d.p50, 1), min_interval_ms: round(Math.min(...iv)) };
+}
+
+interface TileWindow {
+  __lkTiles?: { stats(): Record<string, unknown> | null; state(): string; mode(): string; attempts(): { count: number; lastError: string | null } };
+}
+const tileWin = () => window as unknown as TileWindow;
+
+/** what the tile layer looks like right now (null while it is not mounted: procedural hall only) */
+function tileSnapshot() {
+  const t = tileWin().__lkTiles;
+  if (!t) return { mode: useTileMode.getState().mode, mounted: false as const };
+  const st = t.stats();
+  return { mode: t.mode(), mounted: true as const, state: t.state(), attempts: t.attempts(), stats: st };
+}
+
+/** wait until the requested tile mode has taken effect and the streamer is quiet (no in-flight / queued loads), or give up after maxMs */
+async function settleTiles(mode: TileMode, maxMs = 20000) {
+  useTileMode.getState().setMode(mode);
+  const t0 = performance.now();
+  await sleep(500);
+  while (performance.now() - t0 < maxMs) {
+    const t = tileWin().__lkTiles;
+    if (mode === 'off') return true;
+    if (!t) {
+      if (mode === 'auto') return true; // auto stays procedural at this quality tier: nothing to wait for
+      await sleep(250);
+      continue;
+    }
+    const st = t.stats() as { inflight?: number; queued?: number } | null;
+    if (t.state() === 'failed') return false;
+    if (t.state() === 'ready' && st && (st.inflight ?? 0) === 0 && (st.queued ?? 0) === 0) return true;
+    await sleep(250);
+  }
+  return false;
 }
 
 function glInfo() {
@@ -218,10 +254,13 @@ export async function runBenchmark(opts: RunOptions = {}) {
   const durationMs = opts.durationMs ?? 8000;
   const warmupMs = opts.warmupMs ?? 1500;
   const presets = opts.presets ?? ['high'];
+  const tileModes = opts.tileModes ?? [];
+  const prevTileMode = useTileMode.getState().mode;
   const view = useView.getState();
   const prevPreset = view.qualityPreset;
   const t = activeTransport();
   const topo = useWorld.getState().topology;
+  const tileSnapshotAtStart = tileSnapshot();
   const refresh = await estimateRefresh();
   const gl = glInfo();
   const nav = navigator as Navigator & { deviceMemory?: number; userAgentData?: { brands?: Array<{ brand: string; version: string }>; platform?: string } };
@@ -231,12 +270,16 @@ export async function runBenchmark(opts: RunOptions = {}) {
     view.setPreset(preset);
     await sleep(600);
     const invariants = simState();
-    for (const sc of scenarios) {
-      opts.onProgress?.(`preset ${preset}`);
+    for (const tm of tileModes.length ? tileModes : [null]) {
+     const settled = tm ? await settleTiles(tm) : null;
+     for (const sc of scenarios) {
+      opts.onProgress?.(`preset ${preset}${tm ? ` tiles=${tm}` : ''}`);
       const r = await runOne(sc, durationMs, warmupMs, opts.onProgress);
-      results.push({ preset, ...r, quality_tier_applied: useView.getState().quality, sim_invariants_equal: JSON.stringify({ ...invariants, sim_time_s: 0, last_seq: 0, robot_modes: 0 }) === JSON.stringify({ ...simState(), sim_time_s: 0, last_seq: 0, robot_modes: 0 }) });
+      results.push({ preset, ...(tm ? { tile_mode_requested: tm, tiles_settled: settled } : {}), ...r, tiles: tileSnapshot(), quality_tier_applied: useView.getState().quality, sim_invariants_equal: JSON.stringify({ ...invariants, sim_time_s: 0, last_seq: 0, robot_modes: 0 }) === JSON.stringify({ ...simState(), sim_time_s: 0, last_seq: 0, robot_modes: 0 }) });
+     }
     }
   }
+  if (tileModes.length) useTileMode.getState().setMode(prevTileMode);
   view.setPreset(prevPreset);
   const headless = !!navigator.webdriver;
   const gc = geomCacheStats;
@@ -248,7 +291,7 @@ export async function runBenchmark(opts: RunOptions = {}) {
     label: opts.label ?? 'unlabelled',
     started_at: started,
     seeded: { url_seed: new URLSearchParams(location.search).get('seed') ?? 'default(8)', note: 'seed fixes the simulated world; camera paths are pure functions of elapsed time' },
-    options: { durationMs, warmupMs, presets, scenarios },
+    options: { durationMs, warmupMs, presets, scenarios, tileModes },
     environment: {
       user_agent: navigator.userAgent,
       platform: nav.userAgentData?.platform ?? navigator.platform,
@@ -258,10 +301,17 @@ export async function runBenchmark(opts: RunOptions = {}) {
       viewport: [innerWidth, innerHeight],
       screen: [screen.width, screen.height],
       device_pixel_ratio: devicePixelRatio,
-      display_refresh_estimate: { ...refresh, method: 'median requestAnimationFrame interval over 90 frames; is a lower bound of the real refresh when the page cannot keep up, and browsers may cap rAF' },
+      display_refresh_estimate: {
+        ...refresh,
+        method: 'median requestAnimationFrame interval over 90 frames; is a lower bound of the real refresh when the page cannot keep up, and browsers may cap rAF',
+        trustworthy_as_display_refresh: !headless,
+        caveat: headless ? 'automation-controlled browser: rAF is driven by the harness flags (vsync / frame-rate limit may be disabled), so this is NOT a display refresh rate' : null,
+      },
       gl,
       build: import.meta.env.DEV ? 'vite-dev (unminified, NOT representative)' : 'production',
       transport: t?.info ?? null,
+      tile_mode_at_start: prevTileMode,
+      tiles_at_start: tileSnapshotAtStart,
       topology: topo ? { id: topo.facility.id, assets: Object.keys(useWorld.getState().assetsById).length, edges: topo.edges.length } : null,
       url: location.pathname + location.search,
     },

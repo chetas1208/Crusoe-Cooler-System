@@ -55,8 +55,8 @@ export function DriveButtons() {
   if (tab !== 'map') return null;
   const enabled = preview || live;
   return (
-    <div className="drivepad" role="group" aria-label="Drive controls (hold to move)" data-mode={preview ? 'preview' : live ? 'live' : 'off'}>
-      <div className="drivepad__status" aria-live="polite">
+    <div className="drivepad" data-stage-inset={enabled ? 'right' : 'bottom'} role="group" aria-label="Drive controls (hold to move)" data-mode={preview ? 'preview' : live ? 'live' : 'off'}>
+      <div className="drivepad__status" aria-live="polite" title={preview ? 'Preview drive moves a local ghost only; no robot is moved' : live ? 'You hold the control lease' : 'Take control in the robot panel, or start Preview Drive'}>
         {preview ? 'Preview drive: local ghost only, no robot is moved' : live ? 'Live drive: you hold the control lease' : 'Drive off: take control in the robot panel, or start Preview Drive'}
       </div>
       <div className="drivepad__grid">

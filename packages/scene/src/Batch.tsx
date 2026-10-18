@@ -12,6 +12,8 @@ import { useFrame } from '@react-three/fiber';
  *
  * Tag anything that moves, changes colour or scale at runtime with `userData={{ dyn: true }}`
  * (on the mesh or any ancestor inside the wrapper). Transparent materials are never batched.
+ * A dyn *group* (a spinning fan, a pump motor) keeps animating as one object, but the static meshes inside it are merged in the
+ * group's own local space (per material), so a 6-blade fan is 1-2 draw calls and still rotates with its group.
  * `dim` (0..1) fades the whole batch (agents-mode relevance), replacing the per-material opacity props.
  */
 interface Bucket {
@@ -24,18 +26,19 @@ interface Bucket {
   order: number;
 }
 
-function isBatchable(m: THREE.Mesh, root: THREE.Object3D): boolean {
-  if (!m.isMesh || (m as THREE.InstancedMesh).isInstancedMesh || !m.visible) return false;
+function isBatchable(m: THREE.Mesh, root: THREE.Object3D, rootIsDyn = false): boolean {
+  if (!m.isMesh || (m as THREE.InstancedMesh).isInstancedMesh || !m.visible || m.userData?.batched) return false;
   const mat = m.material;
   if (Array.isArray(mat) || mat.transparent || (mat as THREE.MeshStandardMaterial).vertexColors) return false;
   if (!(mat instanceof THREE.MeshStandardMaterial || mat instanceof THREE.MeshBasicMaterial)) return false;
-  for (let p: THREE.Object3D | null = m; p && p !== root.parent; p = p.parent) {
+  // sub-batching a dyn group: the group itself is the (animated) space the merge happens in, so its own flag does not count
+  for (let p: THREE.Object3D | null = m; p && p !== (rootIsDyn ? root : root.parent); p = p.parent) {
     if (p.userData?.dyn || p.userData?.noBatch || !p.visible) return false;
   }
   return true;
 }
 
-export function batchStatic(root: THREE.Object3D): { meshes: THREE.Mesh[]; hidden: THREE.Mesh[] } {
+export function batchStatic(root: THREE.Object3D, rootIsDyn = false): { meshes: THREE.Mesh[]; hidden: THREE.Mesh[] } {
   root.updateWorldMatrix(true, true);
   const inv = new THREE.Matrix4().copy(root.matrixWorld).invert();
   const rel = new THREE.Matrix4();
@@ -43,7 +46,7 @@ export function batchStatic(root: THREE.Object3D): { meshes: THREE.Mesh[]; hidde
   const hidden: THREE.Mesh[] = [];
   root.traverse((o) => {
     const m = o as THREE.Mesh;
-    if (!isBatchable(m, root)) return;
+    if (!isBatchable(m, root, rootIsDyn)) return;
     const mat = m.material as THREE.MeshStandardMaterial;
     const std = mat instanceof THREE.MeshStandardMaterial;
     const key = `${mat.type}|${mat.color.getHex()}|${std ? mat.roughness : 0}|${std ? mat.metalness : 0}|${mat.side}|${m.castShadow ? 1 : 0}${m.receiveShadow ? 1 : 0}|${m.renderOrder}|${mat.toneMapped}`;
@@ -84,6 +87,18 @@ export function batchStatic(root: THREE.Object3D): { meshes: THREE.Mesh[]; hidde
     meshes.push(mesh);
   }
   for (const m of hidden) m.visible = false;
+  if (!rootIsDyn) {
+    // dyn groups (fans, pump motors): merge their static children in the group's own space; the group keeps animating
+    const dynGroups: THREE.Object3D[] = [];
+    root.traverse((o) => {
+      if (o !== root && o.userData?.dyn && !(o as THREE.Mesh).isMesh && !o.userData?.noBatch) dynGroups.push(o);
+    });
+    for (const g of dynGroups) {
+      const sub = batchStatic(g, true);
+      meshes.push(...sub.meshes);
+      hidden.push(...sub.hidden);
+    }
+  }
   return { meshes, hidden };
 }
 
@@ -100,7 +115,7 @@ export function Batched({ children, dim = 1, name }: { children: ReactNode; dim?
       const s = state.current;
       if (!s) return;
       for (const m of s.meshes) {
-        root.remove(m);
+        m.parent?.remove(m);
         m.geometry.dispose();
         (m.material as THREE.Material).dispose();
       }

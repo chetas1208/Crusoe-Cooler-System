@@ -203,6 +203,12 @@ class CommRecorder:
         if st == "pending":
             self.emit(kind="verification", mtype="verification.started", phase="started", status="pending",
                       summary=f"Verification started ({round(float(v.get('window_s') or 0))} s stabilisation window)", key=f"ver:{vid}:pending", **base)
+        elif st == "rejected" and (v.get("dod") or {}).get("layer_a") == "PASS" and (v.get("dod") or {}).get("independently_reviewed") is False \
+                and not (v.get("dod") or {}).get("terminal_state"):
+            # every measured check held, but no independent model review: a real recovery that is NOT counted as verified (V12 review #1)
+            self.emit(kind="verification", mtype="verification.unreviewed", phase="info", status="warn",
+                      summary=f"Checks held ({sum(1 for c in checks if c['pass'])}/{len(checks)}) but no independent review was available - not counted as verified",
+                      key=f"ver:{vid}:{st}", **base)
         elif st in ("verified", "rejected"):
             ok = st == "verified"
             summ = (f"Verification passed ({sum(1 for c in checks if c['pass'])}/{len(checks)} checks)" if ok
@@ -257,8 +263,10 @@ class CommRecorder:
             t_ = c["terminal_state"]
             ok = t_ == "VERIFIED"
             self.emit(kind="verification", mtype="contract.terminal", phase="completed" if ok else "failed", status="ok" if ok else "warn",
-                      sender=self.agent("sentinel", "SEN-05"), summary=f"Definition of Done ended {t_} (contract v{ver})", key=f"dod:{cidn}:terminal:{t_}",
-                      detail={"terminal_state": t_, "escalation_reason": c.get("escalation_reason")}, **base)
+                      sender=self.agent("sentinel", "SEN-05"), summary=clean_text(c.get("outcome_text"), 400) or f"Definition of Done ended {t_.replace('_', ' ').lower()} (contract v{ver})",
+                      key=f"dod:{cidn}:terminal:{t_}",
+                      detail={"terminal_state": t_, "escalation_reason": c.get("escalation_reason"), "needs_review": bool(c.get("needs_review")),
+                              "assessment": c.get("assessment")}, **base)
 
     def _on_drift_detected(self, eid, p, at, aid, cid, ev) -> None:
         self.emit(kind="safety", mtype="drift.detected", phase="blocked", status="warn", sender=self.system("guard"), recipient=self.agent("sentinel", "SEN-01"),

@@ -6,8 +6,9 @@ command ids, operator policy, per-run cap) -> the SENTINEL team + frozen Definit
 
 Rules enforced here:
 * No direct state edits: the only write path is ``engine.submit({kind: "test.inject_fault", ...})``.
-* ScenarioSpec families map ONLY to the six supported fault kinds (fouling, strainer_blockage, valve_stuck, pump_degradation,
-  sensor_drift, workload_spike). leak / power_failure / fire_smoke / heat_rejection_loss are UNSUPPORTED and rejected with the reason.
+* ScenarioSpec families map ONLY to the supported fault kinds: the six legacy ones (fouling, strainer_blockage, valve_stuck,
+  pump_degradation, sensor_drift, workload_spike) and the V12 hazards (manifold_leak, power_failure, rack_thermal_runaway,
+  cdu_pump_backup_failure, facility_heat_rejection_loss). Params are severity-derived, clamped to the engine's ranges, <= 8 keys.
 * Targets come from the live topology / fault catalog. An explicit id that exists but is not faultable (e.g. ``p_17`` in v6) or an
   unresolvable pipe/rack selector is rejected with the reason; only families with a single safe default (pump, sensor, strainer)
   fall back to it, and the fallback is declared as an assumption.
@@ -31,16 +32,15 @@ from typing import Any, Optional
 log = logging.getLogger("loopkeeper.api.scenario_live")
 Json = dict[str, Any]
 
-SUPPORTED_KINDS = ("fouling", "strainer_blockage", "valve_stuck", "pump_degradation", "sensor_drift", "workload_spike")
-UNSUPPORTED_FAMILIES: dict[str, str] = {
-    "leak": "leak injection is not supported by the plant (closed pressurised loop cannot model it honestly: not_supported_yet)",
-    "power_failure": "no test.inject_fault kind for power loss (the plant outage simulator is not exposed on the command bus)",
-    "fire_smoke": "no test.inject_fault kind for rack fire/smoke (the fire simulator is not exposed on the command bus)",
-    "heat_rejection_loss": "no fault kind for heat-rejection / chiller loss (chiller setpoint is a control, not an injectable fault)",
-}
+SUPPORTED_KINDS = ("fouling", "strainer_blockage", "valve_stuck", "pump_degradation", "sensor_drift", "workload_spike",
+                   "manifold_leak", "power_failure", "rack_thermal_runaway", "cdu_pump_backup_failure", "facility_heat_rejection_loss")
+# families the plant cannot model at all (none today: leak, power_failure, fire_smoke, heat_rejection_loss became real V12 hazards)
+UNSUPPORTED_FAMILIES: dict[str, str] = {}
+FAMILY_HAZARD = {"leak": "manifold_leak", "power_failure": "power_failure", "fire_smoke": "rack_thermal_runaway",
+                 "heat_rejection_loss": "facility_heat_rejection_loss"}
 SEV_ORDER = ("minor", "moderate", "severe", "emergency")
 SEV_FLOAT = {"minor": 0.25, "moderate": 0.5, "severe": 0.75, "emergency": 1.0}
-# engine parameter tables per severity (bounds mirror physics/faults.py::FaultManager.begin)
+# engine parameter tables per severity (bounds mirror physics/faults.py::FaultManager.begin and physics/hazards.py)
 PARAMS: dict[str, dict[str, tuple]] = {
     "fouling": {"omax": (0.35, 0.5, 0.7, 0.85), "tau_s": (220.0, 140.0, 90.0, 60.0)},
     "strainer_blockage": {"omax": (0.4, 0.55, 0.7, 0.8), "tau_s": (240.0, 200.0, 180.0, 170.0)},
@@ -48,7 +48,22 @@ PARAMS: dict[str, dict[str, tuple]] = {
     "pump_degradation": {"health_end": (0.7, 0.5, 0.3, 0.15), "duration_s": (200.0, 150.0, 120.0, 100.0)},
     "sensor_drift": {"rate": (0.004, 0.005, 0.006, 0.0075), "cap": (0.3, 0.5, 0.6, 0.75)},
     "workload_spike": {"extra": (0.1, 0.17, 0.22, 0.3), "duration_s": (240.0, 240.0, 240.0, 240.0)},
+    "manifold_leak": {"orifice_m2": (5e-6, 2e-5, 6e-5, 1.5e-4), "reserve_kg": (900.0, 600.0, 400.0, 250.0)},
+    "power_failure": {"ups_runtime_s": (480.0, 300.0, 180.0, 90.0), "restore_after_s": (300.0, 600.0, 900.0, 1200.0)},   # + racks/pumps (target-dependent)
+    "rack_thermal_runaway": {"initial_kw": (3.0, 5.0, 8.0, 12.0), "growth_tau_s": (120.0, 60.0, 40.0, 25.0), "max_kw": (60.0, 100.0, 140.0, 200.0)},
+    "cdu_pump_backup_failure": {"primary_health_end": (0.3, 0.15, 0.05, 0.0), "duration_s": (120.0, 90.0, 60.0, 30.0),
+                                "standby_mode": (1.0, 0.0, 0.0, 0.0), "standby_health": (0.6, 0.4, 0.25, 0.1), "repair_failures": (0.0, 1.0, 1.0, 2.0)},
+    "facility_heat_rejection_loss": {"capacity_frac_end": (0.6, 0.45, 0.3, 0.15), "duration_s": (180.0, 120.0, 90.0, 60.0), "flow_health_end": (0.8, 0.6, 0.5, 0.3)},
 }
+# hard clamp ranges (engine rejects outside these; clamping here means a table edit can never produce a rejected or absurd request)
+RANGES: dict[str, tuple[float, float]] = {
+    "omax": (0.05, 0.95), "tau_s": (1.0, 3600.0), "opening": (0.0, 1.0), "health_end": (0.0, 0.95), "duration_s": (1.0, 86400.0), "rate": (0.0, 0.05),
+    "cap": (0.0, 10.0), "extra": (0.0, 1.0), "orifice_m2": (1e-6, 3e-4), "reserve_kg": (1.0, 1e6), "racks": (0.0, 1.0), "pumps": (0.0, 1.0),
+    "ups_runtime_s": (0.0, 86400.0), "restore_after_s": (0.0, 86400.0), "initial_kw": (0.5, 50.0), "growth_tau_s": (5.0, 3600.0), "max_kw": (5.0, 400.0),
+    "primary_health_end": (0.0, 0.95), "standby_mode": (0.0, 2.0), "standby_health": (0.05, 0.9), "repair_failures": (0.0, 5.0),
+    "capacity_frac_end": (0.0, 0.95), "flow_health_end": (0.05, 1.0),
+}
+MAX_PARAMS = 8
 ISSUER = "scenario-launcher"
 
 
@@ -102,6 +117,55 @@ class Governor:
 GOVERNOR = Governor()
 
 
+@dataclass
+class QuotaLimits:
+    """Admission control for the POST path (V12 security audit): every request costs a model call + a DB row, and auth is off."""
+    rate_per_s: float = 0.1          # sustained launches per second across ALL callers (6/min)
+    burst: int = 8
+    max_inflight: int = 3            # pipelines running at once (each holds one model call)
+    max_per_hour: int = 120          # hard ceiling on model-backed launches per rolling hour
+
+    @classmethod
+    def from_env(cls) -> "QuotaLimits":
+        return cls(rate_per_s=_env_num("SCENARIO_RATE_PER_S", 0.1), burst=int(_env_num("SCENARIO_BURST", 8)),
+                   max_inflight=int(_env_num("SCENARIO_MAX_INFLIGHT", 3)), max_per_hour=int(_env_num("SCENARIO_MAX_PER_HOUR", 120)))
+
+
+class ScenarioQuota:
+    """Token bucket + in-flight cap + rolling-hour ceiling. Process-wide per app (the principal is the same anonymous 'dev' when auth is off,
+    so a per-principal bucket would not separate callers; a per-IP bucket belongs in the route, see V12_SECURITY_AUDIT.md)."""
+
+    def __init__(self, limits: Optional[QuotaLimits] = None, clock: Any = time.monotonic) -> None:
+        from .security import TokenBuckets
+        self.limits = limits or QuotaLimits.from_env()
+        self._clock = clock
+        self._buckets = TokenBuckets(clock)
+        self._hour: list[float] = []
+        self.inflight = 0
+        self.rejected = 0
+
+    def admit(self) -> Optional[tuple[str, str]]:
+        """None = admitted (caller MUST call release()); else (error_code, message) and nothing is consumed."""
+        lim, now = self.limits, self._clock()
+        self._hour = [t for t in self._hour if now - t < 3600.0]
+        if self.inflight >= lim.max_inflight:
+            self.rejected += 1
+            return "RATE_LIMITED", f"{self.inflight} scenario requests already in progress (max {lim.max_inflight}); retry shortly"
+        if len(self._hour) >= lim.max_per_hour:
+            self.rejected += 1
+            return "QUOTA_EXCEEDED", f"hourly scenario quota reached ({lim.max_per_hour}/h)"
+        ok, retry = self._buckets.allow("scenario", "all", lim.rate_per_s, lim.burst)
+        if not ok:
+            self.rejected += 1
+            return "RATE_LIMITED", f"too many scenario requests; retry in {max(1, int(retry + 0.999))}s"
+        self._hour.append(now)
+        self.inflight += 1
+        return None
+
+    def release(self) -> None:
+        self.inflight = max(0, self.inflight - 1)
+
+
 # ============================================================================ request store (in-memory when storage has none)
 def _now() -> datetime:
     return datetime.now(timezone.utc)
@@ -115,9 +179,22 @@ class MemoryScenarioStore:
         self.interp: dict[str, Json] = {}
         self.idem: dict[str, str] = {}
 
+    MAX_RECORDS = 2000   # unbounded growth = memory DoS; oldest finished records are evicted first
+
+    def _evict(self) -> None:
+        if len(self.req) < self.MAX_RECORDS:
+            return
+        done = [k for k, r in self.req.items() if r.get("status") in ("READY", "FAILED", "CANCELED", "REJECTED")] or list(self.req)
+        for k in done[: max(1, len(self.req) - self.MAX_RECORDS + 100)]:
+            r = self.req.pop(k, None)
+            self.interp.pop(k, None)
+            if r and r.get("idempotency_key"):
+                self.idem.pop(r["idempotency_key"], None)
+
     def create_scenario_request(self, request_id, principal_id, original_text, idempotency_key=None, facility_id="lab_01", source_run_id=None) -> Json:
-        if idempotency_key and idempotency_key in self.idem:
+        if idempotency_key and idempotency_key in self.idem and self.idem[idempotency_key] in self.req:
             return dict(self.req[self.idem[idempotency_key]])
+        self._evict()
         row = {"request_id": request_id, "principal_id": principal_id, "original_text": original_text, "status": "QUEUED", "phase": "RECEIVED",
                "idempotency_key": idempotency_key, "facility_id": facility_id, "source_run_id": source_run_id, "run_id": None,
                "error_code": None, "error_message": None, "created_at": _now(), "updated_at": _now()}
@@ -153,7 +230,7 @@ class MemoryScenarioStore:
         return None
 
 
-_MEM_STORES: dict[int, MemoryScenarioStore] = {}
+_MEM_STORES: dict[Any, MemoryScenarioStore] = {}
 
 
 def scenario_store(engine: Any) -> Any:
@@ -161,7 +238,8 @@ def scenario_store(engine: Any) -> Any:
     st = getattr(engine, "storage", None)
     if st is not None and hasattr(st, "create_scenario_request"):
         return st
-    return _MEM_STORES.setdefault(id(engine), MemoryScenarioStore())
+    key = getattr(engine, "run_id", None) or id(engine)      # per run (id() of a dead engine can be reused by a new object)
+    return _MEM_STORES.setdefault(key, MemoryScenarioStore())
 
 
 # ============================================================================ fault catalog + selector resolution
@@ -175,6 +253,8 @@ class Catalog:
     tcs_duty: str = ""
     zone_headers: dict = field(default_factory=dict)   # 'b' -> 'p_hs_b'
     known_ids: frozenset = frozenset()                # every asset / edge id in the topology
+    zones: tuple = ()                                 # rack row letters (hazard targets: zone_<z>, row supply header)
+    feeds: tuple = ("feed_a",)
 
 
 def build_catalog(engine: Any) -> Catalog:
@@ -209,7 +289,12 @@ def build_catalog(engine: Any) -> Catalog:
         if e.get("role") == "supply" and z.startswith("zone_") and eid in foul and z[5:] not in zh and e.get("diameter_mm", 0) >= 100:
             zh[z[5:]] = eid
     ids = frozenset([a["id"] for a in assets] + [e["id"] for e in edges])
-    return Catalog(foul, strainers, sensors, pumps, racks, tcs_duty, zh, ids)
+    zset = set(zh)
+    for r in racks:
+        m = re.match(r"^rack_([a-z])\d+$", r)
+        if m:
+            zset.add(m.group(1))
+    return Catalog(foul, strainers, sensors, pumps, racks, tcs_duty, zh, ids, tuple(sorted(zset)))
 
 
 def _norm_id(q: str, cat: Catalog) -> str:
@@ -280,13 +365,68 @@ class Plan:
     assumptions: list = field(default_factory=list)
 
 
-def _params(kind: str, severity: str) -> Json:
+def _params(kind: str, severity: str, **extra: float) -> Json:
     i = SEV_ORDER.index(severity)
-    return {k: float(v[i]) for k, v in PARAMS[kind].items()}
+    out = {k: float(v[i]) for k, v in PARAMS[kind].items()}
+    out.update({k: float(v) for k, v in extra.items()})
+    out = {k: min(max(v, RANGES[k][0]), RANGES[k][1]) if k in RANGES else v for k, v in out.items()}
+    if len(out) > MAX_PARAMS or any(k not in RANGES for k in out):
+        raise ValueError(f"fault params for {kind} exceed the allowed set")
+    return out
 
 
 def _explicit(q: str, cat: Catalog) -> bool:
     return q in cat.known_ids or bool(re.match(r"^p_\d{2}$", q))
+
+
+def _plan_hazard(fam: str, sev: str, q: str, qn: str, hint: str, zone: Optional[str], cat: Catalog, plan: Plan, rej: Any) -> None:
+    """leak / power_failure / fire_smoke / heat_rejection_loss -> the V12 hazard kinds. Targets come from the live topology only."""
+    kind = FAMILY_HAZARD[fam]
+
+    def put(target: str, method: str, note: str = "", **extra: float) -> None:
+        plan.injections.append(Injection(kind, target, sev, _params(kind, sev, **extra), fam, method, note))
+        if note:
+            plan.assumptions.append(note)
+
+    if kind == "manifold_leak":
+        if qn in cat.zone_headers.values():
+            put(qn, "exact")
+        elif qn in cat.known_ids:
+            rej("INVALID_SELECTOR", f"{qn} is not a row supply header (leak sites: {', '.join(cat.zone_headers.values())})")
+        elif zone and zone in cat.zone_headers:
+            put(cat.zone_headers[zone], "zone_header", f"leak site resolved to the row-{zone} supply header {cat.zone_headers[zone]}")
+        elif cat.zone_headers:
+            z0 = sorted(cat.zone_headers)[0]
+            put(cat.zone_headers[z0], "default", f"no row in the prompt: leak placed on the row-{z0} supply header {cat.zone_headers[z0]}")
+        else:
+            rej("INVALID_SELECTOR", "topology has no row supply header to leak from")
+    elif kind == "power_failure":
+        feed = "feed" in qn or "feed" in hint or "pump" in qn or ("pump" in hint and not zone)
+        zq = qn[5:] if qn.startswith("zone_") else qn[4:] if qn.startswith("row_") else zone
+        if feed:
+            put("feed_a", "exact", "pump feed A fails: duty pumps lose power, standby pumps are on feed B", racks=0.0, pumps=1.0)
+        elif zq and zq in cat.zones:
+            put(f"zone_{zq}", "exact" if qn.startswith(("zone_", "row_")) else "zone_header", f"row {zq} power feed fails; its racks ride a UPS", racks=1.0, pumps=0.0)
+        elif qn in cat.known_ids:
+            rej("INVALID_SELECTOR", f"{qn} is not a power domain (use zone_<row> or feed_a)")
+        else:
+            put("feed_a", "default", "no row or feed in the prompt: defaulted to pump feed A", racks=0.0, pumps=1.0)
+    elif kind == "rack_thermal_runaway":
+        if qn in cat.racks:
+            put(qn, "exact")
+        elif qn in cat.known_ids or qn.startswith("rack_"):
+            rej("INVALID_SELECTOR", f"{qn} is not a modelled rack (modelled racks: {', '.join(cat.racks)})")
+        elif zone:
+            r = next((r for r in cat.racks if r.startswith(f"rack_{zone}")), "")
+            if r:
+                put(r, "zone_header", f"{q or 'location'} resolved to the first modelled rack of row {zone}: {r}")
+            else:
+                rej("INVALID_SELECTOR", f"no modelled rack in row {zone} (modelled racks: {', '.join(cat.racks)})")
+        else:
+            rej("INVALID_SELECTOR", f"cannot resolve a modelled rack from {q!r}; modelled racks: {', '.join(cat.racks)}")
+    else:   # facility_heat_rejection_loss
+        put("chiller_01", "exact" if qn in ("chiller_01", "facility_heat_rejection") else "default",
+            "" if qn in ("chiller_01", "facility_heat_rejection") else "facility heat-rejection (chiller) capacity collapses")
 
 
 def plan_for_fault(fault: Any, laya: Json, cat: Catalog, plan: Plan) -> None:
@@ -294,7 +434,7 @@ def plan_for_fault(fault: Any, laya: Json, cat: Catalog, plan: Plan) -> None:
     sev = fault.severity if fault.severity in SEV_ORDER else "moderate"
     if fam == "unknown":
         lf = laya.get("incident_family")
-        if (lf in UNSUPPORTED_FAMILIES or lf in ("flow_restriction", "pump_failure", "overheating", "sensor_fault")) and not laya.get("abstained", True):
+        if (lf in UNSUPPORTED_FAMILIES or lf in FAMILY_HAZARD or lf in ("flow_restriction", "pump_failure", "overheating", "sensor_fault")) and not laya.get("abstained", True):
             fam = lf
     if fam in UNSUPPORTED_FAMILIES:
         plan.unsupported.append({"family": fam, "reason": UNSUPPORTED_FAMILIES[fam]})
@@ -320,6 +460,9 @@ def plan_for_fault(fault: Any, laya: Json, cat: Catalog, plan: Plan) -> None:
             return True
         return False
 
+    if fam in FAMILY_HAZARD:
+        _plan_hazard(fam, sev, q, qn, hint, zone, cat, plan, rej)
+        return
     if fam == "flow_restriction":
         if "strainer" in qn or "strainer" in hint and not qn.startswith("p_"):
             if qn in cat.strainers:
@@ -366,6 +509,16 @@ def plan_for_fault(fault: Any, laya: Json, cat: Catalog, plan: Plan) -> None:
             rej("INVALID_SELECTOR", f"cannot resolve a faultable rack or row from {q!r}; modelled racks: {', '.join(cat.racks)}")
         return
     if fam == "pump_failure":
+        if re.search(r"back-?up|stand-?by|redundan|spare", hint + " " + q.lower()) and not qn.startswith("p_"):
+            tcs = [p for p in cat.pumps if p.startswith("pump_t")]
+            primary = qn if qn in tcs else cat.tcs_duty
+            if primary and len(tcs) > 1:
+                plan.injections.append(Injection("cdu_pump_backup_failure", primary, sev, _params("cdu_pump_backup_failure", sev), fam, "exact" if qn == primary else "default",
+                                                 f"backup-pump hint: duty pump {primary} degrades AND its standby is weak/dead"))
+                plan.assumptions.append(plan.injections[-1].note)
+            else:
+                rej("INVALID_SELECTOR", "backup-pump failure needs a TCS duty and a standby pump; topology has fewer than two")
+            return
         if qn in cat.pumps:
             add("pump_degradation", qn, "exact")
         elif qn in cat.known_ids:
@@ -495,7 +648,8 @@ class LiveLauncher:
         self.store.save_scenario_interpretation(request_id, **interp)
 
     async def _submit(self, cmd: Json) -> Json:
-        return await self.engine.submit(cmd)
+        from .context import submit_as
+        return await submit_as(self.engine, cmd)
 
     # ---- main
     async def run(self, request_id: str) -> Json:
@@ -505,11 +659,18 @@ class LiveLauncher:
             raise ValueError(f"Scenario request {request_id} not found")
         if req["status"] in ("READY", "FAILED", "CANCELED", "REJECTED") or (req.get("validation_report") or {}).get("live", {}).get("injections"):
             return {"ok": req["status"] == "READY", "request_id": request_id, "status": req["status"], "skipped": "already processed"}
-        prompt, principal_id = req["original_text"], req["principal_id"]
+        from ..intelligence.scenario_interpreter import sanitize_prompt
+        principal_id = req["principal_id"]
+        raw_prompt = req["original_text"]
+        prompt, _g = sanitize_prompt(raw_prompt)                   # untrusted: normalised, capped, markup/URL-free; the stored original stays as typed
         t_all = time.perf_counter()
         lat: Json = {}
         tokens: Json = {}
         try:
+            # 0 spend governor BEFORE anything paid: per-run cap and min spacing are checked here and re-checked atomically at injection time
+            pre = self._precheck()
+            if pre is not None:
+                return self._fail(request_id, "REJECTED", pre[0], pre[1])
             # 1 classify (advisory)
             store.update_scenario_request(request_id, status="PROCESSING", phase="CLASSIFYING")
             t = time.perf_counter()
@@ -530,7 +691,7 @@ class LiveLauncher:
                 client, own = (CrusoeClient(cfg), True) if cfg.configured else (None, False)
             t = time.perf_counter()
             try:
-                proposal, model_id, meta = await interpret_incident_prompt(prompt, client)
+                proposal, model_id, meta = await interpret_incident_prompt(raw_prompt, client)   # sanitises + injection-checks the RAW text itself
             finally:
                 if own and client is not None:
                     try:
@@ -549,7 +710,12 @@ class LiveLauncher:
             plan = plan_injections(proposal, laya, cat, max_per_request=self.limits.max_faults_per_request)
             lat["compile_ms"] = round((time.perf_counter() - t) * 1000.0, 2)
             assumptions = list(cmeta.get("assumptions", [])) + plan.assumptions
-            live: Json = {"run_id": self.run_id, "mode": "live_injection", "injections": [], "rejected": plan.rejected,
+            ig = dict(meta.get("input_guard") or {})
+            if ig.get("injection_suspected"):
+                assumptions.append("input guard: prompt contained instruction-like text; treated as incident description only, model call skipped")
+            if ig.get("truncated"):
+                assumptions.append(f"input guard: prompt truncated to the first {len(prompt)} characters")
+            live: Json = {"run_id": self.run_id, "mode": "live_injection", "input_guard": ig, "injections": [], "rejected": plan.rejected,
                           "unsupported": plan.unsupported, "incident_ids": [], "supported_kinds": list(SUPPORTED_KINDS),
                           "planned": [i.view() for i in plan.injections]}
             interp: Json = dict(
@@ -592,7 +758,19 @@ class LiveLauncher:
             return {"ok": True, "request_id": request_id, "run_id": self.run_id, "status": "READY", "phase": "RUNNING", "live": live, "_interp": interp}
         except Exception as e:  # noqa: BLE001
             log.exception("live scenario request %s failed", request_id)
-            return self._fail(request_id, "FAILED", "PIPELINE_ERROR", f"{type(e).__name__}: {e}")
+            return self._fail(request_id, "FAILED", "PIPELINE_ERROR", f"internal pipeline error ({type(e).__name__}); see server log")   # never echo exception text (DB / model details)
+
+    def _precheck(self) -> Optional[tuple[str, str]]:
+        lim = self.limits
+        if getattr(self.engine, "replay", False) or (self.run_id != getattr(self.engine, "run_id", self.run_id)):
+            return "READ_ONLY_RUN", "target run is a replay or stored run: injection refused (replay never injects)"
+        used = self.gov.used(self.engine, self.run_id)
+        if used + 1 > lim.max_faults_per_run:
+            return "RATE_LIMITED", f"per-run cap: {used} launcher faults already injected, cap {lim.max_faults_per_run}"
+        since = time.monotonic() - self.gov.last_launch.get(self.run_id, -1e9)
+        if since < lim.min_interval_s:
+            return "RATE_LIMITED", f"launches on one run must be {lim.min_interval_s:.0f}s apart (retry in {lim.min_interval_s - since:.0f}s)"
+        return None
 
     async def _inject(self, request_id: str, principal_id: str, plan: Plan, live: Json, lat: Json) -> Optional[tuple[str, str]]:
         """Returns None on success (>=1 accepted) else (error_code, message)."""
@@ -665,22 +843,80 @@ class LiveLauncher:
 _TASKS: set = set()
 
 
-def launch_scenario_request(ctx: Any, request_id: str) -> "asyncio.Task":
-    """Route entry: live pipeline when the engine can take commands, else the legacy recorded-episode worker."""
+def scenario_quota(ctx: Any) -> ScenarioQuota:
+    q = getattr(ctx, "scenario_quota", None)
+    if q is None:
+        q = ScenarioQuota()
+        try:
+            setattr(ctx, "scenario_quota", q)
+        except Exception:  # noqa: BLE001
+            pass
+    return q
+
+
+def _client_key(request: Any) -> str:
+    h = getattr(request, "headers", {}) or {}
+    fwd = (h.get("cf-connecting-ip") or (h.get("x-forwarded-for") or "").split(",")[0]).strip()
+    host = getattr(getattr(request, "client", None), "host", "") or "?"
+    return (fwd or host)[:64]       # behind the quick tunnel every caller is cloudflared unless it sets cf-connecting-ip: best effort, see audit S-02
+
+
+def admit_or_raise(ctx: Any, request: Any, principal_id: str) -> None:
+    """Route-level admission: per-principal and per-client token buckets, then the global quota. Raises HTTP 429 (Retry-After); on success the
+    caller owns one in-flight slot and MUST either pass ``admitted=True`` to ``launch_scenario_request`` or call ``release_admission``."""
+    from fastapi import HTTPException
+    lim = scenario_quota(ctx).limits
+    for who in (f"p:{principal_id}", f"ip:{_client_key(request)}"):
+        ok, retry = ctx.buckets.allow("scenario", who, lim.rate_per_s, lim.burst)
+        if not ok:
+            raise HTTPException(429, "rate limit exceeded", headers={"Retry-After": str(max(1, int(retry + 0.999)))})
+    refusal = scenario_quota(ctx).admit()
+    if refusal is not None:
+        raise HTTPException(429, refusal[1], headers={"Retry-After": "5"})
+
+
+def release_admission(ctx: Any) -> None:
+    scenario_quota(ctx).release()
+
+
+def launch_scenario_request(ctx: Any, request_id: str, *, admitted: bool = False) -> "asyncio.Task":
+    """Route entry: live pipeline when the engine can take commands, else the legacy recorded-episode worker.
+
+    Admission control first: a refused request is marked REJECTED (RATE_LIMITED / QUOTA_EXCEEDED) and never reaches Laya, the model or the engine.
+    """
+    quota = scenario_quota(ctx)
+    refusal = None if admitted else quota.admit()
+    if refusal is not None:
+        code, msg = refusal
+        try:
+            scenario_store(ctx.engine).update_scenario_request(request_id, status="REJECTED", phase="REJECTED", error_code=code, error_message=msg[:300])
+        except Exception:  # noqa: BLE001
+            log.warning("could not record quota refusal for %s", request_id)
+
+        async def refused() -> Json:
+            return {"ok": False, "request_id": request_id, "status": "REJECTED", "error_code": code}
+        t = asyncio.create_task(refused())
+        _TASKS.add(t)
+        t.add_done_callback(_TASKS.discard)
+        return t
     if not live_capable(ctx):
         from ..scenarios.worker import process_scenario_request
         t = asyncio.create_task(process_scenario_request(ctx.engine, request_id))
+        t.add_done_callback(lambda _t: quota.release())
     else:
         async def go() -> Json:
-            launcher = LiveLauncher(ctx.engine, scenario_store(ctx.engine), run_id=ctx.active_run_id, settings=ctx.settings,
-                                    model_client=getattr(ctx, "scenario_model_client", None), laya=getattr(ctx, "scenario_laya", None),
-                                    limits=getattr(ctx, "scenario_limits", None), governor=getattr(ctx, "scenario_governor", None))
-            res = await launcher.run(request_id)
-            if res.get("ok") and res.get("live") and not res["live"].get("incident_ids"):
-                w = asyncio.create_task(launcher.watch_links(request_id, res))
-                _TASKS.add(w)
-                w.add_done_callback(_TASKS.discard)
-            return {k: v for k, v in res.items() if k != "_interp"}
+            try:
+                launcher = LiveLauncher(ctx.engine, scenario_store(ctx.engine), run_id=ctx.active_run_id, settings=ctx.settings,
+                                        model_client=getattr(ctx, "scenario_model_client", None), laya=getattr(ctx, "scenario_laya", None),
+                                        limits=getattr(ctx, "scenario_limits", None), governor=getattr(ctx, "scenario_governor", None))
+                res = await launcher.run(request_id)
+                if res.get("ok") and res.get("live") and not res["live"].get("incident_ids"):
+                    w = asyncio.create_task(launcher.watch_links(request_id, res))
+                    _TASKS.add(w)
+                    w.add_done_callback(_TASKS.discard)
+                return {k: v for k, v in res.items() if k != "_interp"}
+            finally:
+                quota.release()
         t = asyncio.create_task(go())
     _TASKS.add(t)
     t.add_done_callback(_TASKS.discard)

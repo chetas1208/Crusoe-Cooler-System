@@ -10,14 +10,15 @@ import uuid
 from typing import Any, Literal, Optional, Union
 
 from fastapi import APIRouter, Depends, HTTPException, Query
+from .safe_reads import SafeReadRoute
 from fastapi.responses import JSONResponse
 from pydantic import BaseModel, ConfigDict, Field
 
-from .context import RunScope, run_scope
+from .context import RunScope, run_scope, submit_as
 from .scrub import scrub
 
 log = logging.getLogger("loopkeeper.api.nav")
-router = APIRouter()
+router = APIRouter(route_class=SafeReadRoute)
 
 STATUS = {"UNKNOWN_ROBOT": 404, "UNKNOWN_TARGET": 404, "UNKNOWN_PLAN": 404, "LEASE_REQUIRED": 403}
 
@@ -94,7 +95,7 @@ def traffic(sc: RunScope = Depends(run_scope("read"))):
 
 
 @router.post("/runs/{run_id}/robots/{robot_id}/route/plan")
-def route_plan(robot_id: str, body: RoutePlanRequest, sc: RunScope = Depends(run_scope("read"))):
+async def route_plan(robot_id: str, body: RoutePlanRequest, sc: RunScope = Depends(run_scope("read"))):
     """Preview only: nothing is reserved, no lease needed. The answer carries the plan id to commit and the revisions it is valid for."""
     nav = _nav(sc)
     plan = nav.plan(robot_id, _target(body.target), preview=True, start_after_s=body.start_after_s)
@@ -109,7 +110,7 @@ async def _submit(sc: RunScope, kind: str, robot_id: str | None, args: dict, ide
     if robot_id:
         cmd["target_id"] = robot_id
     try:
-        res = dict(await sc.engine.submit(cmd))
+        res = dict(await submit_as(sc.engine, cmd))
     except Exception:
         log.exception("engine.submit failed")
         raise HTTPException(503, "engine unavailable")

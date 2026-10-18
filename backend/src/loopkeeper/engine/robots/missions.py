@@ -205,6 +205,7 @@ class MissionManager:
             return False, "unknown_target", None
         # step whitelist + arg validation + approval + static reachability
         needs_approval = False
+        needs_human = False
         zone_keys: list = []
         for s in steps_in:
             spec = ACTIONS.get(s["command"])
@@ -225,6 +226,7 @@ class MissionManager:
             if s["command"] == "fetch_tool" and not tool_matches(" ".join(robot.hw.get("tools", [])), (s["args"].get("tool", "").lower(),)):
                 return False, f"tool_unavailable: {s['args'].get('tool')}", None
             needs_approval = needs_approval or spec.requires_approval
+            needs_human = needs_human or spec.authority_level == "L3"
             if s["command"] == "move_to":
                 a = s["args"]
                 if "segment_id" not in a or "s_m" not in a:
@@ -235,7 +237,7 @@ class MissionManager:
             if s["command"] == "isolate_valve":
                 zone_keys.append(("zone:" + str((eng.asset_index.get(s["args"].get("valve_id", ""), {}).get("zone_id") or s["args"].get("valve_id"))), True))
         if needs_approval:
-            ok, why = self._approval_ok(args.get("approval_id"), args.get("incident_id"))
+            ok, why = self._approval_ok(args.get("approval_id"), args.get("incident_id"), human=needs_human)
             if not ok:
                 return False, why, None
         # static feasibility of the INPIPE travel + battery (when the robot is free right now)
@@ -283,7 +285,7 @@ class MissionManager:
                                                           "incident_id": m["incident_id"]}, actor_type="system", command_id=command_id)
         return True, "", m
 
-    def _approval_ok(self, approval_id, incident_id) -> tuple[bool, str]:
+    def _approval_ok(self, approval_id, incident_id, human: bool = False) -> tuple[bool, str]:
         if not approval_id:
             return False, "approval_required"
         found = self.eng.track.find_approval(approval_id)
@@ -294,6 +296,8 @@ class MissionManager:
             return False, "approval_incident_mismatch"
         if ap["status"] != "approved":
             return False, f"approval_{ap['status']}"
+        if human and not str(ap.get("decided_by") or "").startswith("operator:"):
+            return False, "approval_not_human: high-impact (L3) work needs an approval decided by a person, not a veto-window auto-approval"
         return True, ""
 
     # ------------------------------------------------------------------ events

@@ -19,58 +19,65 @@ const FRAG = /* glsl */ `
   precision highp float;
   varying vec3 vP;
   uniform vec4 uRect;   // x0 z0 x1 z1
-  uniform vec4 uAisle;  // x0 z0 x1 z1 of the cold aisle (hall only), else zeros
+  uniform vec4 uCold[8]; // per cabinet row: z0 z1 of the supply-air strip in front of the cabinets (perforated tiles), x0 x1 in the pod
+  uniform vec4 uHot[8];  // per cabinet row: z0 z1 of the exhaust strip behind the cabinets (sealed tiles)
+  uniform vec2 uPodX;
   uniform float uKind;  // 0 hall, 1 plant, 2 corridor, 3 yard
   uniform float uAmt;
   float h21(vec2 p){ p = fract(p * vec2(123.34, 456.21)); p += dot(p, p + 45.32); return fract(p.x * p.y); }
   void main(){
     vec2 p = vP.xz;
     float edge = min(min(p.x - uRect.x, uRect.z - p.x), min(p.y - uRect.y, uRect.w - p.y));
-    float ao = 1.0 - smoothstep(0.0, 1.6, edge) ;          // darken against walls: depth cue
+    float ao = 1.0 - smoothstep(0.0, 1.8, edge);          // darken against walls: depth cue
+    float px = fwidth(p.x) * 1.5;                          // metres per pixel: fade fine detail to its mean when it cannot be resolved
     vec3 col = vec3(0.0); float a = 0.0;
     if (uKind < 0.5) {
       vec2 t = p / 0.6; vec2 f = fract(t);
-      float seam = 1.0 - smoothstep(0.0, 0.035, min(min(f.x, 1.0 - f.x), min(f.y, 1.0 - f.y)));
       vec2 id = floor(t);
-      float tone = h21(id) * 0.04;
-      col = vec3(0.20, 0.235, 0.285) + tone;               // access-floor panel
-      a = 0.80;
-      col = mix(col, vec3(0.50, 0.56, 0.64), seam * 0.65);
-      bool inAisle = p.x > uAisle.x && p.x < uAisle.z && p.y > uAisle.y && p.y < uAisle.w;
-      if (inAisle) {
-        vec2 d = fract(p / 0.075) - 0.5;
-        float hole = 1.0 - smoothstep(0.22, 0.32, length(d));
-        col = mix(col, vec3(0.03, 0.07, 0.09), hole * 0.9);
-        col += vec3(0.05, 0.30, 0.38) * hole * (0.35 + 0.65 * uAmt);
-        col = mix(col, vec3(0.1, 0.55, 0.7), 0.10);
-        a = 0.9;
+      float seam = 1.0 - smoothstep(0.0, 0.03 + px * 1.6, min(min(f.x, 1.0 - f.x), min(f.y, 1.0 - f.y)));
+      float tone = h21(id) * 0.035;
+      col = vec3(0.165, 0.19, 0.225) + tone;               // sealed access-floor panel (painted steel / HPL)
+      a = 0.86;
+      float cold = 0.0; float hot = 0.0;
+      for (int i = 0; i < 8; i++) {
+        float inX = step(uPodX.x, p.x) * step(p.x, uPodX.y);
+        cold = max(cold, inX * step(uCold[i].x, p.y) * step(p.y, uCold[i].y));
+        hot = max(hot, inX * step(uHot[i].x, p.y) * step(p.y, uHot[i].y));
       }
+      // hot side: a faintly warm sealed tile; cold side: perforated tiles on every second panel, cool grey
+      col = mix(col, vec3(0.2, 0.18, 0.18), hot * 0.55);
+      col = mix(col, vec3(0.15, 0.2, 0.26), cold * 0.7);
+      vec2 d = fract(f * 7.0) - 0.5;
+      float perf = cold * step(0.5, mod(id.x + id.y, 2.0));
+      float hole = (1.0 - smoothstep(0.2, 0.34, length(d))) * step(0.1, min(min(f.x, 1.0 - f.x), min(f.y, 1.0 - f.y)));
+      float holeAmt = mix(0.45, hole, 1.0 - smoothstep(0.012, 0.04, px));
+      col = mix(col, vec3(0.025, 0.04, 0.05), perf * holeAmt * 0.92);
+      col += vec3(0.04, 0.11, 0.15) * perf * holeAmt * uAmt * 0.3;
+      col = mix(col, vec3(0.42, 0.47, 0.54), seam * 0.5);
     } else if (uKind < 2.5) {
+      // sealed (epoxy) concrete: broad tone mottling, saw-cut control joints every 6 m, a painted pump walkway
       vec2 f = fract(p / 6.0);
-      float joint = 1.0 - smoothstep(0.0, 0.006, min(min(f.x, 1.0 - f.x), min(f.y, 1.0 - f.y)));
-      float n = h21(floor(p * 3.0)) * 0.05;
-      col = (uKind < 1.5 ? vec3(0.27, 0.285, 0.31) : vec3(0.30, 0.315, 0.34)) + n;
-      a = 0.78;
-      col = mix(col, vec3(0.12, 0.13, 0.15), joint * 0.8);
+      float joint = 1.0 - smoothstep(0.0, 0.004 + px * 0.06, min(min(f.x, 1.0 - f.x), min(f.y, 1.0 - f.y)));
+      float m1 = h21(floor(p * 0.6)) * 0.012;
+      float m2 = h21(floor(p * 3.0)) * 0.012;
+      col = (uKind < 1.5 ? vec3(0.235, 0.25, 0.275) : vec3(0.27, 0.285, 0.31)) + m1 + m2;
+      a = 0.86;
+      col = mix(col, vec3(0.1, 0.11, 0.13), joint * 0.7);
       if (uKind < 1.5) {
-        // painted walkway border
-        float b = smoothstep(1.35, 1.30, edge) * smoothstep(1.15, 1.20, edge);
-        col = mix(col, vec3(0.91, 0.72, 0.23), b * 0.85);
+        float b = smoothstep(1.32, 1.28, edge) * smoothstep(1.18, 1.22, edge);
+        col = mix(col, vec3(0.62, 0.65, 0.7), b * 0.5);
       } else {
-        // robot / service lane: two yellow edge lines along the corridor axis
         float cz = 0.5 * (uRect.y + uRect.w);
         float dz = abs(p.y - cz);
         float lane = (smoothstep(1.05, 1.0, dz) * smoothstep(0.93, 0.98, dz));
-        float dash = step(0.5, fract(p.x / 1.6)) * (1.0 - smoothstep(0.0, 0.05, abs(dz)) ) ;
-        col = mix(col, vec3(0.91, 0.72, 0.23), lane * 0.9);
-        col = mix(col, vec3(0.18, 0.83, 0.91), step(0.5, fract(p.x / 1.0)) * (1.0 - smoothstep(0.04, 0.07, dz)) * 0.8);
+        col = mix(col, vec3(0.62, 0.65, 0.7), lane * 0.55);
       }
     } else {
       float n = h21(floor(p * 9.0));
       col = vec3(0.13, 0.14, 0.155) + n * 0.07;
-      a = 0.85;
+      a = 0.9;
     }
-    col *= (1.0 - ao * 0.35);
+    col *= (1.0 - ao * 0.38);
     gl_FragColor = vec4(col, a);
   }
 `;
@@ -84,8 +91,23 @@ export function RoomFloors() {
       const pod = m.pods.find((p) => p.hallId === r.id);
       const kind = r.kind === 'hall' ? 0 : r.kind === 'yard' ? 3 : r.kind === 'corridor' ? 2 : 1;
       const [x0, z0, x1, z1] = r.rect;
-      const aisle = pod?.cold ? new THREE.Vector4(pod.x0, pod.cold.z0, pod.x1, pod.cold.z1) : new THREE.Vector4(0, 0, 0, 0);
-      const u = { uRect: { value: new THREE.Vector4(x0, z0, x1, z1) }, uAisle: { value: aisle }, uKind: { value: kind }, uAmt: { value: 0 } };
+      // per-row supply / exhaust strips: a road is bounded by the cold front of one row and the hot rear of its neighbour
+      const cold: THREE.Vector4[] = Array.from({ length: 8 }, () => new THREE.Vector4(0, 0, 0, 0));
+      const hot: THREE.Vector4[] = Array.from({ length: 8 }, () => new THREE.Vector4(0, 0, 0, 0));
+      if (pod) {
+        const d = pod.dims.d;
+        const reach = Math.min(1.3, Math.max(0.6, (pod.roads[0]?.width ?? 2.6) / 2));
+        pod.rows.slice(0, 8).forEach((row, i) => {
+          const s = Math.cos(row.yaw) >= 0 ? 1 : -1; // +1: cabinet fronts face +z
+          const f0 = row.z + s * d / 2;
+          const f1 = row.z + s * (d / 2 + reach);
+          const r0 = row.z - s * d / 2;
+          const r1 = row.z - s * (d / 2 + reach);
+          cold[i].set(Math.min(f0, f1), Math.max(f0, f1), 0, 0);
+          hot[i].set(Math.min(r0, r1), Math.max(r0, r1), 0, 0);
+        });
+      }
+      const u = { uRect: { value: new THREE.Vector4(x0, z0, x1, z1) }, uCold: { value: cold }, uHot: { value: hot }, uPodX: { value: new THREE.Vector2(pod?.x0 ?? 0, pod?.x1 ?? 0) }, uKind: { value: kind }, uAmt: { value: 0 } };
       const mat = makeShader(VERT, FRAG, u, { transparent: true, depthWrite: false, polygonOffset: true, polygonOffsetFactor: -2, polygonOffsetUnits: -2, toneMapped: false });
       return { id: r.id, rect: r.rect, mat, u, ext: !!r.exterior };
     });
@@ -124,24 +146,24 @@ const ROAD_FRAG = /* glsl */ `
     float cz = 0.5 * (uRect.y + uRect.w);
     float hw = 0.5 * (uRect.w - uRect.y);
     float dz = abs(p.y - cz);
-    // painted edge lines just inside each rack face
-    float edge = smoothstep(0.045, 0.0, abs(dz - (hw - 0.22)));
-    // dashed centre line + flow chevrons along +x
-    float dash = step(0.5, fract((p.x - uRect.x) / 1.2)) * smoothstep(0.045, 0.0, dz);
-    float cx = fract((p.x - uRect.x) / 2.4) - 0.5;
-    float chev = 0.0; // no direction marks on the floor: arrows are only drawn on pipes, from the solved flow sign
-    vec3 base = uKind < 0.5 ? vec3(0.04, 0.2, 0.26) : uKind < 1.5 ? vec3(0.27, 0.14, 0.05) : vec3(0.12, 0.13, 0.15);
-    vec3 col = base;
-    float a = 0.34;
-    col = mix(col, vec3(0.91, 0.72, 0.23), edge);
-    a = max(a, edge * 0.95);
-    col = mix(col, vec3(0.18, 0.83, 0.91), dash);
-    a = max(a, dash * 0.9);
-    col = mix(col, vec3(0.7, 0.8, 0.9), chev * 0.5);
-    a = max(a, chev * 0.5);
-    // soft fade at both ends
-    float ex = smoothstep(0.0, 0.8, min(p.x - uRect.x, uRect.z - p.x));
-    gl_FragColor = vec4(col, a * ex * uAmt);
+    float pxm = fwidth(p.y) * 1.2;
+    // the robot lane: a slightly darker rubberised strip, bounded by two thin off-white edge lines (no centre dashes, no colour: roads are not fluid)
+    float edge = 1.0 - smoothstep(0.02 + pxm, 0.04 + pxm * 2.0, abs(dz - (hw - 0.22)));
+    float body = 1.0 - smoothstep(hw - 0.24, hw - 0.2, dz);
+    vec3 col = vec3(0.07, 0.08, 0.1);
+    float a = body * 0.34;
+    col = mix(col, vec3(0.72, 0.75, 0.8), edge);
+    a = max(a, edge * 0.55);
+    // end hatching where the lane meets a cross-aisle: three short bars at each end
+    float ex = min(p.x - uRect.x, uRect.z - p.x);
+    float bars = step(0.18, ex) * step(ex, 0.3) + step(0.5, ex) * step(ex, 0.62);
+    a = max(a, bars * body * 0.22);
+    // selected / hovered road: the UI accent tint over the whole lane (uAmt > 1)
+    float pick = clamp((uAmt - 1.0) / 0.7, 0.0, 1.0);
+    col = mix(col, vec3(0.36, 0.89, 0.82), pick * 0.75 * max(body * 0.6, edge));
+    a = max(a, body * pick * 0.3);
+    float fade = smoothstep(0.0, 0.5, ex);
+    gl_FragColor = vec4(col, a * fade * min(uAmt, 1.0));
   }
 `;
 

@@ -158,3 +158,96 @@ textarea.in { height: auto; padding: 8px 10px; resize: vertical; line-height: 1.
 .ex-void { position: absolute; inset: 0; z-index: -1; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 8px; padding: 0 28%; text-align: center; background: #090b0f; color: var(--t2); pointer-events: auto; font-size: 13px; line-height: 1.5; }
 .ex-void b { color: var(--warning); font-size: 15px; }
 .ex-prompt { position: absolute; left: 12px; top: 108px; width: min(560px, calc(100vw - 424px)); pointer-events: auto; z-index: 46; }
+
+/* ---- scenario library (live launch) ---- */
+.spin { animation: spin 0.8s linear infinite; }
+.sl-lib.lk-panel {
+  position: absolute; top: 118px; left: 20px; width: calc(100% - 40px); max-width: 1200px; max-height: calc(100dvh - 130px);
+  z-index: 40; display: flex; flex-direction: column;
+}
+.sl-lib .lk-panel__collapse { flex: 1 1 auto; min-height: 0; }
+.sl-lib .lk-panel__sub { white-space: normal; }
+.sl-composer { padding: 14px 18px 0; }
+.sl-grid { padding: 18px; display: grid; grid-template-columns: repeat(auto-fill, minmax(340px, 1fr)); gap: 16px; }
+.sl-wide { grid-column: 1 / -1; }
+.sl-note { margin: 0 0 8px; font-size: 12px; color: var(--t2); line-height: 1.5; overflow-wrap: anywhere; }
+.sl-note--dim { color: var(--t3); }
+.sl-note--warn { padding: 8px 12px; border-radius: 8px; border: 1px solid rgba(255, 154, 60, 0.4); background: rgba(255, 154, 60, 0.08); }
+.sl-card { background: var(--lk-fill-1, var(--panel-2)); border: 1px solid var(--line, #232936); border-radius: 10px; padding: 16px; display: flex; flex-direction: column; gap: 10px; min-width: 0; }
+.sl-card[data-support='unsupported'] { border-color: rgba(255, 79, 79, 0.35); }
+.sl-card[data-support='partial'] { border-color: rgba(255, 179, 0, 0.35); }
+.sl-card__top { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+.sl-card__top .sl-chip { margin-left: auto; }
+.sl-id { font-weight: 700; font-size: 13px; letter-spacing: 0.5px; padding: 2px 8px; border-radius: 4px; color: #ff5252; background: rgba(255, 82, 82, 0.12); border: 1px solid rgba(255, 82, 82, 0.3); }
+.sl-card[data-severity='MODERATE'] .sl-id { color: #ffb300; background: rgba(255, 179, 0, 0.12); border-color: rgba(255, 179, 0, 0.3); }
+.sl-sev { font-size: 12px; font-weight: 600; text-transform: uppercase; color: var(--t3); }
+.sl-title { margin: 0; font-size: 14px; font-weight: 600; color: var(--t1); }
+.sl-goal { margin: 0; font-size: 12px; line-height: 1.45; color: var(--t2); }
+.sl-faults, .sl-reasons, .sl-sim ul { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 3px; }
+.sl-faults li { font-size: 12px; color: var(--t2); display: flex; flex-wrap: wrap; align-items: baseline; gap: 2px 4px; }
+.sl-faults .mono[data-missing='true'] { color: var(--critical); text-decoration: line-through; }
+.sl-cap { font-style: normal; font: 700 12px var(--mono); padding: 0 5px; border-radius: 4px; margin-left: 4px; background: var(--panel-3); color: var(--t2); }
+.sl-cap[data-cap='proxy'] { color: var(--warning); background: rgba(255, 154, 60, 0.14); }
+.sl-cap[data-cap='unsupported'] { color: var(--critical); background: rgba(255, 79, 79, 0.14); }
+.sl-outcome { margin: 0; font-size: 12px; line-height: 1.5; color: var(--t1); padding: 6px 8px; border-radius: 6px; background: var(--panel-3); border-left: 3px solid var(--accent, #41d6a3); overflow-wrap: anywhere; }
+.sl-reasons li { font-size: 12px; line-height: 1.45; padding: 5px 8px; border-radius: 6px; overflow-wrap: anywhere; color: var(--t1); }
+.sl-reasons[data-state='unsupported'] li { background: rgba(255, 79, 79, 0.09); border-left: 3px solid var(--critical); }
+.sl-reasons[data-state='partial'] li { background: rgba(255, 154, 60, 0.09); border-left: 3px solid var(--warning); }
+.sl-reasons[data-state='live'] li { background: var(--panel-3); border-left: 3px solid var(--nominal); }
+.sl-sim { font-size: 12px; color: var(--t2); line-height: 1.45; }
+.sl-sim b { display: block; margin-bottom: 2px; color: var(--warning); font-size: 12px; text-transform: uppercase; letter-spacing: 0.04em; }
+.sl-sim li { overflow-wrap: anywhere; }
+.sl-actions { margin-top: auto; padding-top: 6px; display: flex; gap: 8px; flex-wrap: wrap; }
+.sl-actions .lk-btn:first-child { flex: 1 1 150px; }
+
+.sl-dialog { min-width: 0; }
+.sl-cols { display: grid; grid-template-columns: minmax(0, 1.1fr) minmax(0, 1fr); gap: 0 20px; align-items: start; }
+.sl-col { min-width: 0; }
+.sl-line { margin: 0 0 8px; }
+.sl-foot-note { flex: 1; min-width: 0; font-size: 12px; color: var(--critical); overflow-wrap: anywhere; }
+.sl-h { margin: 12px 0 6px; font-size: 12px; font-weight: 640; color: var(--t1); text-transform: uppercase; letter-spacing: 0.05em; }
+.sl-h:first-of-type { margin-top: 2px; }
+.sl-bad { margin: 0 0 8px; font-size: 12px; color: var(--critical); line-height: 1.45; overflow-wrap: anywhere; padding: 6px 8px; border-radius: 6px; background: rgba(255, 79, 79, 0.09); border-left: 3px solid var(--critical); }
+small.sl-bad { display: block; padding: 0; background: none; border: 0; margin: 0; }
+.sl-wrap { white-space: pre-wrap; overflow-wrap: anywhere; }
+.sl-tablewrap { overflow-x: auto; }
+.sl-spec { width: 100%; border-collapse: collapse; font-size: 12px; margin-bottom: 8px; }
+.sl-spec th { text-align: left; font-weight: 560; color: var(--t3); padding: 3px 8px 3px 0; }
+.sl-spec td { padding: 5px 8px 5px 0; border-top: 1px solid var(--line); color: var(--t1); vertical-align: top; overflow-wrap: anywhere; }
+.sl-spec td small { display: block; color: var(--t3); font-size: 12px; }
+.sl-spec td[data-ok='true'] { color: var(--nominal); }
+.sl-spec td[data-ok='false'] { color: var(--critical); }
+.sl-dialog details { margin: 0 0 8px; font-size: 12px; color: var(--t2); }
+.sl-dialog summary { cursor: pointer; padding: 6px 0; min-height: 24px; }
+.sl-dialog .spec { font-size: 12px; }
+.sl-chain { list-style: none; margin: 0 0 10px; padding: 0; display: flex; flex-direction: column; gap: 4px; }
+.sl-chain li { display: grid; grid-template-columns: 16px auto; gap: 2px 8px; align-items: center; font-size: 12px; color: var(--t3); }
+.sl-chain li em { grid-column: 2; font-style: normal; font-size: 12px; line-height: 1.4; overflow-wrap: anywhere; color: var(--t2); }
+.sl-chain li[data-state='done'] { color: var(--nominal); }
+.sl-chain li[data-state='active'] { color: var(--t1); font-weight: 600; }
+.sl-chain li[data-state='failed'] { color: var(--critical); font-weight: 600; }
+.sl-meta { display: flex; flex-wrap: wrap; gap: 2px 10px; font-size: 12px; color: var(--t3); margin-bottom: 8px; overflow-wrap: anywhere; }
+.sl-links { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; margin-top: 6px; font-size: 12px; }
+@media (max-width: 860px), (max-height: 480px) {
+  /* the Execution column scrolls as a whole on a phone (mobile.css): the library is a block in it, not a scroller of its own */
+  .sl-lib.lk-panel { position: static; width: auto; max-width: 100%; max-height: none; flex: none; min-height: auto; }
+  .sl-lib .lk-panel__titles { flex: 1 1 100%; flex-direction: column; align-items: flex-start; gap: 2px; }
+  .sl-lib .lk-panel__sub { white-space: normal; overflow: visible; }
+  .sl-lib .lk-panel__actions { flex-wrap: wrap; }
+  .sl-grid { grid-template-columns: minmax(0, 1fr); gap: 10px; padding: 12px; }
+  .sl-composer { padding: 12px 12px 0; }
+}
+@media (max-width: 700px) { .sl-cols { grid-template-columns: 1fr; } }
+@media (max-height: 480px) {
+  .lk-dialog[data-panel='scenario-launch'] { max-height: calc(100dvh - 8px); }
+  .lk-dialog[data-panel='scenario-launch'] .lk-dialog__desc { display: none; }
+  .lk-dialog[data-panel='scenario-launch'] .lk-dialog__head { padding-top: 6px; }
+  .lk-dialog[data-panel='scenario-launch'] .lk-dialog__body { padding-top: 6px; }
+  .lk-dialog[data-panel='scenario-launch'] .lk-dialog__foot { padding: 6px 16px; }
+}
+@media (prefers-reduced-motion: reduce) { .spin { animation: none; } }
+.lk-dialog[data-panel='scenario-launch'] { --lk-dialog-w: 1040px; }
+.sl-lib .lk-panel__titles { flex-wrap: wrap; row-gap: 0; }
+.sl-lib .lk-panel__title { white-space: nowrap; flex: none; }
+.sl-lib .lk-panel__head { flex-wrap: wrap; }
+.sl-spec td.mono:first-child { white-space: nowrap; }

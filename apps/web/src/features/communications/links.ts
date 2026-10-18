@@ -67,3 +67,58 @@ export function focusMessage(e: CommunicationEventV1): { ok: boolean; note: stri
   }
   return { ok: false, note: 'This message carries no robot or asset that exists in the world on screen.' };
 }
+
+export interface JumpAction {
+  id: 'seek' | 'robot' | 'asset' | 'task' | 'camera';
+  label: string;
+  /** why the button is unavailable right now (shown as its tooltip); null = available */
+  reason: string | null;
+  /** what the button does, for the tooltip when it is available */
+  hint: string;
+  run(): string | null;
+}
+
+/** The drawer's jump buttons with their live availability: each disabled one carries the reason in plain words. */
+export function jumpActions(e: CommunicationEventV1): JumpAction[] {
+  const w = useWorld.getState();
+  const p = usePlayer.getState();
+  const out: JumpAction[] = [];
+  const canSeek = p.phase === 'ready' && !p.monitor && p.runId === e.run_id;
+  out.push({
+    id: 'seek',
+    label: `Timeline tick ${e.sim_tick}`,
+    hint: "Move the timeline playhead to this message's tick",
+    reason: canSeek ? null : 'The timeline can jump here only while this run is open as a replay.',
+    run: () => seekToMessage(e).note,
+  });
+  if (e.robot_id) {
+    const here = Boolean(w.robots[e.robot_id]);
+    out.push({
+      id: 'robot',
+      label: `Map robot ${e.robot_id}`,
+      hint: 'Open the Map tab with this robot selected',
+      reason: here ? null : `${e.robot_id} is not in the world on screen (it may belong to another run).`,
+      run: () => (jumpTo({ kind: 'map-robot', id: e.robot_id as string, label: '' }) ? null : `${e.robot_id} is not in the world on screen.`),
+    });
+  }
+  if (e.asset_id) {
+    const here = Boolean(w.assetsById[e.asset_id] || w.edgesById[e.asset_id]);
+    out.push({
+      id: 'asset',
+      label: `Map asset ${e.asset_id}`,
+      hint: 'Open the Map tab with this asset selected',
+      reason: here ? null : `${e.asset_id} is not in the facility model on screen.`,
+      run: () => (jumpTo({ kind: 'map-asset', id: e.asset_id as string, label: '' }) ? null : `${e.asset_id} is not in the facility model on screen.`),
+    });
+  }
+  if (e.task_id) out.push({ id: 'task', label: `Agents node ${e.task_id}`, hint: 'Open the Agents tab on this task', reason: null, run: () => (jumpTo({ kind: 'agents-task', id: e.task_id as string, label: '' }), null) });
+  const target = (e.robot_id && w.robots[e.robot_id]) || (e.asset_id && (w.assetsById[e.asset_id] || w.edgesById[e.asset_id]));
+  out.push({
+    id: 'camera',
+    label: 'Focus camera',
+    hint: 'Point the 3D camera at the robot or asset',
+    reason: target ? null : e.robot_id || e.asset_id ? 'That robot or asset is not in the world on screen.' : 'This message names no robot or asset.',
+    run: () => focusMessage(e).note,
+  });
+  return out;
+}

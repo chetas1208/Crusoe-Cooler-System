@@ -125,14 +125,14 @@ def build_verifier_graph(ctx: AgentContext):
                             and extensions < 3):
                         try:
                             extra = [{"type": k.type if hasattr(k, "type") else k["type"], "subject_asset_id": ""} for k in lb["extra_checks"]]
-                            draft = {"goal": dc["goal"], "subject_asset_ids": [], "checks": extra,
+                            draft = {"goal": dc["goal"], "subject_asset_ids": list((dc.get("scope") or {}).get("subjects") or []), "checks": extra,
                                      "hold_sim_seconds": int(dc["checks"][0]["hold_sim_s"] + lb["extra_hold_sim_seconds"])}
                             racks_ = ctx.fac.scope_racks(det["cause"], det["target_id"])
                             after0 = compute_metrics(ctx, det, s.id, healthy_reference(ctx, racks_, other_affected(ctx, s.id)), before.get("_clean"))
                             prop = dod.compile_contract(ctx, det, s.id, draft, dc.get("before") or {}, after0, window_s=dc["window_s"], source=dc["drafted_by"])
                             ev_keep = dc["evaluation"]
                             dc = dod.revise(ctx, dc, prop, "SEN-05 asked for more tests: " + "; ".join(lb["reasons"][:2])[:240])
-                            dc["before"], dc["evaluation"] = prop.get("before") or ev_keep.get("before"), ev_keep
+                            dc["evaluation"] = ev_keep                       # revise() carries the frozen `before` baseline over
                             for ch in dc["checks"]:
                                 dc["evaluation"]["checks"].setdefault(ch["id"], {"status": "pending", "measured": None, "target": ch["threshold"], "held_s": 0.0,
                                                                                   "best_held_s": 0.0, "streak_since_s": None, "last_pass": None})
@@ -167,13 +167,17 @@ def build_verifier_graph(ctx: AgentContext):
                 if not isinstance(c_.get("after"), (int, float)):
                     c_["after"] = 0.0                                                                   # no trustworthy measurement: `status` says 'unknown'
 
-            ok = ev_["layer_a"] == "PASS" and lb.get("verdict") == "concur"
-            dod_block = {"contract_id": dc["id"], "version": dc["version"], "frozen_hash": dc["frozen_hash"], "layer_a": ev_["layer_a"],
+            ok = ev_["layer_a"] == "PASS" and lb.get("verdict") in ("concur", "unreviewed")    # physical recovery; VERIFIED additionally needs a MODEL concurrence
+            reviewed = dod.independently_reviewed(dc)
+            dod_block = {"contract_id": dc["id"], "version": dc["version"], "frozen_hash": dc["frozen_hash"], "layer_a": ev_["layer_a"], "independently_reviewed": reviewed,
                          "layer_b": {k: lb.get(k) for k in ("verdict", "source", "model_id", "reasons")}}
-        v.update(checks=checks, status="verified" if ok else "rejected", progress=1.0, elapsed_s=rnd(v["elapsed_s"], 1),
-                 confidence=rnd(min(0.97, 0.82 + 0.02 * len(checks)) if ok else 0.3, 2), completed_tick=ctx.tick)
+        reviewed_ok = ok and dc is not None and dod.independently_reviewed(dc)         # "verified" anywhere in the record needs Layer A PASS + a MODEL concurrence
+        v.update(checks=checks, status="verified" if reviewed_ok else "rejected", progress=1.0, elapsed_s=rnd(v["elapsed_s"], 1),
+                 confidence=rnd(min(0.97, 0.82 + 0.02 * len(checks)) if reviewed_ok else (0.6 if ok else 0.3), 2), completed_tick=ctx.tick)
         if dod_block:
             v["dod"] = dod_block
+        if ok and not reviewed_ok:
+            v["failed_reason"] = "Every measured check held, but no independent model review was available, so this is not counted as verified."
         if not ok:
             if dc is not None and dc["evaluation"]["layer_a"] == "PASS":
                 v["failed_reason"] = "SEN-05 did not concur: " + "; ".join((dc["evaluation"].get("layer_b") or {}).get("reasons") or ["no reason given"])[:200]
@@ -196,21 +200,27 @@ def build_verifier_graph(ctx: AgentContext):
             dc["history"] = [*dc["history"], {"attempt": attempt, "layer_a": ev_["layer_a"], "layer_b": (ev_.get("layer_b") or {}).get("verdict"),
                                               "failed": [c_["id"] for c_ in checks if not c_["pass"]], "plan_hash": dn.plan_hash(state.get("plan") or {}),
                                               "primary": m0, "primary_delta": delta, "version": dc["version"], "tick": ctx.tick}]
-            if ok:
+            if ok and dod.independently_reviewed(dc):
                 dc["state"], dc["terminal_state"] = "VERIFIED", "VERIFIED"
+            elif ok:                                                             # measured recovery without an independent review: honest, never "verified"
+                dc["terminal_state"], dc["needs_review"] = dod.terminal_of(dc, escalated=False), True
+                dc["outcome_text"] = dod.outcome_text(dc, dc["terminal_state"])
             else:
                 dc["state"] = "FROZEN"
             dn.emit(ctx, dc)
-        eid = s.ev("verification", (f"Verified after {round(v['window_s'])}s window: " + " - ".join(f"{c['label']} {c['after']} {c['unit']}" for c in checks)) if ok
+        eid = s.ev("verification", (f"Verified after {round(v['window_s'])}s window: " + " - ".join(f"{c['label']} {c['after']} {c['unit']}" for c in checks)) if reviewed_ok
+                   else (f"Measured recovery after {round(v['window_s'])}s window, not independently reviewed: " + " - ".join(f"{c['label']} {c['after']} {c['unit']}" for c in checks)) if ok
                    else f"Rejected: {v['failed_reason']}", asset_id=det["target_id"])
-        fb = (f"All {len(checks)} checks passed over a {round(v['window_s'])}s stabilisation window. No new anomalies downstream." if ok
+        fb = (f"All {len(checks)} checks passed over a {round(v['window_s'])}s stabilisation window. No new anomalies downstream." if reviewed_ok
+              else f"All {len(checks)} checks passed over a {round(v['window_s'])}s window, but no independent review was available, so this is not counted as verified." if ok
               else f"Repair did not restore the plant: {v['failed_reason']}.")
-        dec = await s.decide(t, "verify", {"verdict": "verified" if ok else "rejected", "checks": checks, "reference": src}, lambda: {"summary": fb},
+        dec = await s.decide(t, "verify", {"verdict": "verified" if reviewed_ok else ("recovered_unreviewed" if ok else "rejected"), "checks": checks, "reference": src}, lambda: {"summary": fb},
                              instruction="Phrase the verifier's verdict. The verdict is fixed; do not change it.")
-        s.finish(t, "verified" if ok else "rejected", dec["summary"] or fb, ("Verified" if ok else "Rejected", ok), [eid])
+        s.finish(t, "verified" if reviewed_ok else ("completed" if ok else "rejected"), fb,          # user-facing text is a deterministic template over the verdict; model prose (kept in the decision record) never replaces it
+                  ("Verified" if reviewed_ok else ("Recovered, unreviewed" if ok else "Rejected"), ok), [eid])
         s.touch()
         extra = {"dod": dc} if dc is not None else {}
-        return s.patch(verify={"ok": ok, "failed": [c["id"] for c in checks if not c["pass"]], "reason": v.get("failed_reason", ""),
+        return s.patch(verify={"ok": ok, "reviewed": bool(dc is not None and dod.independently_reviewed(dc)), "failed": [c["id"] for c in checks if not c["pass"]], "reason": v.get("failed_reason", ""),
                                "unknown": bool(dc is not None and dc["evaluation"]["layer_a"] == "UNKNOWN")}, **extra)
 
     g = StateGraph(IncState)

@@ -78,6 +78,8 @@ export function RobotInspector({ collapsed, onToggleCollapse }: RobotInspectorPr
     return (
       <div
         className="map-inspector-collapsed panel"
+        data-panel="inspector"
+        data-inset="right"
         style={{
           width: 44,
           padding: '10px 4px',
@@ -114,6 +116,7 @@ export function RobotInspector({ collapsed, onToggleCollapse }: RobotInspectorPr
     return (
       <aside
         className="map-inspector panel"
+        data-panel="inspector"
         data-inset="right"
         style={{
           width: 320,
@@ -162,7 +165,8 @@ export function RobotInspector({ collapsed, onToggleCollapse }: RobotInspectorPr
   return (
     <aside
       className="map-inspector panel"
-        data-inset="right"
+      data-panel="inspector"
+      data-inset="right"
       style={{
         width: 320,
         display: 'flex',

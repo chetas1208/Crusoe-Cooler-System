@@ -349,11 +349,9 @@ class ControlManager:
                     fouling, cleared = eng.mujoco_runtime.clean_inpipe_deposit(0.5)
                     manipulation_ack["deposit_cleaning"] = {"fouling_pct": fouling, "cleared": cleared, "segment_id": seg}
                     if cleared:
-                        res = eng.plant.apply({"kind": "brush_clear", "target_id": seg, "args": {"removed_fraction": 0.95}})
-                        manipulation_ack["plant_effect"] = {"ok": bool(res.get("ok")), "reason": res.get("reason")}
-                        if res.get("ok"):
-                            eng.emit_internal("repair.deposit_cleared", seg, {"robot_id": rid, "target_id": seg, "fouling_pct": fouling,
-                                                                              "status": "cleared"}, actor_type="operator", actor_id=principal)
+                        # manual drive grants MOVEMENT (and the sandbox brush), never tool authority over the plant: healing a fouled segment is a
+                        # mission step (capability registry: brush tool, reach, resource lock, battery, approval policy). Nothing is applied here.
+                        manipulation_ack["plant_effect"] = {"ok": False, "reason": "tool_authority_required: clearing a plant deposit is a mission step, not a manual drive action"}
 
         pose_data = {
             "segment_id": str(getattr(robot, "segment_id", None) or "floor_corridor"),

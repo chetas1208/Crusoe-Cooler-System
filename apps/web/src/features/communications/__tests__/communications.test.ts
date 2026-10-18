@@ -214,3 +214,31 @@ describe('agent-envelope.v1 fields', () => {
     expect(filterEvents([r.event], { filter: 'all', query: '', mode: 'live', cursorTick: null, adv: { ...NO_ADV, type: 'SAFETY_VETO' } })).toHaveLength(1);
   });
 });
+
+describe('reopen / filter switch never shows an empty window while ingested events exist', () => {
+  it('clamps a stale scroll offset to the current list (filter shrank 5,000 -> 12 rows)', async () => {
+    const { clampTop } = await import('../virtualization');
+    const ROW = 52;
+    const top = clampTop(12, ROW, 5000 * ROW, 400); // offset left over from the long list
+    const w = computeWindow(12, ROW, top, 400);
+    expect(w.end - w.start).toBe(12);
+  });
+  it('reopening with an offset beyond the end still renders the last rows', async () => {
+    const { clampTop } = await import('../virtualization');
+    const w = computeWindow(300, 52, clampTop(300, 52, 10_000_000, 600), 600);
+    expect(w.end).toBe(300);
+    expect(w.end - w.start).toBeGreaterThan(10);
+  });
+  it('the store keeps every ingested event while the panel is closed (rows are available on reopen)', () => {
+    resetCommunicationsForTest();
+    const st = useCommunications.getState();
+    st.setRun('run_x');
+    st.setOpen(false);
+    const mk = (seq: number) => ({ event_id: `e${seq}`, run_id: 'run_x', seq, sim_tick: seq, sim_time_ms: seq * 500, sender: { id: 'SEN-01', class: 'sentinel' }, message_type: 'progress', summary: `m${seq}` }) as unknown as import('../types').CommunicationEventV1;
+    st.ingest([mk(1), mk(2), mk(3)]);
+    st.setOpen(true);
+    expect(useCommunications.getState().events.length).toBe(3);
+    const visible = filterEvents(useCommunications.getState().events, { filter: 'all', query: '', mode: 'live', cursorTick: null });
+    expect(visible.length).toBe(3);
+  });
+});

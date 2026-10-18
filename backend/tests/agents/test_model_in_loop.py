@@ -201,7 +201,7 @@ async def test_resume_from_checkpointer_after_restart_no_double_repair():
         await st.rt.stop()                                                      # simulated crash: tasks die, checkpoints survive
         assert (await st.rt.graph.aget_state({"configurable": {"thread_id": f"{st.eng.run_id}:{inc_id}"}})).next      # a node was pending
         rt2 = AgentRuntimeImpl(intelligence=IntelligenceConfig(api_key=""), model_client=cl, checkpointer=saver, database_url="",
-                               limits=Limits(), decision_store=store)
+                               limits=Limits(l3_requires_human=False), decision_store=store)
         await rt2.start(st.eng.as_actor("agent", "agent"))
         await rt2.resume(st.eng.track.open_incidents())
         st.rt = rt2

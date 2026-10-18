@@ -7,6 +7,7 @@ import { formatSimClock } from '@loopkeeper/core';
 import { useView } from '@loopkeeper/scene';
 import { Chip, Dot, Eyebrow, useTick } from './kit';
 import { useUi } from './store';
+import { Button, IconButton } from './kit/index';
 
 const ICON: Record<FeedItem['kind'], typeof Bot> = { incident: TriangleAlert, mission: Bot, verify: ShieldCheck, approval: CircleAlert, agent: Network, system: Radio };
 
@@ -54,7 +55,7 @@ export function Ribbon() {
           <motion.div className="drawer panel" initial={{ opacity: 0, y: 12, scale: 0.98 }} animate={{ opacity: 1, y: 0, scale: 1 }} exit={{ opacity: 0, y: 8, scale: 0.98 }} transition={{ duration: 0.2, ease: [0.22, 1, 0.36, 1] }}>
             <div className="drawer__head">
               <Eyebrow>Activity · latest first</Eyebrow>
-              <button className="icon-btn" style={{ width: 24, height: 24 }} onClick={() => setDrawer(false)} aria-label="Close history"><X size={14} /></button>
+              <IconButton size="sm" onClick={() => setDrawer(false)} aria-label="Close history" icon={<X size={14} />} />
             </div>
             <div className="drawer__list scroll">
               {feed.length === 0 && <div className="empty__s" style={{ padding: 16 }}>Nothing yet — the plant is running quietly.</div>}
@@ -100,9 +101,7 @@ export function Ribbon() {
             </span>
           ))}
         </div>
-        <button className="icon-btn" style={{ width: 28, height: 28 }} data-active={drawer} onClick={() => setDrawer(!drawer)} aria-label="Toggle activity history" aria-pressed={drawer}>
-          <ChevronUp size={16} style={{ transform: drawer ? 'rotate(180deg)' : undefined, transition: 'transform .2s' }} />
-        </button>
+        <IconButton size="sm" pressed={drawer} onClick={() => setDrawer(!drawer)} aria-label="Toggle activity history" icon={<ChevronUp size={16} style={{ transform: drawer ? 'rotate(180deg)' : undefined, transition: 'transform .2s' }} />} />
       </div>
     </div>
   );
@@ -133,9 +132,7 @@ function ReplayBar() {
     <AnimatePresence>
       {active && f && (
         <motion.div className="replay panel" initial={{ opacity: 0, y: 12 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, y: 8 }}>
-          <button className="icon-btn" onClick={() => playReplay(!playing)} aria-label={playing ? 'Pause' : 'Play'}>
-            {playing ? <Pause size={15} /> : <Play size={15} />}
-          </button>
+          <IconButton onClick={() => playReplay(!playing)} aria-label={playing ? 'Pause' : 'Play'} icon={playing ? <Pause size={15} /> : <Play size={15} />} />
           <div className="replay__track">
             <input type="range" min={0} max={Math.max(frames.length - 1, 1)} value={index} onChange={(e) => (playReplay(false), seekReplay(Number(e.target.value)))} aria-label="Replay position" />
             <div className="replay__marks">
@@ -148,12 +145,12 @@ function ReplayBar() {
             <b>T+{formatSimClock(f.simTimeS)}</b>
             <span>{now ? `−${Math.max(0, Math.round((now.wall - f.wall) / 1000))} s` : ''}</span>
           </div>
-          <button className="btn btn--sm" onClick={() => playReplay(playing, rate === 1 ? 4 : 1)}>
+          <Button size="sm" onClick={() => playReplay(playing, rate === 1 ? 4 : 1)}>
             ×{rate}
-          </button>
-          <button className="btn btn--sm btn--primary" onClick={() => void exitReplay()}>
+          </Button>
+          <Button size="sm" variant="primary" onClick={() => void exitReplay()}>
             Return to live
-          </button>
+          </Button>
         </motion.div>
       )}
     </AnimatePresence>

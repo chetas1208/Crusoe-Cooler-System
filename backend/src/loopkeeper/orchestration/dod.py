@@ -91,10 +91,17 @@ def _leak_check(hold: float, source: str, subject: list[str]) -> Json:
 
 
 # ── compile (PROPOSED -> VALIDATED) and freeze ───────────────────────────────────────────────
+def mandatory_checks(ctx: AgentContext, det: Json, before: Json, after0: Json) -> list[Json]:
+    """The checks every contract must contain. The thermal-margin check is ALWAYS there: while a fault is active the hydraulics are not recovered and the
+    legacy verifier would exclude it, which would leave the contract blind to the hazard it exists to contain."""
+    return checks_for(ctx, det, before, {**after0, "margin_excl": 0})
+
+
 def draft_fallback(ctx: AgentContext, det: Json) -> Json:
     """The deterministic draft used when no model answered: goal from the fault, the cause's standard checks, default hold."""
     fac = ctx.fac
-    return {"goal": f"{fac.label(det['target_id'])} is genuinely recovered: measured hydraulics and thermal margin hold at their configured limits for a sustained window, without collateral damage.",
+    label = " ".join(str(fac.label(det["target_id"])).split())[:60]                  # asset names are untrusted text: bounded before they enter the (240-char) goal
+    return {"goal": f"{label} is genuinely recovered: measured hydraulics and thermal margin hold at their configured limits for a sustained window, without collateral damage."[:240],
             "subject_asset_ids": [det["target_id"]], "hold_sim_seconds": 0, "checks": [], "reason": ""}
 
 
@@ -107,16 +114,17 @@ def compile_contract(ctx: AgentContext, det: Json, inc_id: str, draft: Json, bef
     for a in subj:
         if not fac.exists(a):
             errs.append(f"unknown asset id '{a}'")
-        elif a not in scope and not fac.exists(a):
+        elif a not in scope:
             errs.append(f"asset '{a}' is outside the incident scope")
     if subj and not any(a in scope for a in subj if fac.exists(a)) and not errs:
         errs.append("none of the subject assets belongs to this incident's scope")
     hold = float(draft.get("hold_sim_seconds") or 0)
     max_hold = min(MAX_HOLD_S, window_s)
-    if hold and not (MIN_HOLD_S <= hold <= max_hold):
-        errs.append(f"hold {hold:g}s outside the allowed {MIN_HOLD_S:g}-{max_hold:g}s")
-    hold = hold or min(max(MIN_HOLD_S, round(window_s * 0.5)), max_hold)
-    mandatory = checks_for(ctx, det, before, after0)
+    default_hold = min(max(MIN_HOLD_S, round(window_s * 0.5)), max_hold)         # the floor: a draft may only lengthen the sustained-hold window
+    if hold and not (default_hold <= hold <= max_hold):
+        errs.append(f"hold {hold:g}s outside the allowed {default_hold:g}-{max_hold:g}s")
+    hold = hold or default_hold
+    mandatory = mandatory_checks(ctx, det, before, after0)
     by_id = {c["id"]: c for c in mandatory}
     checks: list[Json] = []
     seen: set[str] = set()
@@ -152,7 +160,7 @@ def compile_contract(ctx: AgentContext, det: Json, inc_id: str, draft: Json, bef
     return {
         "id": f"dod_{inc_id}", "incident_id": inc_id, "version": version, "state": "VALIDATED", "terminal_state": None,
         "goal": str(draft.get("goal") or "")[:240], "scope": {"cause": cause, "target_id": det["target_id"], "racks": fac.scope_racks(cause, det["target_id"]),
-                                                              "assets": sorted(scope)[:24]},
+                                                              "assets": sorted(scope)[:24], "subjects": sorted(default_subject)},
         "drafted_by": source, "checks": checks, "window_s": window_s, "created_tick": ctx.tick, "validated_tick": ctx.tick, "frozen_tick": None,
         "frozen_hash": None, "revisions": [], "evaluation": None, "history": [],
     }
@@ -168,6 +176,13 @@ def freeze(ctx: AgentContext, c: Json) -> Json:
 def not_looser(old: Json, new: Json) -> list[str]:
     """Goalpost guard: a revision may add checks and tighten thresholds / lengthen holds; anything else is refused."""
     errs = []
+    if new.get("goal") != old.get("goal"):
+        errs.append("the goal text cannot be rewritten by a revision")
+    os_, ns_ = old.get("scope") or {}, new.get("scope") or {}
+    if (os_.get("cause"), os_.get("target_id")) != (ns_.get("cause"), ns_.get("target_id")):
+        errs.append("the incident scope (cause / target) cannot change in a revision")
+    if os_.get("subjects") and not set(os_["subjects"]) <= set(ns_.get("subjects") or []):
+        errs.append("a revision cannot drop a subject asset")
     nb = {c["id"]: c for c in new["checks"]}
     for c in old["checks"]:
         n = nb.get(c["id"])
@@ -181,6 +196,8 @@ def not_looser(old: Json, new: Json) -> list[str]:
             errs.append(f"check '{c['id']}' threshold relaxed {c['threshold']} -> {n['threshold']}")
         if n["hold_sim_s"] < c["hold_sim_s"]:
             errs.append(f"check '{c['id']}' hold shortened {c['hold_sim_s']}s -> {n['hold_sim_s']}s")
+        if not set(c.get("subject") or []) <= set(n.get("subject") or []):
+            errs.append(f"check '{c['id']}' subject narrowed")
     if new["window_s"] < old["window_s"]:
         errs.append("evaluation window shortened")
     return errs
@@ -195,7 +212,8 @@ def revise(ctx: AgentContext, old: Json, proposed: Json, reason: str) -> Json:
         raise ContractError(errs)
     new = {**proposed, "version": old["version"] + 1, "revisions": [*old["revisions"], {"version": old["version"] + 1, "reason": reason[:300], "tick": ctx.tick,
                                                                                       "from_hash": old["frozen_hash"]}],
-           "history": old["history"], "drafted_by": old["drafted_by"], "created_tick": old["created_tick"], "id": old["id"]}
+           "history": old["history"], "drafted_by": old["drafted_by"], "created_tick": old["created_tick"], "id": old["id"],
+           "before": old.get("before"), "goal": old.get("goal")}
     new["state"] = "VALIDATED"
     return freeze(ctx, new)
 
@@ -228,6 +246,9 @@ def step(ctx: AgentContext, c: Json, det: Json, before: Json, cf: Json, clean: l
                     raise ValueError(k)
             for ch in checks_for(ctx, det, before, after):
                 results[ch["id"]] = (bool(ch["pass"]), float(ch["after"]))
+            if "margin" not in results and any(k["id"] == "margin" for k in c["checks"]):
+                mg = float(after["margin_all"])                               # hydraulics not recovered: still judge the racks' real thermal margin (containment)
+                results["margin"] = (mg >= ctx.fac.warn_k, mg)
         except Exception:                                                    # noqa: BLE001  missing/NaN data is UNKNOWN, never a pass
             results = {}
     ok, n_active = _leak_status(ctx.world)
@@ -277,22 +298,83 @@ def eval_table(c: Json) -> list[Json]:
     return out
 
 
-def terminal_of(c: Json, *, escalated: bool, timed_out: bool = False) -> str:
-    """Honest end state after the last attempt. VERIFIED only through Layer A + B; a partial or contained-only outcome is never called verified."""
+def independently_reviewed(c: Json) -> bool:
+    """VERIFIED needs an independent concurrence from a real model review (SEN-05). The deterministic fallback is NOT a review."""
+    lb = (c.get("evaluation") or {}).get("layer_b") or {}
+    return lb.get("verdict") == "concur" and lb.get("source") == "model"
+
+
+def terminal_of(c: Json, *, escalated: bool, timed_out: bool = False, human_required: bool = False) -> str:
+    """Honest end state after the last attempt. VERIFIED only through Layer A PASS + an independent model concurrence; a partial, contained-only or
+    unreviewed outcome is never called verified. Precedence: TIMED_OUT > ESCALATED (a person must decide) > UNKNOWN > CONTAINED_NOT_REPAIRED > PARTIAL > FAILED."""
     ev = c.get("evaluation") or {}
     cs = ev.get("checks", {})
-    if ev.get("layer_a") == "PASS" and (ev.get("layer_b") or {}).get("verdict") in (None, "concur") and not escalated:
+    # defence in depth: the Layer-A verdict is RECOMPUTED from the per-check statuses; a `layer_a` flag handed in from outside is never trusted
+    la = "UNKNOWN" if any(x["status"] == "unknown" for x in cs.values()) else ("PASS" if cs and all(x["status"] == "held" for x in cs.values()) else "FAIL")
+    flag = ev.get("layer_a")                                     # the stored flag may only VETO (a flag that disagrees with the statuses is never a pass)
+    ev = {**ev, "layer_a": la if flag in (None, la) or la != "PASS" else "FAIL"}
+    la = ev["layer_a"]
+    if flag == "PASS" and la == "PASS" and independently_reviewed(c) and not escalated:
         return "VERIFIED"
     if timed_out:
         return "TIMED_OUT"
+    if human_required:
+        return "ESCALATED"
     if ev.get("layer_a") == "UNKNOWN" or any(s["status"] == "unknown" for s in cs.values()):
         return "UNKNOWN"
     held = {k for k, s in cs.items() if s["status"] == "held"}
     if "margin" in held and held != set(cs) and not ({"flow", "dp", "head", "vib", "residual"} & held):
         return "CONTAINED_NOT_REPAIRED"                      # the hazard (thermal margin) is safe, the cause is not repaired
+    if ev.get("layer_a") == "PASS" and held == set(cs) and cs:
+        return "PARTIAL"                                     # every measured check held, but nobody independent confirmed it: needs a review
     if held and held != set(cs):
         return "PARTIAL"
     return "ESCALATED" if escalated else "FAILED"
+
+
+# ── plain wording (what the operator reads; no codes, no field names) ───────────────────────────
+STATE_TITLE = {"VERIFIED": "Verified", "PARTIAL": "Partly recovered", "CONTAINED_NOT_REPAIRED": "Contained, not repaired", "ESCALATED": "Needs a person",
+               "FAILED": "Not recovered", "TIMED_OUT": "Timed out", "UNKNOWN": "Could not confirm"}
+
+
+def assessment(c: Json) -> Json:
+    """What the last measurements say: which checks held (safe), which did not (unrepaired), which had no trustworthy reading."""
+    cs = (c.get("evaluation") or {}).get("checks", {})
+    label = {k["id"]: k["label"] for k in c.get("checks", [])}
+    tab = eval_table(c)
+    return {"safe": [label.get(k, k) for k, x in cs.items() if x["status"] == "held"],
+            "unrepaired": [label.get(k, k) for k, x in cs.items() if x["status"] in ("failing", "passing", "pending")],
+            "unknown": [label.get(k, k) for k, x in cs.items() if x["status"] == "unknown"],
+            "evidence": [{"check": t["id"], "label": t["label"], "status": t["status"], "measured": t["after"], "target": t["target"], "unit": t["unit"],
+                          "held_s": t["held_s"], "hold_needed_s": t["hold_sim_s"]} for t in tab]}
+
+
+def _join(xs: list[str]) -> str:
+    xs = [x[:1].lower() + x[1:] for x in xs]
+    return xs[0] if len(xs) == 1 else ", ".join(xs[:-1]) + " and " + xs[-1]
+
+
+def outcome_text(c: Json, state: str, reason: str = "") -> str:
+    """One plain paragraph for the operator for a terminal state."""
+    a = assessment(c)
+    safe, bad, unk = a["safe"], a["unrepaired"], a["unknown"]
+    tail = " An operator should review the incident; monitoring continues."
+    if state == "VERIFIED":
+        return "Verified: every measured check held for the full window and an independent review agreed."
+    if state == "CONTAINED_NOT_REPAIRED":
+        return (f"Contained, not repaired: {_join(safe)} stayed within limits, so the racks are safe for now, but the fault itself is still there"
+                + (f" ({_join(bad)} not back to normal)" if bad else "") + "." + tail)
+    if state == "PARTIAL":
+        if not bad and safe:
+            return "Partly confirmed: every measured check held, but no independent review was available, so this is not counted as verified." + tail
+        return (f"Partly recovered: {_join(safe)} held" + (f", but {_join(bad)} did not" if bad else "") + "." + tail)
+    if state == "TIMED_OUT":
+        return "Timed out: " + (reason.rstrip(".") + "." if reason else "the incident did not finish within the allowed time.") + tail
+    if state == "UNKNOWN":
+        return "Could not confirm: the plant simulation did not give a trustworthy reading" + (f" for {_join(unk)}" if unk else "") + ", so recovery is neither confirmed nor ruled out." + tail
+    if state == "ESCALATED":
+        return "Needs a person: " + (reason.rstrip(".") + "." if reason else "the automatic options are exhausted.") + tail
+    return "Not recovered: " + (reason.rstrip(".") + "." if reason else "the checks did not pass.") + tail
 
 
 def public(c: Json | None) -> Json | None:

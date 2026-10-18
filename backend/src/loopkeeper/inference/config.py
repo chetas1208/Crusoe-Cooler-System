@@ -66,6 +66,9 @@ class GatewayConfig:
     thinking_reviewer: bool = False
     json_repairs: int = 1                  # spec: at most one repair attempt, then explicit failure / labelled fallback
     catalog_ttl_s: float = 6 * 3600
+    # FAIL CLOSED: a model with no catalog price (or a response without usage) is charged at these worst-case prices / token counts so ceilings still trip
+    worst_case_in_per_mtok: float = 5.0
+    worst_case_out_per_mtok: float = 25.0
 
     @classmethod
     def from_env(cls, env: dict[str, str] | None = None) -> "GatewayConfig":
@@ -95,6 +98,8 @@ class GatewayConfig:
             run_spend_ceiling_usd=_f(e, "CRUSOE_SPEND_CEILING_USD", 2.0),
             incident_spend_ceiling_usd=_f(e, "CRUSOE_INCIDENT_SPEND_CEILING_USD", 0.5),
             seed=seed,
+            worst_case_in_per_mtok=_f(e, "CRUSOE_WORST_CASE_IN_PER_MTOK", 5.0),
+            worst_case_out_per_mtok=_f(e, "CRUSOE_WORST_CASE_OUT_PER_MTOK", 25.0),
             thinking=_b(e, "MODEL_THINKING", False) if not e.get("CRUSOE_THINKING") else _b(e, "CRUSOE_THINKING", False),
             thinking_reviewer=_b(e, "MODEL_THINKING_DEEP", False) if not e.get("CRUSOE_THINKING_REVIEWER") else _b(e, "CRUSOE_THINKING_REVIEWER", False),
         )

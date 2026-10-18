@@ -5,6 +5,7 @@
   "dependencies": {
     "@expo-google-fonts/geist": "^0.4.2",
     "@expo-google-fonts/geist-mono": "^0.4.3",
+    "@expo/metro-runtime": "~57.0.17",
     "@loopkeeper/core": "workspace:^",
     "@loopkeeper/scene": "workspace:^",
     "@react-three/fiber": "^9.8.2",
@@ -25,12 +26,14 @@
     "expo-system-ui": "~57.0.4",
     "lucide-react-native": "^1.57.0",
     "react": "19.2.3",
+    "react-dom": "19.2.3",
     "react-native": "0.86.3",
     "react-native-gesture-handler": "~2.32.0",
     "react-native-reanimated": "4.5.1",
     "react-native-safe-area-context": "~5.7.0",
     "react-native-screens": "~4.26.0",
     "react-native-svg": "15.15.4",
+    "react-native-web": "^0.21.2",
     "react-native-worklets": "0.10.1",
     "three": "^0.186.1",
     "zustand": "^5.0.15"

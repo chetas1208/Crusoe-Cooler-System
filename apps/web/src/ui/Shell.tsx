@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react';
 import { useWorld } from '@loopkeeper/core/store';
-import { useView } from '@loopkeeper/scene';
+import { measureInsets, useView } from '@loopkeeper/scene';
 import { LabelLayer } from './Callouts';
 import { ZoneLabels } from './ZoneLabels';
 import { CommandPalette } from './Palette';
@@ -10,6 +10,7 @@ import { TopBar } from './TopBar';
 import { GlobalScenarioLauncher } from './GlobalScenarioLauncher';
 import { useControl } from '@loopkeeper/core/control';
 import { useUi } from './store';
+import { closePanel, openState, resolveActive, togglePanel, usePanelFocus } from '../features/responsive/panels';
 
 /** On shorter screens the inspector and incident card compete for the right column — let the inspector win. */
 function useAutoCollapse() {
@@ -27,7 +28,7 @@ function useKeyboard() {
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
       const t = e.target as HTMLElement;
-      const typing = t.tagName === 'INPUT' || t.tagName === 'TEXTAREA' || t.isContentEditable;
+      const typing = t.tagName === 'INPUT' || t.tagName === 'TEXTAREA' || t.tagName === 'SELECT' || t.isContentEditable;
       const ui = useUi.getState();
       const v = useView.getState();
       const w = useWorld.getState();
@@ -42,8 +43,14 @@ function useKeyboard() {
         ui.setPalette(true);
         return;
       }
+      // Alt+C toggles Communications on every tab (on the Map tab plain C keeps cycling the camera); plain C does it on the other tabs (case 'c' below)
+      if (e.altKey && !e.metaKey && !e.ctrlKey && e.code === 'KeyC') {
+        e.preventDefault();
+        togglePanel('comms', true);
+        return;
+      }
       if (e.metaKey || e.ctrlKey || e.altKey) return;
-      if (['1', '2', '3', '4'].includes(e.key)) {
+      if (['1', '2', '3', '4', 'c', 'C'].includes(e.key)) {
         // tab shortcuts stay live everywhere except while the operator is driving a robot
         const cs = useControl.getState().state;
         if (cs === 'MANUAL_DRIVING' || cs === 'MANUAL_ARMED') return;
@@ -60,6 +67,10 @@ function useKeyboard() {
           break;
         case '4':
           ui.setTab('execution');
+          break;
+        case 'c':
+        case 'C':
+          togglePanel('comms', true); // the Communications tab, from any tab
           break;
         case 'x':
         case 'X':
@@ -91,8 +102,22 @@ function useKeyboard() {
           break;
       }
     };
+    // Escape closes the open side panel first, wherever focus is (the panel's own Escape handling - detail, search text - still runs when focus is inside it)
+    const onEsc = (e: KeyboardEvent) => {
+      if (e.key !== 'Escape' || e.defaultPrevented) return;
+      const t = e.target as HTMLElement | null;
+      if (t?.closest?.('.phost, .sheet, [role=dialog]')) return;
+      const k = resolveActive(openState(), usePanelFocus.getState().focus);
+      if (!k || useUi.getState().palette || useUi.getState().launcher) return;
+      e.stopImmediatePropagation();
+      closePanel(k);
+    };
+    window.addEventListener('keydown', onEsc, true);
     window.addEventListener('keydown', onKey);
-    return () => window.removeEventListener('keydown', onKey);
+    return () => {
+      window.removeEventListener('keydown', onEsc, true);
+      window.removeEventListener('keydown', onKey);
+    };
   }, []);
 }
 
@@ -143,28 +168,9 @@ function Hint() {
 function useSafeArea() {
   useEffect(() => {
     const id = setInterval(() => {
-      if (document.documentElement.dataset.phone === '1') {
-        const c = useView.getState().insets;
-        if (c.left || c.right || c.bottom || c.top !== 64) useView.getState().setInsets({ left: 0, right: 0, bottom: 0, top: 64 });
-        return;
-      }
-      const W = window.innerWidth;
-      const H = window.innerHeight;
-      let left = 0;
-      let right = 0;
-      let bottom = 0;
-      let top = 70;
-      document.querySelectorAll<HTMLElement>('[data-inset]').forEach((el) => {
-        const r = el.getBoundingClientRect();
-        if (r.width < 2 || r.height < 2) return;
-        const side = el.dataset.inset;
-        if (side === 'left') left = Math.max(left, r.right + 8);
-        if (side === 'right') right = Math.max(right, W - r.left + 8);
-        if (side === 'bottom') bottom = Math.max(bottom, H - r.top + 4);
-        if (side === 'top') top = Math.max(top, r.bottom + 6);
-      });
+      // one measuring rule for the camera rig and the fit (packages/scene/src/fit.ts): compact chrome, dock-narrowed app, data-inset panels
+      const next = measureInsets();
       const cur = useView.getState().insets;
-      const next = { left: Math.round(left), right: Math.round(right), top: Math.round(top), bottom: Math.round(bottom) };
       if (Math.abs(cur.left - next.left) > 3 || Math.abs(cur.right - next.right) > 3 || Math.abs(cur.bottom - next.bottom) > 3 || Math.abs(cur.top - next.top) > 3) useView.getState().setInsets(next);
     }, 180);
     return () => clearInterval(id);

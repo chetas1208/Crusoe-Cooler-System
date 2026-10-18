@@ -20,6 +20,25 @@ import { cachedPaths } from './geomCache';
 
 const ZERO_M = new THREE.Matrix4().makeScale(0, 0, 0);
 
+/** flow marker: a double chevron (>>) lying on the pipe crown, unit pipe radius, tip towards +y. Only drawn where the solver reports flow. */
+const CHEVRON = (() => {
+  const pos: number[] = [];
+  const quad = (a: number[], b: number[], c: number[], d: number[]) => pos.push(...a, ...b, ...c, ...a, ...c, ...d);
+  const arm = (y0: number) => {
+    const hw = 0.55;
+    const len = 0.5;
+    const t = 0.17;
+    // left arm: outer edge (-hw, y0) -> tip (0, y0 + len); right arm mirrored
+    quad([-hw, y0, 0], [0, y0 + len, 0], [0, y0 + len - t * 1.6, 0], [-hw, y0 - t * 1.6, 0]);
+    quad([0, y0 + len, 0], [hw, y0, 0], [hw, y0 - t * 1.6, 0], [0, y0 + len - t * 1.6, 0]);
+  };
+  arm(-0.42);
+  arm(0.08);
+  const g = new THREE.BufferGeometry();
+  g.setAttribute('position', new THREE.Float32BufferAttribute(pos, 3));
+  return g;
+})();
+
 type NodeRec = { id: string; position_xyz_m: [number, number, number] };
 
 export function PipeFittings() {
@@ -41,7 +60,7 @@ export function PipeFittings() {
       const rMax = Math.max(...es.map((e) => outerR(e.diameter_mm)));
       const hdr = tapNodes.get(nid);
       // joints between edges (deg ≥ 2) and tee collars where a drop leaves a header
-      const r = hdr !== undefined ? Math.max(rMax, hdr) * 1.1 : es.length >= 2 ? rMax * 1.1 : rMax * 1.06;
+      const r = hdr !== undefined ? Math.max(rMax, hdr) * 1.05 : es.length >= 2 ? rMax * 1.03 : rMax * 1.03;
       out.push({ p: p as [number, number, number], r, color: es[0] ? fluidColor(es[0].loop, es[0].role) : '#aab3c1', loop: es[0].loop, roles: new Set(es.map((e) => `${e.loop}:${e.role}`)) });
     }
     return out;
@@ -54,7 +73,7 @@ export function PipeFittings() {
     const c = new THREE.Color();
     fits.forEach((f, i) => {
       m.setMatrixAt(i, mats[i]);
-      c.set(f.color).lerp(new THREE.Color('#c5ccd8'), 0.4);
+      c.set(f.color).multiplyScalar(0.8); // same jacket colour as the pipes it joins, a touch darker
       m.setColorAt(i, c);
     });
     m.instanceMatrix.needsUpdate = true;
@@ -102,7 +121,7 @@ function buildArrows(topo: Topology): Arrow[] {
     const p = paths[e.id] ?? buildPath(e.centerline_xyz_m, e.fillet_radius_m);
     const n = Math.max(1, Math.floor(e.length_m / 2.6));
     const r = outerR(e.diameter_mm);
-    const col = new THREE.Color(fluidColor(e.loop, e.role)).lerp(new THREE.Color('#ffffff'), 0.25);
+    const col = new THREE.Color(fluidColor(e.loop, e.role)).lerp(new THREE.Color('#ffffff'), 0.5);
     for (let k = 0; k < n; k++) {
       const s = ((k + 0.5) / n) * p.length;
       let seg = 0;
@@ -155,17 +174,20 @@ export function FlowArrows() {
     if (key === state.current.key) return;
     state.current.key = key;
     const { m: mat, q, s, p, d } = tmp;
+    const bx = new THREE.Vector3();
+    const bz = new THREE.Vector3();
     arrows.forEach((a, i) => {
       const sg = signs[i];
       if (sg === 0) s.set(0, 0, 0);
-      else {
-        const len = Math.min(0.5, Math.max(0.24, a.r * 4));
-        s.set(len * 0.3, len, len * 0.3);
-      }
-      d.copy(a.tan).multiplyScalar(sg || 1);
-      q.setFromUnitVectors(up, d);
-      p.copy(a.pos);
-      p.y += a.r * 0.9; // sit on the pipe crown so it reads from above
+      else s.set(a.r, a.r, a.r);
+      d.copy(a.tan).multiplyScalar(sg || 1); // +y of the chevron runs along the SOLVED flow direction
+      bz.set(0, 1, 0).addScaledVector(d, -d.y); // crown normal: world up made perpendicular to the pipe
+      if (bz.lengthSq() < 1e-4) bz.set(1, 0, 0);
+      bz.normalize();
+      bx.crossVectors(d, bz).normalize();
+      mat.makeBasis(bx, d, bz);
+      q.setFromRotationMatrix(mat);
+      p.copy(a.pos).addScaledVector(bz, a.r * 1.015);
       mat.compose(p, q, s);
       m.setMatrixAt(i, mat);
     });
@@ -174,8 +196,8 @@ export function FlowArrows() {
   if (!arrows.length) return null;
   return (
     <instancedMesh key={arrows.length} ref={ref} args={[undefined, undefined, arrows.length]} frustumCulled={false} renderOrder={4} raycast={() => null} name="flow-arrows">
-      <coneGeometry args={[1, 1, 8]} />
-      <meshBasicMaterial toneMapped={false} />
+      <primitive object={CHEVRON} attach="geometry" />
+      <meshBasicMaterial toneMapped={false} side={THREE.DoubleSide} polygonOffset polygonOffsetFactor={-2} polygonOffsetUnits={-2} />
     </instancedMesh>
   );
 }

@@ -1,13 +1,69 @@
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useLayoutEffect, useRef, useState } from 'react';
 import { AnimatePresence, motion } from 'motion/react';
-import { Activity, Cpu, Layers, FlaskConical, Pause, Play, Search, ShieldCheck, Sparkles } from 'lucide-react';
+import { Activity, Bot, Cpu, Layers, LayoutDashboard, Map as MapIcon, FlaskConical, Pause, PlayCircle, Play, Search, ShieldCheck, Sparkles } from 'lucide-react';
 import { commands, useWorld } from '@loopkeeper/core/store';
 import { useView, type QualityPreset } from '@loopkeeper/scene';
-import { formatSimClock } from '@loopkeeper/core';
+import { formatSimClock, PRODUCT_BRAND } from '@loopkeeper/core';
 import type { FaultKind } from '@loopkeeper/core/contracts';
 import { TABS, type TabId } from '../tabs/types';
 import { useUi } from './store';
 import { Chip, Dot, Eyebrow, LogoMark, Segmented } from './kit';
+import { CommunicationsLauncher } from '../features/communications/Launcher';
+import { DodChips } from '../features/dod/Panels';
+import { Button, IconButton } from './kit/index';
+
+const TAB_ICON = { dashboard: LayoutDashboard, map: MapIcon, agents: Bot, execution: PlayCircle } as const;
+
+/**
+ * ONE top-bar design, fitted instead of guessed: the bar starts with everything and drops secondary content in a fixed priority order until the three
+ * clusters (brand | tabs | actions) fit without touching each other. It re-fits whenever the bar resizes (the app narrows beside the dock) or its text changes.
+ * Levels (see styles/topbar.css): 1 sub-line to tooltip, 2 chip words to icons, 3 model chip, 4 TCS flow, 5 "Simulate", 6 wordmark, 7 key hints,
+ * 8 remaining vitals + panel chips (reachable from the panel host), 9 icon tabs and icon-only Simulate, 10 facility name.
+ */
+export const MAX_DENSITY = 10;
+export function barCrowded(bar: HTMLElement): boolean {
+  const parts = [...bar.children].filter((c) => c instanceof HTMLElement && c.getClientRects().length) as HTMLElement[];
+  const box = bar.getBoundingClientRect();
+  const rects = parts.map((p) => p.getBoundingClientRect());
+  for (let i = 0; i < parts.length; i++) {
+    if (rects[i].right > box.right + 0.5 || rects[i].left < box.left - 0.5) return true;
+    if (parts[i].scrollWidth > parts[i].clientWidth + 1) return true;
+    if (i > 0 && rects[i].left < rects[i - 1].right + 8 - 0.5) return true;
+  }
+  return false;
+}
+function useFitDensity(ref: React.RefObject<HTMLElement | null>) {
+  const [level, setLevel] = useState(0);
+  const [tick, setTick] = useState(0);
+  const last = useRef(-1);
+  useEffect(() => {
+    const el = ref.current;
+    if (!el || typeof ResizeObserver === 'undefined') return;
+    let raf = 0;
+    const bump = () => {
+      if (!raf) raf = requestAnimationFrame(() => ((raf = 0), setTick((t) => t + 1)));
+    };
+    const ro = new ResizeObserver(bump);
+    ro.observe(el);
+    const mo = new MutationObserver(bump);
+    mo.observe(el, { childList: true, subtree: true, characterData: true });
+    return () => {
+      ro.disconnect();
+      mo.disconnect();
+      cancelAnimationFrame(raf);
+    };
+  }, [ref]);
+  useLayoutEffect(() => {
+    const el = ref.current;
+    if (!el) return;
+    if (last.current !== tick) {
+      last.current = tick;
+      if (level !== 0) return setLevel(0); // re-fit from the full bar; all of this happens before paint
+    }
+    if (barCrowded(el) && level < MAX_DENSITY) setLevel(level + 1);
+  }, [tick, level, ref]);
+  return level;
+}
 
 function connLabel(connection: string, stale: boolean, paused: boolean) {
   if (connection === 'offline') return { text: 'OFFLINE', tone: 'critical' };
@@ -30,6 +86,8 @@ export function TopBar({ onPalette }: { onPalette: () => void }) {
   const kpis = useWorld((s) => s.kpis);
   const limits = useWorld((s) => s.topology?.limits);
   const [open, setOpen] = useState(false);
+  const barRef = useRef<HTMLElement>(null);
+  const density = useFitDensity(barRef);
   const c = connLabel(connection, stale, status === 'paused');
 
   const margin = kpis?.min_margin_k ?? 0;
@@ -38,14 +96,14 @@ export function TopBar({ onPalette }: { onPalette: () => void }) {
   const mock = health?.backend === 'mock';
 
   return (
-    <header className="topbar">
+    <header className="topbar" ref={barRef} data-d={density}>
       <div className="topbar__left panel panel--tight">
         <button className="brand" onClick={() => setOpen((o) => !o)} aria-expanded={open} aria-label="System status">
           <LogoMark />
-          <span className="brand__word">LOOPKEEPER</span>
+          <span className="brand__word">{PRODUCT_BRAND.name}</span>
         </button>
         <span className="topbar__sep" />
-        <button className="status" onClick={() => setOpen((o) => !o)}>
+        <button className="status" onClick={() => setOpen((o) => !o)} title={`Simulated facility · T+${formatSimClock(simTime)} · ×${speed % 1 ? speed.toFixed(1) : speed}`}>
           <span className="status__top">
             <Dot tone={c.tone} pulse={c.tone === 'nominal'} />
             <span className="status__name">{facility?.name ?? 'Connecting…'}</span>
@@ -63,24 +121,33 @@ export function TopBar({ onPalette }: { onPalette: () => void }) {
           group="tab"
           value={tab}
           onChange={setTab}
-          items={TABS.map((t) => ({ id: t.id, label: t.label, hint: t.key }))}
+          items={TABS.map((t) => {
+            const Icon = TAB_ICON[t.id];
+            return { id: t.id, aria: t.label, label: <><Icon size={15} className="seg__ico" aria-hidden /><span className="seg__lbl">{t.label}</span></>, hint: t.key };
+          })}
         />
+        <span className="topbar__sep topbar__sep--tabs" aria-hidden />
+        <div className="seg seg--comms" role="group" aria-label="Communications">
+          <CommunicationsLauncher variant="tab" />
+        </div>
       </div>
 
       <div className="topbar__right panel panel--tight">
-        <div className="vital" title="Minimum GPU thermal margin across racks">
+        <div className="topbar__vitals">
+        <div className="vital vital--margin" title={margin < 0 ? `Minimum GPU thermal margin across racks: ${margin.toFixed(1)} K. Below 0 K is past the throttle limit (unrecovered).` : margin !== 0 && limits && margin < limits.margin_warn_k ? `Minimum GPU thermal margin across racks: ${margin.toFixed(1)} K (warning below ${limits.margin_warn_k} K).` : 'Minimum GPU thermal margin across racks'}>
           <span className="vital__label">Margin</span>
           <span className={`vital__value num tone-${mTone}`}>{margin.toFixed(1)}<small>K</small></span>
         </div>
-        <div className="vital" title="Technology-cooling mass flow">
+        <div className="vital vital--flow" title="Technology-cooling mass flow">
           <span className="vital__label">TCS flow</span>
           <span className="vital__value num">{(kpis?.tcs_flow_kg_s ?? 0).toFixed(1)}<small>kg/s</small></span>
         </div>
-        <div className="vital" title="Open incidents">
+        <div className="vital vital--inc" title="Open incidents">
           <span className="vital__label">Incidents</span>
           <span className={`vital__value num ${open_i ? 'tone-warning' : 'tone-nominal'}`}>{open_i}</span>
         </div>
-        <span className="topbar__sep" />
+        </div>
+        <span className="topbar__sep topbar__sep--vitals" />
         {health && (
           <span className="hide-md">
           <Chip tone={health.intelligence.status === 'live' ? 'nominal' : 'sentinel'} sm title={`${health.intelligence.provider} · ${health.intelligence.model_id}`}>
@@ -95,32 +162,22 @@ export function TopBar({ onPalette }: { onPalette: () => void }) {
             </Chip>
           </span>
         )}
-        <button
-          className="btn btn--primary btn--sm"
-          style={{
-            display: 'flex',
-            alignItems: 'center',
-            gap: 6,
-            background: 'linear-gradient(135deg, #0284c7 0%, #0369a1 100%)',
-            border: '1px solid #38bdf8',
-            color: '#fff',
-            fontWeight: 600,
-            fontSize: 11,
-            padding: '3px 10px',
-            boxShadow: '0 0 10px rgba(2, 132, 199, 0.4)',
-          }}
+        <div className="topbar__panels" role="group" aria-label="Panels">
+          <span className="topbar__chips"><DodChips /></span>
+        </div>
+        <Button
+          variant="primary"
+          size="sm"
+          className="btn--sim"
+          icon={<Sparkles size={13} />}
           onClick={() => useUi.getState().setLauncher(true)}
           title="Simulate an incident with Natural Language (Crusoe Nemotron + Laya)"
         >
-          <Sparkles size={12} color="#38bdf8" />
-          <span>Simulate an incident</span>
-        </button>
-        <button className="icon-btn topbar__view" onClick={() => window.dispatchEvent(new Event('lk-viewer-mode'))} title="Spatial view mode" aria-label="Spatial view mode">
-          <Layers size={16} />
-        </button>
-        <button className="icon-btn" onClick={onPalette} title="Search · ⌘K" aria-label="Search">
-          <Search size={16} />
-        </button>
+          <span className="sim__long">Simulate an incident</span>
+          <span className="sim__short">Simulate</span>
+        </Button>
+        <IconButton className="topbar__view" size="sm" onClick={() => window.dispatchEvent(new Event('lk-viewer-mode'))} aria-label="Spatial view mode" icon={<Layers size={16} />} />
+        <IconButton size="sm" onClick={onPalette} aria-label="Search" tip="Search · ⌘K" icon={<Search size={16} />} />
       </div>
     </header>
   );

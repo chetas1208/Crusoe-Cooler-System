@@ -60,7 +60,7 @@ export function parseCommunicationEvent(raw: unknown, fallbackSeq?: number, fall
     const v = optId(raw[k]);
     if (v) ev[k] = v;
   }
-  for (const k of ['kind', 'message_id', 'priority', 'subtype', 'causal_event_id', 'phase', 'status', 'model_provider', 'model_id', 'visibility'] as const) {
+  for (const k of ['kind', 'message_id', 'priority', 'subtype', 'causal_event_id', 'phase', 'status', 'model_provider', 'model_id', 'visibility', 'permission_scope', 'idempotency_key'] as const) {
     const v = typeof raw[k] === 'string' ? cleanText(raw[k], 80) : '';
     if (v) ev[k] = v;
   }

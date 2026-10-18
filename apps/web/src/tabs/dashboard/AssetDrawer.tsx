@@ -6,6 +6,7 @@ import { useMapCamera, useView } from '@loopkeeper/scene';
 import { Chip, Meter } from '../../ui/kit';
 import { EntityIds, FlyButton } from '../../ui/EntityIds';
 import { useUi } from '../../ui/store';
+import { Button, IconButton } from '../../ui/kit/index';
 
 const KEYS: Record<string, string[]> = {
   rack: ['margin_k', 'power_kw', 'flow_kg_s', 't_out_c'],
@@ -60,7 +61,7 @@ function RobotBody({ id }: { id: string }) {
       </dl>
       <Meter value={r.battery_pct / 100} tone={r.battery_pct < 25 ? 'warning' : 'nominal'} />
       <div className="ad__actions">
-        <button className="btn btn--sm btn--primary" onClick={open}>Open in Map</button>
+        <Button size="sm" variant="primary" onClick={open}>Open in Map</Button>
       </div>
       <p className="ad__note">Driving is available only in the Map tab.</p>
     </>
@@ -91,9 +92,7 @@ export function AssetDrawer() {
           <h2 className="mono">{label}</h2>
           <p className="dd__muted">{sub}</p>
         </div>
-        <button className="icon-btn" onClick={() => useView.getState().select(null)} aria-label="Close details">
-          <X size={15} />
-        </button>
+        <IconButton size="sm" onClick={() => useView.getState().select(null)} aria-label="Close details" icon={<X size={15} />} />
       </header>
       {robot ? (
         <RobotBody id={id} />
@@ -120,7 +119,7 @@ export function AssetDrawer() {
           <EntityIds id={id} />
           <div className="ad__actions">
             <FlyButton id={id} />
-            {!virt && <button className="btn btn--sm btn--primary" onClick={inspect}>Inspect in Map</button>}
+            {!virt && <Button size="sm" variant="primary" onClick={inspect}>Inspect in Map</Button>}
           </div>
         </>
       )}

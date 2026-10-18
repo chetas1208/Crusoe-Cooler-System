@@ -1,6 +1,6 @@
-# LOOPKEEPER — mobile
+# Cruso Cooler System — mobile
 
-The on-call operator's companion for the LOOPKEEPER maintenance twin: a live 3D view of the simulated
+The on-call operator's companion for the Cruso Cooler System maintenance twin: a live 3D view of the simulated
 liquid-cooled hall, the incident that needs attention right now, the agent trace behind it, and the robots
 doing the work. Built with Expo (SDK 57), Expo Router, React Native Reanimated and `@react-three/fiber/native`.
 
@@ -8,14 +8,14 @@ Everything on screen is streamed from the backend. The facility is **simulated**
 **virtual**, and the app never invents telemetry, poses or outcomes — if the stream goes quiet it says `STALE`,
 `RECONNECTING` or `OFFLINE`, dims the scene, and disables commands.
 
-## Screens
+## Screens (four tabs, same model as the web console)
 
 | Tab | What it does |
 | --- | --- |
-| **Live** | Full-bleed 3D scene with a floating status card (facility · link state · sim clock · `MOCK` chip · min thermal margin / flow / incidents) and a three-detent glass sheet (peek / half / full). The sheet shows the pinned incident — severity, five-step stepper, live status line, **operator approval banner with countdown ring and Hold / Approve**, verification checks (before → after), hypotheses — or, when you tap an object, a contextual inspector (readings with units, simulator truth, robotic access, linked incidents, Focus / Follow / Enter pipe). One finger orbits, two fingers pinch-zoom and pan, tap selects, double-tap focuses. Camera presets: Whole · Plant · Zone A · Zone B. **Pipe cam** drops inside a crawler-passable segment (lit only by the crawler lamp) with a Front / Section toggle and a telemetry strip. |
-| **Incidents** | Open / resolved list with severity, status, mini stepper and elapsed sim time → detail screen with the full card, evidence, missions and the **agent trace**: SENTINEL / INPIPE / OUTRIG tasks as a vertical timeline (lane colour, status, outcome, model chip `provider · model_id`, expandable tool calls with JSON input / output). |
-| **Fleet** | Internal (INPIPE) / External (OUTRIG) robots: battery, mode, pose, current mission steps, **Follow** (jumps to Live and chases the robot) and Robot cam. |
-| **System** | Backend `MOCK` / `LIVE`, engine health, intelligence provider and model, sim speed and pause / resume, and — behind an "Engineering test controls" disclosure — fault injection for testing. |
+| **Dashboard** | Link state, `SIMULATED FACILITY`, backend chip, sim clock. **Cooling health** strip (TCS supply / return / flow / pressure from CDU-01 and trunk P-10, dimmed with the age of the last update when the stream stops), min margin / heat / open incidents, the **pinned incident** (severity, five-step stepper, status line, operator approval with countdown, verification) and **fleet counts**: internal INPIPE / external OUTRIG robots (world snapshot) and SENTINEL supervisors (`GET /agents/graph`) — 10 / 8 / 5 on the current backend. Incident rows open the incident detail (evidence, missions, agent trace). |
+| **Map** | Pinned **2D tactical map** drawn from `/topology` + streamed poses (pipes, assets, obstacles, robots, incident anchors, selected robot route), zoom controls; optional **3D scene** toggle on native (shared `@loopkeeper/scene` on R3F-native). Below it: roster (internal / external filter, search) and the **control surface** for the selected robot. **Preview (ghost)**: a local ghost, nothing is sent, no lease, the simulation is unchanged. **Live control**: lease-based (`/control/lease` → `/drive` ≤ 15 Hz intents → `/control/release`); the pad is enabled only after the lease is granted. Releasing, leaving the tab, selecting another robot, **backgrounding the app** (safe-stop `client_hidden`), or losing the stream releases / safe-stops (`features/map/useDriveSafety.ts` + the core control session). |
+| **Agents** | SENTINEL (5 supervisors) / INPIPE / OUTRIG lists with status filters → detail: **tasks** (causal timeline), **tool calls** (JSON, secret-looking keys redacted) and **verdicts** (independent verification checks before → after, task outcomes). |
+| **Execution** | Chips: **Scenario** (natural-language prompt box + presets → `POST /scenario-requests`, polled through its phases), **Comms** (`comm.*` events for the target run: REST backfill + stream, role filters, search, expandable detail, **Hide / Reopen** with an unread count), **DoD** (frozen contract checks, measured vs required, holds, terminal state, a "why not done yet" line), **Team** (SENTINEL seats, task tree, budgets, loop / drift warnings), **Run** (live play / pause / speed, run list, read-only **replay** with scrubber, step, play, speed; an amber banner on every tab while a replay is shown; engineering fault injection behind a disclosure). |
 
 Haptics mark new incidents, approval requests, approvals, verifier outcomes and mode changes. Reduce Motion is
 respected (system setting is mirrored into the scene and Reanimated).
@@ -24,21 +24,14 @@ respected (system setting is mirrored into the scene and Reanimated).
 
 ```bash
 pnpm install                 # from the repo root (node-linker=hoisted is required for Expo)
-pnpm dev:api                 # simulator-backed API → http://localhost:8787 (prints a LAN URL too)
-pnpm dev:mobile              # Expo dev server; press `i` for the iOS Simulator, or scan the QR in Expo Go
+EXPO_PUBLIC_API_URL=http://<backend-host>:8787 pnpm dev:mobile   # press `i` / `a`, or scan the QR in Expo Go
+EXPO_PUBLIC_API_URL=http://<backend-host>:8787 npx expo export --platform web   # static web build (2D map only; no GL scene)
 ```
 
-The app picks its backend like this:
-
-1. `EXPO_PUBLIC_API_URL` if set — e.g. `EXPO_PUBLIC_API_URL=http://192.168.1.20:8787 pnpm dev:mobile`
-2. otherwise the machine Metro is served from, on port `8787` (so a physical phone on the same Wi-Fi just works)
-3. otherwise `http://localhost:8787` (iOS Simulator)
-
-If the backend is down the app keeps retrying and shows "Can't reach the facility backend". No credentials are
-stored or sent by the client.
-
-Expo Go is enough — every native module used (expo-gl, expo-blur, expo-haptics, Reanimated, Gesture Handler,
-react-native-svg) ships in it.
+The backend URL comes from `EXPO_PUBLIC_API_URL`; with none set the app falls back to the machine Metro is served from
+on port `8787`, then `http://localhost:8787`. **No secrets are bundled.** If the backend answers 401 the app asks for an
+operator token, keeps it in memory for the session only, and never persists it. A browser build also needs the backend's
+CORS to allow the origin.
 
 ### Rendering knobs
 
@@ -55,9 +48,9 @@ a real device should run the scene at full quality, but that has **not been veri
 ## How it is put together
 
 ```
-src/app/            Expo Router — (tabs)/index = Live, incidents/, fleet/, system/
-src/components/     ui kit (Glass, Chip, Ring, Segmented…), live/ (canvas, sheet, inspector, pipe cam),
-                    incident/ (stepper, approval, verification, agent trace), fleet/
+src/app/            Expo Router — (tabs)/index = Dashboard, map, agents/ (list + [id]), execution; incident/[id]
+src/components/     ui kit (Chip, Ring, Segmented…), live/ (R3F-native canvas + input), incident/ (stepper, approval, verification, agent trace)
+src/features/       map/ (tactical map, roster, control surface, safety), agents/, execution/ (scenario, comms, DoD, team, run), comms/, dod/
 src/hooks/          world bootstrap + retry, link status, alerts (haptics), incident selectors
 src/theme/          tokens that mirror apps/web (colours, radii, Geist fonts)
 ```

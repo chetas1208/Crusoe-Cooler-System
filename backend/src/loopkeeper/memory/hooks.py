@@ -73,7 +73,9 @@ async def memory_read(ctx: Any, det: Json, inc: Json | None = None) -> Json:
 def _verification(state: Json, inc: Json, ctx: Any) -> Json:
     v = state.get("verify") or {}
     raw = inc.get("verification") or {}
-    status = "verified" if v.get("ok") else ("unknown" if v.get("unknown") else "rejected")
+    # only an independently REVIEWED recovery (a real model concurrence) is promoted; a fallback-concur pass stays proposed ("unknown")
+    reviewed = bool(v.get("reviewed", True))
+    status = "verified" if (v.get("ok") and reviewed) else ("unknown" if (v.get("unknown") or v.get("ok")) else "rejected")
     attempt = int(state.get("attempt") or inc.get("attempts") or 0)
     return {"verification_id": str(raw.get("id") or f"ver_{inc.get('id')}_a{attempt}"), "verifier": VERIFIER, "status": status, "run_id": ctx.engine.run_id,
             "incident_id": inc.get("id"), "checks": [c.get("id") for c in raw.get("checks", [])][:8], "contract_hash": (state.get("dod") or {}).get("frozen_hash"),
@@ -110,7 +112,7 @@ async def memory_write(ctx: Any, state: Json) -> None:
                                  expected_outcome="verified recovery" if ver["status"] == "verified" else "did not verify"),
             ]
             res = b.settle(run_id=run_id, incident_id=inc["id"], verification=ver, items=[{"kind": "fact" if "fact_id" in p else "lesson", "id": p.get("fact_id") or p.get("lesson_id"), "revision": p["revision"]} for p in prop])
-            b.expire_sweep()
+            b.expire_sweep(min_interval_s=60.0)
             return res
 
         await asyncio.to_thread(work)

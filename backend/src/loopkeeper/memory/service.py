@@ -399,8 +399,12 @@ class SharedBrain:
         return {"id": r["fact_id"], "revision": r["revision"], "confidence": r["confidence"], "text": txt, "evidence_ids": r["evidence_ids"][:6], "run_ids": r["source_run_ids"][:4]}
 
     # ───────────────────────── lifecycle ─────────────────────────
-    def expire_sweep(self) -> int:
+    def expire_sweep(self, min_interval_s: float = 0.0) -> int:
+        """Expire rows past their TTL. `min_interval_s` throttles the full scan (the incident-close hook passes 60 s) so a busy run does not scan per close."""
         now, n = self.clock(), 0
+        if min_interval_s and now - getattr(self, "_last_sweep", -1e18) < min_interval_s:
+            return 0
+        self._last_sweep = now
         for kind in ("fact", "lesson"):
             for r in self.store.select(kind, status_in=LIVE):
                 if r["expires_ts"] is not None and r["expires_ts"] <= now:

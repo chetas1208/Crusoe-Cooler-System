@@ -7,6 +7,7 @@ import { STAGES, type Incident, type Robot } from '@loopkeeper/core/contracts';
 import { useView, type Layers as LayerState } from '@loopkeeper/scene';
 import { Chip, Dot, Eyebrow, Meter, Segmented } from './kit';
 import { useUi, type PanelId } from './store';
+import { Button, IconButton } from './kit/index';
 
 const ITEMS: Array<{ id: Exclude<PanelId, null>; icon: typeof Layers; label: string }> = [
   { id: 'layers', icon: Layers, label: 'Layers & views' },
@@ -45,9 +46,7 @@ export function SidePanel() {
         <motion.aside key={panel} className="sidepanel panel" initial={{ opacity: 0, x: -14, scale: 0.985 }} animate={{ opacity: 1, x: 0, scale: 1 }} exit={{ opacity: 0, x: -10 }} transition={{ duration: 0.22, ease: [0.22, 1, 0.36, 1] }}>
           <div className="sidepanel__head">
             <Eyebrow>{panel === 'layers' ? 'Layers & views' : panel === 'fleet' ? 'Robot fleet' : 'Incidents'}</Eyebrow>
-            <button className="icon-btn" style={{ width: 26, height: 26 }} onClick={() => setPanel(null)} aria-label="Close panel">
-              <X size={15} />
-            </button>
+            <IconButton size="sm" onClick={() => setPanel(null)} aria-label="Close panel" icon={<X size={15} />} />
           </div>
           <div className="sidepanel__body scroll">{panel === 'layers' ? <LayersPanel /> : panel === 'fleet' ? <FleetPanel /> : <IncidentsPanel />}</div>
         </motion.aside>
@@ -82,7 +81,7 @@ function LayersPanel() {
           ['plant', 'Mechanical Plant'],
           ['pipe', 'Pipe Interior'],
         ] as const).map(([id, label]) => (
-          <button key={id} className="btn btn--sm preset" onClick={() => preset(id)}>{label}</button>
+          <Button key={id} size="sm" className="preset" onClick={() => preset(id)}>{label}</Button>
         ))}
       </div>
       <div className="row-switch" style={{ marginTop: 14 }}>
@@ -164,13 +163,13 @@ function RobotCard({ r }: { r: Robot }) {
       <Meter value={r.battery_pct / 100} tone={r.battery_pct < 20 ? 'critical' : r.battery_pct < 45 ? 'warning' : 'nominal'} style={{ marginTop: 8 }} />
       {mission && <div className="rcard__mission">{mission.title}</div>}
       <div className="rcard__actions">
-        <button className="btn btn--sm" data-on={following} onClick={(e) => (e.stopPropagation(), follow(following ? null : r.id))}>
-          <Radar size={13} /> {following ? 'Following' : 'Follow'}
-        </button>
+        <Button size="sm" icon={<Radar size={13} />} pressed={following} onClick={(e) => (e.stopPropagation(), follow(following ? null : r.id))}>
+          {following ? 'Following' : 'Follow'}
+        </Button>
         {r.class === 'inpipe' && (
-          <button className="btn btn--sm" disabled={!r.pose.segment_id} onClick={(e) => (e.stopPropagation(), r.pose.segment_id && enterPipe(r.pose.segment_id, r.id))}>
+          <Button size="sm" disabledReason={r.pose.segment_id ? undefined : 'Crawler is not inside a pipe segment'} onClick={(e) => (e.stopPropagation(), r.pose.segment_id && enterPipe(r.pose.segment_id, r.id))}>
             Robot cam
-          </button>
+          </Button>
         )}
       </div>
     </div>

@@ -16,6 +16,7 @@ import {
 import '@xyflow/react/dist/style.css';
 import { Ban, Bot, Check, CircleDashed, CircleHelp, CircleSlash, ClipboardList, Cog, Crosshair, Hand, Hourglass, Minus, Plus, RotateCcw, Search, ShieldCheck, X, ChevronRight, ChevronDown, ScanSearch, Maximize, type LucideIcon } from 'lucide-react';
 import type { AgentTask } from '@loopkeeper/core/contracts';
+import { edgeLabel } from './envelopes';
 import { robotLabel, type AgentStatus, type DerivedStatus } from './status';
 import { buildGraph, NODE_H, NODE_W, type EdgeData, type FlowEdge, type FlowNode, type LaneNodeData, type RobotNodeData, type TaskNodeData } from './graph';
 
@@ -126,6 +127,19 @@ function Label({ x, y, children }: { x: number; y: number; children: React.React
   );
 }
 
+/** Envelope kind tag, placed nearer the child so tags of sibling edges fan out instead of stacking at one midpoint. */
+function EnvTagLabel({ p, env, dim }: { p: EdgeProps; env: EdgeData['env']; dim: boolean }) {
+  const l = edgeLabel(env);
+  if (!l) return null;
+  const x = p.sourceX + (p.targetX - p.sourceX) * 0.7;
+  const y = p.sourceY + (p.targetY - p.sourceY) * 0.8;
+  return (
+    <Label x={x} y={y}>
+      <span className="ag-env" data-bad={l.bad || undefined} data-dim={dim || undefined} title={`Agent envelope: ${l.title}`}>{l.text}</span>
+    </Label>
+  );
+}
+
 const DelegatedEdge = memo(function DelegatedEdge(p: EdgeProps) {
   const d = p.data as EdgeData;
   const [path, lx, ly] = getBezierPath(p);
@@ -134,6 +148,7 @@ const DelegatedEdge = memo(function DelegatedEdge(p: EdgeProps) {
       <BaseEdge id={p.id} path={path} markerEnd="url(#ag-arr-n)" className="ag-edge ag-edge--delegated" style={{ opacity: d.dim ? 0.18 : 1 }} />
       {d.live && !d.dim && <path d={path} className="ag-edge ag-edge--flow" />}
       {d.verify && <Label x={lx} y={ly}><VerifyBadge v={d.verify} /></Label>}
+      {!d.dim && <EnvTagLabel p={p} env={d.env} dim={d.dim} />}
     </>
   );
 });
@@ -148,7 +163,8 @@ const EscalationEdge = memo(function EscalationEdge(p: EdgeProps) {
   return (
     <>
       <BaseEdge id={p.id} path={path} markerEnd="url(#ag-arr-a)" className="ag-edge ag-edge--escalation" style={{ opacity: d.dim ? 0.25 : 1 }} />
-      {d.label && <Label x={lx} y={ly}><span className="ag-esc">{d.label}</span></Label>}
+      {d.label && !d.env?.length && <Label x={lx} y={ly}><span className="ag-esc">{d.label}</span></Label>}
+      {!d.dim && <EnvTagLabel p={p} env={d.env} dim={d.dim} />}
     </>
   );
 });
@@ -175,6 +191,7 @@ export interface GraphProps {
   selectedId: string | null;
   onSelect(id: string | null): void;
   matches: Parameters<typeof buildGraph>[0]['matches'];
+  envelopes?: Parameters<typeof buildGraph>[0]['envelopes'];
   /** change when the scope/filter changes so we re-fit */
   scopeKey: string;
 }
@@ -205,8 +222,8 @@ function GraphInner(p: GraphProps) {
   }, [p.tasks, override]);
 
   const g = useMemo(
-    () => buildGraph({ tasks: p.tasks, incidents: p.incidents, robots: p.robots, collapsed, selectedId: p.selectedId, matches: p.matches }),
-    [p.tasks, p.incidents, p.robots, collapsed, p.selectedId, p.matches],
+    () => buildGraph({ tasks: p.tasks, incidents: p.incidents, robots: p.robots, collapsed, selectedId: p.selectedId, matches: p.matches, envelopes: p.envelopes }),
+    [p.tasks, p.incidents, p.robots, collapsed, p.selectedId, p.matches, p.envelopes],
   );
 
   const actions = useMemo<Actions>(

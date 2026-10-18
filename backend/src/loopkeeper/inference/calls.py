@@ -5,6 +5,7 @@ import asyncio
 import hashlib
 import json
 import threading
+from collections import OrderedDict, deque
 from dataclasses import asdict, dataclass, field
 from pathlib import Path
 from typing import Any, Protocol
@@ -56,20 +57,51 @@ class CallSink(Protocol):
 
 
 class MemorySink:
-    def __init__(self) -> None:
-        self.rows: list[ModelCallRow] = []
+    """Bounded in-process audit + frozen-output index. `rows` keeps the newest `max_rows` rows (a copy; oldest evicted); `frozen()` is O(1) through a dict keyed by
+    idempotency key (successful network rows with their output text), also bounded (`max_frozen`, oldest evicted)."""
+
+    def __init__(self, max_rows: int = 20000, max_frozen: int = 20000) -> None:
+        self._rows: deque[ModelCallRow] = deque(maxlen=max_rows)
+        self._frozen: OrderedDict[str, ModelCallRow] = OrderedDict()
+        self.max_frozen = max_frozen
+        self.evicted_rows = self.evicted_frozen = 0
         self._lock = threading.Lock()
+
+    @property
+    def rows(self) -> list[ModelCallRow]:
+        with self._lock:
+            return list(self._rows)
 
     def record(self, row: ModelCallRow) -> None:
         with self._lock:
-            self.rows.append(row)
+            if len(self._rows) == self._rows.maxlen:
+                self.evicted_rows += 1
+            self._rows.append(row)
+            if row.idempotency_key and row.output_text is not None and row.error is None and row.source == "network":
+                self._frozen.setdefault(row.idempotency_key, row)
+                while len(self._frozen) > self.max_frozen:
+                    self._frozen.popitem(last=False)
+                    self.evicted_frozen += 1
 
     def frozen(self, key: str) -> ModelCallRow | None:
         with self._lock:
-            for r in self.rows:
-                if r.idempotency_key == key and r.output_text is not None and r.error is None and r.source == "network":
-                    return r
-        return None
+            return self._frozen.get(key)
+
+    def stats(self) -> Json:
+        return {"rows": len(self._rows), "frozen_index": len(self._frozen), "evicted_rows": self.evicted_rows, "evicted_frozen": self.evicted_frozen}
+
+
+class LogSink:
+    """ONE structured INFO line per model call row (provider, model, kind, latency, tokens, status, cost estimate). Never prompt / response text, never secrets."""
+
+    def __init__(self, logger: Any = None) -> None:
+        import logging
+        self.log = logger or logging.getLogger("loopkeeper.model_calls")
+
+    def record(self, row: ModelCallRow) -> None:
+        self.log.info("model_call provider=%s model=%s role=%s kind=%s status=%s source=%s latency_ms=%s attempts=%s tokens_in=%s tokens_out=%s est_cost_usd=%s run_id=%s incident_id=%s task_id=%s call_id=%s",
+                      row.provider, row.model, row.role, row.kind, row.error or "ok", row.source, row.latency_ms, row.attempts, row.tokens_in, row.tokens_out,
+                      f"{row.est_cost_usd:.6f}" if row.est_cost_usd is not None else None, row.run_id, row.incident_id, row.task_id, row.call_id)
 
 
 class JsonlSink:
@@ -88,6 +120,13 @@ class JsonlSink:
         if not self.path.exists():
             return []
         return [ModelCallRow(**json.loads(line)) for line in self.path.read_text().splitlines() if line.strip()]
+
+    def frozen(self, run_id: str, key: str) -> ModelCallRow | None:
+        """Durable lookup for restart (no database): the first successful network row for this key."""
+        for r in self.load():
+            if r.idempotency_key == key and r.output_text is not None and r.error is None and r.source == "network" and r.run_id == run_id:
+                return r
+        return None
 
 
 class PgSink:
@@ -126,6 +165,18 @@ class Fanout:
                 s.record(row)
             except Exception:  # noqa: BLE001
                 self.failures += 1
+
+    def flush(self) -> None:
+        for s in self.sinks:
+            fl = getattr(s, "flush", None)
+            if callable(fl):
+                fl()
+
+    def leaves(self) -> list[Any]:
+        out: list[Any] = []
+        for s in self.sinks:
+            out.extend(s.leaves() if isinstance(s, Fanout) else [s])
+        return out
 
 
 async def arecord(sink: CallSink, row: ModelCallRow) -> None:

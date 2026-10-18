@@ -163,7 +163,7 @@ def build_outrig_graph(ctx: AgentContext):
                 await set_loads(s, cord, racks, 1.0, "uncordon")
                 s.finish(cord, "failed", "Racks did not drain in time; isolation was not attempted.", ("Cordon failed", False))
                 return fail("cordon failed", "Cordon failed")
-            s.ev("action", f"Workload moved off racks {names} (load reduced to 10%)", asset_id=racks[0])
+            s.ev("action", f"Workload moved off racks {names} (load reduced to 10%)", asset_id=racks[0] if racks else None)
             s.finish(cord, "completed", f"Racks {names} drained to idle; heat load removed before isolation.", ("Racks cordoned", True))
         else:
             ctx.lock_suppress([work["target_id"]])

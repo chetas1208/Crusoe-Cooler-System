@@ -1,6 +1,6 @@
 <div align="center">
 
-# Crusoe Cooler System
+# Cruso Cooler System
 
 ### AI agent teams that find, repair and *independently prove* the fix in a liquid-cooled data center — in simulation.
 

@@ -47,6 +47,7 @@ LADDERS: dict[str, list[str]] = {
     "workload_spike": ["monitor_only"],
 }
 GAUGES = {"fouling": {"deposit"}, "valve_stuck": {"bore"}, "sensor_drift": {"bore"}}
+L3_STEPS = {"isolate_valve", "replace_section"}     # steps the engine rates authority L3 (engine/robots/actions.py): high impact, never autonomous when Limits.l3_requires_human
 PROBE_TOOLS = {"read_telemetry", "query_topology", "check_mass_balance", "check_flow_normality"}
 
 

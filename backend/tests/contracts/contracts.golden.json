@@ -1376,6 +1376,202 @@
       },
       "source": "contracts"
     },
+    "HazardZone": {
+      "type_params": [],
+      "fields": {
+        "zone_id": {
+          "optional": false,
+          "type": "string"
+        },
+        "kind": {
+          "optional": false,
+          "type": "string"
+        },
+        "severity": {
+          "optional": false,
+          "type": "string"
+        },
+        "status": {
+          "optional": false,
+          "type": "string"
+        },
+        "center_xyz": {
+          "optional": false,
+          "type": "Vec3"
+        },
+        "radius_m": {
+          "optional": false,
+          "type": "number"
+        },
+        "polygon": {
+          "optional": false,
+          "type": "number[][]"
+        },
+        "road_blocked": {
+          "optional": true,
+          "type": "boolean"
+        },
+        "rate_kg_s": {
+          "optional": true,
+          "type": "number"
+        },
+        "total_lost_kg": {
+          "optional": true,
+          "type": "number"
+        },
+        "edge_id": {
+          "optional": true,
+          "type": "string"
+        },
+        "reserve_remaining_pct": {
+          "optional": true,
+          "type": "number"
+        },
+        "repair_requires": {
+          "optional": true,
+          "type": "string"
+        },
+        "escalated": {
+          "optional": true,
+          "type": "boolean"
+        },
+        "alarm_sounding": {
+          "optional": true,
+          "type": "boolean"
+        },
+        "heat_kw": {
+          "optional": true,
+          "type": "number"
+        },
+        "smoke_obscuration_pct_m": {
+          "optional": true,
+          "type": "number"
+        },
+        "prohibit_robot_entry": {
+          "optional": true,
+          "type": "boolean"
+        },
+        "escalation_required": {
+          "optional": true,
+          "type": "boolean"
+        },
+        "depowered": {
+          "optional": true,
+          "type": "boolean"
+        },
+        "supported_outcomes": {
+          "optional": true,
+          "type": "string[]"
+        },
+        "autonomous_firefighting": {
+          "optional": true,
+          "type": "boolean"
+        }
+      },
+      "source": "contracts"
+    },
+    "PowerRowFeed": {
+      "type_params": [],
+      "fields": {
+        "failed": {
+          "optional": false,
+          "type": "boolean"
+        },
+        "on_ups": {
+          "optional": false,
+          "type": "boolean"
+        },
+        "racks_tripped": {
+          "optional": false,
+          "type": "boolean"
+        },
+        "ups_remaining_s": {
+          "optional": true,
+          "type": "number | null"
+        },
+        "it_load_kw": {
+          "optional": false,
+          "type": "number"
+        },
+        "supply_available": {
+          "optional": false,
+          "type": "boolean"
+        },
+        "restored": {
+          "optional": false,
+          "type": "boolean"
+        }
+      },
+      "source": "contracts"
+    },
+    "PumpFeedState": {
+      "type_params": [],
+      "fields": {
+        "failed": {
+          "optional": false,
+          "type": "boolean"
+        },
+        "pumps_unpowered": {
+          "optional": false,
+          "type": "string[]"
+        },
+        "supply_available": {
+          "optional": false,
+          "type": "boolean"
+        },
+        "restored": {
+          "optional": false,
+          "type": "boolean"
+        }
+      },
+      "source": "contracts"
+    },
+    "PowerState": {
+      "type_params": [],
+      "fields": {
+        "utility_online": {
+          "optional": true,
+          "type": "boolean"
+        },
+        "backup_gen_available": {
+          "optional": true,
+          "type": "boolean"
+        },
+        "ups_runtime_remaining_s": {
+          "optional": true,
+          "type": "number"
+        },
+        "primary_pumps_powered": {
+          "optional": true,
+          "type": "boolean"
+        },
+        "robot_chargers_online": {
+          "optional": true,
+          "type": "boolean"
+        },
+        "telemetry_online": {
+          "optional": true,
+          "type": "boolean"
+        },
+        "compute_curtailed": {
+          "optional": true,
+          "type": "boolean"
+        },
+        "row_feeds": {
+          "optional": true,
+          "type": "Record<string, PowerRowFeed>"
+        },
+        "pump_feed_a": {
+          "optional": true,
+          "type": "PumpFeedState"
+        },
+        "racks_depowered": {
+          "optional": true,
+          "type": "string[]"
+        }
+      },
+      "source": "contracts"
+    },
     "WorldSnapshot": {
       "type_params": [],
       "fields": {
@@ -1438,6 +1634,14 @@
         "mechanical_fixtures": {
           "optional": true,
           "type": "Record<string, MechanicalFixtureState>"
+        },
+        "hazard_zones": {
+          "optional": true,
+          "type": "HazardZone[]"
+        },
+        "power_state": {
+          "optional": true,
+          "type": "PowerState"
         }
       },
       "source": "contracts"
@@ -3075,7 +3279,7 @@
     "RobotMode": "| 'IDLE' | 'ASSIGNED' | 'ROUTE_PLANNING' | 'TRAVELING' | 'INSPECTING' | 'WORKING' | 'VERIFYING' | 'RETURNING' | 'DOCKED' | 'BLOCKED' | 'FAILED' | 'ABORTED' | 'NEEDS_CHARGE' | 'SAFE_HOLD'",
     "IncidentStage": "| 'observed' | 'hypothesized' | 'investigated' | 'repaired' | 'verified'",
     "IncidentStatus": "| 'open' | 'investigating' | 'awaiting_approval' | 'mitigating' | 'verifying' | 'replanning' | 'escalated' | 'resolved' | 'dismissed'",
-    "FaultKind": "| 'fouling' | 'strainer_blockage' | 'valve_stuck' | 'pump_degradation' | 'sensor_drift' | 'workload_spike' | 'leak'",
+    "FaultKind": "| 'fouling' | 'strainer_blockage' | 'valve_stuck' | 'pump_degradation' | 'sensor_drift' | 'workload_spike' | 'leak' | 'manifold_leak' | 'power_failure' | 'rack_thermal_runaway' | 'cdu_pump_backup_failure' | 'facility_heat_rejection_loss'",
     "AgentRole": "'sentinel' | 'inpipe' | 'outrig'",
     "AgentTaskStatus": "| 'queued' | 'working' | 'blocked' | 'completed' | 'verified' | 'rejected' | 'failed'",
     "EventType": "| 'snapshot' | 'world.diff' | 'robot.pose' | 'robot.control' | 'mission.transition' | 'incident.opened' | 'incident.updated' | 'incident.closed' | 'agent.task' | 'agent.tool' | 'verification.result' | 'engine.health' | 'heartbeat'",

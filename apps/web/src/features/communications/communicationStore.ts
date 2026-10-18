@@ -1,5 +1,6 @@
 import { create } from 'zustand';
-import type { CommunicationEventV1, ConnState, RoleFilter } from './types';
+import type { CommunicationEventV1, ConnState, Density, RoleFilter } from './types';
+import { getLayout } from '../responsive/layout';
 
 /**
  * Communications state. Module-level on purpose: the panel can be closed, unmounted and reopened any number of times
@@ -9,6 +10,22 @@ import type { CommunicationEventV1, ConnState, RoleFilter } from './types';
  */
 export const MAX_EVENTS = 20_000;
 const OPEN_KEY = 'lk.comms.open';
+const DENSITY_KEY = 'lk.comms.density';
+const GROUP_KEY = 'lk.comms.grouped';
+const lsGet = (k: string): string | null => {
+  try {
+    return localStorage.getItem(k);
+  } catch {
+    return null; // private mode / blocked storage: the panel works without it
+  }
+};
+const lsSet = (k: string, v: string) => {
+  try {
+    localStorage.setItem(k, v);
+  } catch {
+    /* private mode */
+  }
+};
 
 export const isFailure = (e: CommunicationEventV1) => (FAIL_KINDS.has(kindOf(e)) && kindOf(e) !== 'HUMAN_OVERRIDE' && kindOf(e) !== 'STOP') || /^(failed|error|rejected|denied|blocked|refused|timeout|unavailable|aborted|expired|safe_hold)/i.test(e.status ?? '') || /^(failed|error|rejected|denied|blocked)/i.test(e.phase ?? '') || /(\.|^)(failed|error|blocked|denied|rejected|deadman)$/i.test(e.subtype ?? '');
 const kindOf = (e: CommunicationEventV1) => (e.kind && /^[A-Z_]+$/.test(e.kind) ? e.kind : e.message_type);
@@ -94,6 +111,11 @@ interface State {
   adv: AdvFilters;
   query: string;
   open: boolean;
+  /** row density and thread grouping are reader preferences: they survive closing the panel and reloads */
+  density: Density;
+  grouped: boolean;
+  /** thread ids the reader folded */
+  collapsed: Record<string, boolean>;
   selectedId: string | null;
   /** pinned to the newest message; false once the reader scrolls back in history */
   follow: boolean;
@@ -117,6 +139,9 @@ interface State {
   setAdv(p: Partial<AdvFilters>): void;
   clearAdv(): void;
   setOpen(open: boolean, focus?: boolean): void;
+  setDensity(d: Density): void;
+  setGrouped(g: boolean): void;
+  toggleThread(id: string): void;
   select(id: string | null): void;
   setFollow(f: boolean): void;
   markRead(): void;
@@ -137,8 +162,9 @@ function readOpen(): boolean {
   } catch {
     /* private mode */
   }
-  // default: open on desktop when there is room, collapsed on phones
-  return typeof window !== 'undefined' && window.innerWidth >= 1100;
+  // first load: docked OPEN on a desktop-class window (>= 900 x 520, regular chrome, fine pointer); collapsed on phones and touch tablets. The choice is remembered per browser (OPEN_KEY).
+  const l = getLayout();
+  return typeof window !== 'undefined' && l.host === 'dock' && !l.coarse;
 }
 
 export const useCommunications = create<State>()((set, get) => ({
@@ -153,6 +179,9 @@ export const useCommunications = create<State>()((set, get) => ({
   adv: NO_ADV,
   query: '',
   open: readOpen(),
+  density: lsGet(DENSITY_KEY) === 'compact' ? 'compact' : 'comfortable',
+  grouped: lsGet(GROUP_KEY) !== '0',
+  collapsed: {},
   selectedId: null,
   follow: true,
   unread: 0,
@@ -166,7 +195,7 @@ export const useCommunications = create<State>()((set, get) => ({
   setRun: (runId) => {
     if (get().runId === runId) return;
     seen = new Set();
-    set({ runId, lineage: [], events: [], unread: 0, readSeq: 0, selectedId: null, follow: true, scrollTop: 0, alert: null, backfill: { state: 'idle', error: null } });
+    set({ runId, lineage: [], events: [], collapsed: {}, unread: 0, readSeq: 0, selectedId: null, follow: true, scrollTop: 0, alert: null, backfill: { state: 'idle', error: null } });
   },
 
   setLineage: (lineage) => set((s) => (JSON.stringify(s.lineage) === JSON.stringify(lineage) ? s : { lineage })),
@@ -221,6 +250,15 @@ export const useCommunications = create<State>()((set, get) => ({
     }
     set((s) => ({ open, ...(open && focus ? { focusRequest: s.focusRequest + 1 } : {}), ...(open && s.follow ? { unread: 0, readSeq: s.events.length ? s.events[s.events.length - 1].seq : s.readSeq } : {}) }));
   },
+  setDensity: (density) => {
+    lsSet(DENSITY_KEY, density);
+    set({ density });
+  },
+  setGrouped: (grouped) => {
+    lsSet(GROUP_KEY, grouped ? '1' : '0');
+    set({ grouped });
+  },
+  toggleThread: (id) => set((s) => ({ collapsed: { ...s.collapsed, [id]: !s.collapsed[id] } })),
   select: (selectedId) => set({ selectedId }),
   setFollow: (follow) => set((s) => (s.follow === follow ? s : { follow })),
   markRead: () => set((s) => (s.unread === 0 && s.readSeq === (s.events.length ? s.events[s.events.length - 1].seq : 0) ? s : { unread: 0, readSeq: s.events.length ? s.events[s.events.length - 1].seq : s.readSeq })),
@@ -232,5 +270,5 @@ export const useCommunications = create<State>()((set, get) => ({
 
 export function resetCommunicationsForTest() {
   seen = new Set();
-  useCommunications.setState({ runId: null, events: [], dropped: 0, conn: 'CONNECTING', mode: 'live', cursorTick: null, filter: 'all', adv: NO_ADV, query: '', selectedId: null, follow: true, unread: 0, readSeq: 0, scrollTop: 0, previewAt: 0, alert: null, backfill: { state: 'idle', error: null } });
+  useCommunications.setState({ runId: null, events: [], collapsed: {}, dropped: 0, conn: 'CONNECTING', mode: 'live', cursorTick: null, filter: 'all', adv: NO_ADV, query: '', selectedId: null, follow: true, unread: 0, readSeq: 0, scrollTop: 0, previewAt: 0, alert: null, backfill: { state: 'idle', error: null } });
 }

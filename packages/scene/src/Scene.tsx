@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import * as THREE from 'three';
 import { useFrame, useThree } from '@react-three/fiber';
 import { CameraRig } from './CameraRig';
@@ -9,7 +9,9 @@ import { HallDetail, PlantContext } from './HallDetail';
 import { PipeInterior } from './PipeInterior';
 import { Pipes } from './Pipes';
 import { ShaderWarmup } from './Warmup';
-import { TiledFacility, tilesRequested, type TileState } from './tiles/TiledFacility';
+import { TiledFacility, type TileState } from './tiles/TiledFacility';
+import { isSoftwareRenderer, tilesWanted, useTileMode } from './tiles/mode';
+import { ShadowGovernor } from './perf/ShadowGovernor';
 import { PipeSupports } from './Supports';
 import { RackBranches } from './Branches';
 import { Racks } from './Racks';
@@ -103,9 +105,41 @@ function Backdrop() {
 
 export function Scene({ shadows = true }: { shadows?: boolean }) {
   const mode = useView((s) => s.mode);
-  const [tiles, setTiles] = useState<TileState>(tilesRequested ? 'loading' : 'off');
-  // while tiles are ready the procedural static facility stays hidden; failed/unavailable manifests fall back to it
-  const procedural = tiles !== 'ready';
+  const tileMode = useTileMode((s) => s.mode);
+  const tier = useView((s) => s.quality);
+  const gl = useThree((s) => s.gl);
+  const software = useMemo(() => {
+    try {
+      const c = gl.getContext();
+      const d = c.getExtension('WEBGL_debug_renderer_info');
+      return isSoftwareRenderer(String(c.getParameter(d ? d.UNMASKED_RENDERER_WEBGL : c.RENDERER)));
+    } catch {
+      return false;
+    }
+  }, [gl]);
+  // Auto leaves the tile layer on for 20 s after it was last wanted: the Auto quality controller must not make the hall flip
+  // between the procedural and the streamed scene (each flip re-draws the whole static scene) on a marginal frame budget
+  const wantedNow = tilesWanted(tileMode, tier, software);
+  const [holdUntil, setHoldUntil] = useState(0);
+  useEffect(() => {
+    if (wantedNow && tileMode === 'auto') setHoldUntil(performance.now() + 20_000);
+  }, [wantedNow, tileMode]);
+  const [, bump] = useState(0);
+  useEffect(() => {
+    if (wantedNow || tileMode !== 'auto') return;
+    const left = holdUntil - performance.now();
+    if (left <= 0) return;
+    const t = setTimeout(() => bump((n) => n + 1), left + 50);
+    return () => clearTimeout(t);
+  }, [wantedNow, tileMode, holdUntil]);
+  const streaming = wantedNow || (tileMode === 'auto' && performance.now() < holdUntil);
+  const [tileState, setTiles] = useState<TileState>('off');
+  useEffect(() => {
+    if (!streaming) setTiles('off');
+  }, [streaming]);
+  // while the tile layer is ready the procedural static facility stays hidden; until LOD0 is resident, and whenever the manifest or
+  // LOD0 fails (offline, 404, topology mismatch, decode error, embedded mock), the procedural facility is the visible LOD0
+  const procedural = !(streaming && tileState === 'ready');
   // once the camera has glided into a sealed bore the hall is unseen — skip drawing it entirely
   const [inside, setInside] = useState(false);
   useEffect(() => {
@@ -118,8 +152,9 @@ export function Scene({ shadows = true }: { shadows?: boolean }) {
       <Backdrop />
       <ShaderWarmup />
       <SceneLights shadows={shadows} />
+      <ShadowGovernor enabled={shadows} />
       <RelevanceProvider>
-        {tilesRequested && <TiledFacility onState={setTiles} />}
+        {streaming && <TiledFacility onState={setTiles} />}
         <group visible={!inside && procedural}>
           <Facility />
           <HallDetail />

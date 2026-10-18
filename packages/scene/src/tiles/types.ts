@@ -55,6 +55,23 @@ export interface TileStats {
   evicted: number;
   decode_failures: number;
   cache_hits: number;
+  /** wall-clock ms spent in GLTFLoader.parse (main thread) over all tiles, and the slowest single tile */
+  decode_ms_total: number;
+  decode_ms_max: number;
+  decoded_tiles: number;
+  /** ms from manager construction to LOD0 attached */
+  lod0_ms: number | null;
+  attached: number;
+  detached: number;
+  /** load attempts that ended in a network/decode error (the lower LOD stays) */
+  load_failures: number;
   state: 'idle' | 'loading-manifest' | 'ready' | 'failed';
   error: string | null;
+}
+
+export interface TileEvent {
+  t: number;
+  kind: 'attach' | 'detach' | 'abort' | 'fail' | 'evict' | 'cache_hit';
+  tile: string;
+  detail?: string;
 }

@@ -49,6 +49,7 @@ class AgentRuntimeImpl:
         self._monitor_saved = False
         self._progress: dict[str, tuple[Any, float]] = {}      # incident -> (progress signature, sim time it last changed)
         self._next_live = 0.0
+        self._reopen_after: dict[str, float] = {}               # detector key -> sim time before which an escalated anchor is not re-opened
         self.errors: list[str] = []
 
     # ── lifecycle ──
@@ -59,7 +60,13 @@ class AgentRuntimeImpl:
         locks = ResourceLocks()
         policy = Policy(fac, approval_mode=self.limits.approval_mode, approval_window_s=self.limits.approval_window_s, locks=locks)
         monitor = Monitor(fac, persist_s=self.limits.persist_s)
-        self.status, client = await probe_model(self.cfg, self._client_in)
+        client_in = self._client_in
+        self.gateway = None
+        if client_in is None and self.cfg.configured:                  # V11: the inference gateway (retry/backoff/budget/breaker/model_calls) is the default client
+            from loopkeeper.inference.default import build_default_gateway, gateway_enabled
+            if gateway_enabled():
+                self.gateway = client_in = await build_default_gateway(self.cfg, run_id, getattr(engine, "storage", None) or getattr(getattr(engine, "_e", None), "storage", None))
+        self.status, client = await probe_model(self.cfg, client_in)
         if self._saver_in is not None:
             saver, self.checkpointer_kind, pool = self._saver_in, "injected", None
             if type(saver).__name__ == "InMemorySaver":
@@ -148,6 +155,8 @@ class AgentRuntimeImpl:
         for det in dets:
             if det.key in ctx.open_keys:
                 continue
+            if sim_time(world) < self._reopen_after.get(det.key, 0.0):
+                continue
             if self._open_count() >= self.limits.max_open_incidents:
                 break  # lower-priority investigations are deferred; the detector keeps asserting
             inc_id = self._next_inc_id(world)
@@ -170,9 +179,10 @@ class AgentRuntimeImpl:
             snap = await self.graph.aget_state(self._cfg(inc_id))
             outcome = (snap.values or {}).get("outcome")
             if outcome in ("resolved", "dismissed"):
-                for k, v in list(ctx.open_keys.items()):
-                    if v == inc_id:
-                        del ctx.open_keys[k]
+                self._release_keys(inc_id)
+            elif outcome == "escalated":
+                self._release_keys(inc_id, cooldown_s=self.limits.reopen_cooldown_s)      # a persisting fault may open a fresh incident after the cool-down
+            ctx.decisions.release(inc_id)
             ctx.locks.release_all(inc_id)
         except asyncio.CancelledError:
             raise  # shutdown: checkpoints stay; resume() continues the thread
@@ -180,11 +190,25 @@ class AgentRuntimeImpl:
             log.exception("incident graph failed id=%s", inc_id)
             self.errors.append(f"{inc_id}: {type(e).__name__}")
             ctx.locks.release_all(inc_id)
+            ctx.decisions.release(inc_id)
             inc = copy.deepcopy(ctx.ledger.incidents.get(inc_id))
             if inc and inc.get("closed_tick") is None:
                 inc["status"] = "escalated"
                 inc["summary"] = f"Agent orchestration error ({type(e).__name__}); operator review required. Monitoring continues."
                 ctx.emit("incident.updated", inc_id, {"incident": inc})
+                self._release_keys(inc_id, cooldown_s=self.limits.reopen_cooldown_s)
+                self._stuck_contract(inc_id, "An internal error stopped the agent graph for this incident.", timed_out=False)
+
+    def _release_keys(self, inc_id: str, cooldown_s: float = 0.0) -> None:
+        """Free the detector anchors owned by an ended incident. After an escalation the anchor stays quiet for `cooldown_s` (no duplicate-incident storm),
+        then a fault that persists is allowed to open a fresh incident instead of being ignored forever."""
+        ctx = self.ctx
+        until = ctx.now + cooldown_s
+        for k, v in list(ctx.open_keys.items()):
+            if v == inc_id:
+                del ctx.open_keys[k]
+                if cooldown_s > 0:
+                    self._reopen_after[k] = until
 
     def _liveness(self, world: Json) -> None:
         """Stuck-stage guard (V11 drift detection): an open incident that makes no progress (status / stage / evidence / tasks unchanged) for
@@ -226,17 +250,20 @@ class AgentRuntimeImpl:
             inc2.update(status="escalated", summary=reason, updated_tick=int(world.get("sim_tick", 0)))
             ctx.emit("incident.updated", iid, {"incident": inc2})
             self._progress.pop(iid, None)
+            self._release_keys(iid, cooldown_s=self.limits.reopen_cooldown_s)
+            ctx.decisions.release(iid)
             self._stuck_contract(iid, reason)
 
-    def _stuck_contract(self, iid: str, reason: str) -> None:
+    def _stuck_contract(self, iid: str, reason: str, timed_out: bool = True) -> None:
         tr = getattr(getattr(self.engine, "_e", None), "track", None)
         c = (tr.contracts.get(iid) if tr is not None else None)
         if c is None or c.get("terminal_state"):
             return
         from . import dod
         c = copy.deepcopy(c)
-        c["terminal_state"] = dod.terminal_of(c, escalated=True, timed_out=True)
+        c["terminal_state"] = dod.terminal_of(c, escalated=True, timed_out=timed_out)
         c["state"], c["escalation_reason"] = "ESCALATED", reason[:300]
+        c["outcome_text"] = dod.outcome_text(c, c["terminal_state"], reason if timed_out else "")
         self.ctx.emit("dod.contract", iid, {"contract": c})
 
     def _reap(self) -> None:
@@ -292,7 +319,12 @@ class AgentRuntimeImpl:
                      "title": inc.get("title", ""), "summary": inc.get("summary", ""), "affected": inc.get("affected_asset_ids", []),
                      "anchor_id": inc["anchor"]["entity_id"], "evidence": []}
                 log.info("no checkpoint for %s: restarting its graph from the persisted incident", iid)
-                self._launch(iid, {"incident": inc, "det": d, "tasks": {}, "task_seq": 0, "ev_seq": 0, "attempt": 0, "tokens_used": 0})
+                init: Json = {"incident": inc, "det": d, "tasks": {}, "task_seq": 0, "ev_seq": 0, "attempt": 0, "tokens_used": 0}
+                tr = getattr(getattr(self.engine, "_e", None), "track", None)
+                prior = (tr.contracts.get(iid) if tr is not None else None)
+                if prior is not None and prior.get("frozen_hash") and not prior.get("terminal_state"):
+                    init["dod"] = copy.deepcopy(prior)           # the FROZEN Definition of Done survives a restart; it is never silently dropped
+                self._launch(iid, init)
 
     # ── status / introspection ──
     def model_status(self) -> Json:

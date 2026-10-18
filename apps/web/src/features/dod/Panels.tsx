@@ -1,8 +1,6 @@
-import { useEffect, useState } from 'react';
-import { createPortal } from 'react-dom';
-import { BottomSheet, type SheetState } from '../responsive/BottomSheet';
-import { usePhoneLayout } from '../responsive/phone';
-import { ScorecardPanel } from '../scorecard/ScorecardPanel';
+import { useEffect, type ReactNode } from 'react';
+import { BarChart3, ClipboardCheck, Users } from 'lucide-react';
+import { togglePanel, usePanelOpen } from '../responsive/panels';
 import { onCommStreamEvent } from '@loopkeeper/core/store';
 import { parseContract } from './schemas';
 import { useExec, activeLiveRunId, isReplayOnly } from '../../tabs/execution/state';
@@ -51,48 +49,22 @@ export function useDodPolling() {
   }, [runId, show, running]);
 }
 
+/** Launcher chips for the Done / Team / Scorecard panels. They open the shared panel host (dock, drawer or sheet), from any tab. */
 export function DodChips() {
-  const d = useDod();
-  return (
-    <>
-      <ScorecardChip />
-      <button type="button" className="chip" data-active={d.showDod} aria-pressed={d.showDod} onClick={() => d.setShow('showDod', !d.showDod)} title="Definition of Done: what must be measured before this run counts as fixed" style={{ fontSize: 11, padding: '2px 8px' }}>
-        Done
-      </button>
-      <button type="button" className="chip" data-active={d.showTeam} aria-pressed={d.showTeam} onClick={() => d.setShow('showTeam', !d.showTeam)} title="SENTINEL team and their tasks" style={{ fontSize: 11, padding: '2px 8px' }}>
-        Team
-      </button>
-    </>
-  );
-}
-
-const scoreOpen = { listeners: new Set<() => void>(), on: false };
-function useScoreOpen(): [boolean, (v: boolean) => void] {
-  const [, force] = useState(0);
-  useEffect(() => { const f = () => force((n) => n + 1); scoreOpen.listeners.add(f); return () => void scoreOpen.listeners.delete(f); }, []);
-  return [scoreOpen.on, (v) => { scoreOpen.on = v; scoreOpen.listeners.forEach((f) => f()); }];
-}
-function ScorecardChip() {
-  const [open, set] = useScoreOpen();
-  return (
-    <button type="button" className="chip" data-active={open} aria-pressed={open} onClick={() => set(!open)} title="Frozen V11 evaluation: baselines vs single-pass, with denominators" style={{ fontSize: 11, padding: '2px 8px' }}>
-      Scorecard
+  const open = usePanelOpen();
+  const chip = (k: 'scorecard' | 'dod' | 'team', label: string, title: string, icon: ReactNode) => (
+    <button type="button" className="chip chip--panel" data-panel={k} data-active={open[k]} aria-pressed={open[k]} onClick={(e) => togglePanel(k, true, e.currentTarget)} title={title}>
+      {icon}
+      <span className="chip__lbl">{label}</span>
     </button>
   );
-}
-export function ScorecardHost() {
-  const [open, set] = useScoreOpen();
-  const phone = usePhoneLayout();
-  const [sheet, setSheet] = useState<SheetState>('expanded');
-  if (!open) return null;
-  if (phone)
-    return createPortal(
-      <BottomSheet state={sheet} onState={setSheet} title="Evaluation scorecard" onClose={() => set(false)}>
-        <ScorecardPanel onClose={() => set(false)} inSheet />
-      </BottomSheet>,
-      document.body,
-    );
-  return <ScorecardPanel onClose={() => set(false)} />;
+  return (
+    <>
+      {chip('scorecard', 'Scorecard', 'Frozen V11 evaluation: baselines vs single-pass, with denominators', <BarChart3 size={14} aria-hidden />)}
+      {chip('dod', 'Done', 'Definition of Done: what must be measured before this run counts as fixed', <ClipboardCheck size={14} aria-hidden />)}
+      {chip('team', 'Team', 'SENTINEL team and their tasks', <Users size={14} aria-hidden />)}
+    </>
+  );
 }
 
 const TONE: Record<string, string> = { PASS: 'pass', FAIL: 'fail', UNKNOWN: 'unk' };
@@ -264,35 +236,13 @@ export function TeamPanel() {
   );
 }
 
-/** mounted by the Execution tab: polling + both panels in one rail */
-export function DodRail() {
-  useDodPolling();
-  const d = useDod();
+/** Execution tab only: the real prompt-request chain strip (Done / Team / Scorecard live in the shared panel host). */
+export function PromptRail() {
   const prompting = usePromptRequest((s) => s.startedAt !== null);
-  const phone = usePhoneLayout();
-  const [scoreShown] = useScoreOpen();
-  const [sheet, setSheet] = useState<SheetState>('peek');
-  if (phone && scoreShown) return null; // one sheet at a time on a phone: the scorecard takes over
-  if (!d.showDod && !d.showTeam && !prompting) return null;
-  // phones: the same panels inside the shell's tap-operable bottom sheet (closing it hides both, exactly like the chips do)
-  if (phone)
-    return createPortal(
-      <BottomSheet state={sheet} onState={setSheet} title="Execution details" onClose={() => { d.setShow('showDod', false); d.setShow('showTeam', false); usePromptRequest.getState().dismiss(); setSheet('peek'); }}>
-        <div className="dd-rail dd-rail--sheet">
-          {/* the header chip rail sits behind the sheet on short screens: the same toggles live here */}
-          <div className="dd-sheetchips"><DodChips /></div>
-          <PromptStatusStrip />
-          <DodPanel />
-          <TeamPanel />
-        </div>
-      </BottomSheet>,
-      document.body,
-    );
+  if (!prompting) return null;
   return (
-    <div className="dd-rail">
+    <div className="dd-rail dd-rail--prompt">
       <PromptStatusStrip />
-      <DodPanel />
-      <TeamPanel />
     </div>
   );
 }

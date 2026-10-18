@@ -8,6 +8,7 @@ import { INCIDENT_STATUS_LABEL, ROBOT_MODE_LABEL, STATUS_LABEL, formatDuration, 
 import { useView } from '@loopkeeper/scene';
 import { Chip, Dot, Eyebrow, Meter, Sparkline, Stat, fmtReading, useSeries } from './kit';
 import { useUi } from './store';
+import { Button, IconButton } from './kit/index';
 
 const KEY_METRICS: Record<string, string[]> = {
   rack: ['margin_k', 't_chip_c', 'power_kw', 'flow_kg_s', 't_out_c'],
@@ -51,9 +52,7 @@ function Header({ icon, title, name, status, onClose }: { icon: React.ReactNode;
           {STATUS_LABEL[status as keyof typeof STATUS_LABEL] ?? status}
         </Chip>
       )}
-      <button className="icon-btn" style={{ width: 26, height: 26 }} onClick={onClose} aria-label="Close inspector">
-        <X size={15} />
-      </button>
+      <IconButton size="sm" onClick={onClose} aria-label="Close inspector" icon={<X size={15} />} />
     </header>
   );
 }
@@ -224,13 +223,13 @@ function AssetInspector({ id }: { id: string }) {
         <Spec spec={asset.spec} />
       </div>
       <footer className="insp__foot">
-        <button className="btn btn--sm" onClick={() => focus(id)}>
-          <Crosshair size={13} /> Focus
-        </button>
+        <Button size="sm" icon={<Crosshair size={13} />} onClick={() => focus(id)}>
+          Focus
+        </Button>
         {edge && (
-          <button className="btn btn--sm" onClick={() => select(edge.id)}>
-            <Cable size={13} /> {edge.label}
-          </button>
+          <Button size="sm" icon={<Cable size={13} />} onClick={() => select(edge.id)}>
+            {edge.label}
+          </Button>
         )}
       </footer>
     </>
@@ -355,12 +354,12 @@ function PipeInspector({ id }: { id: string }) {
         <Linked id={id} />
       </div>
       <footer className="insp__foot">
-        <button className="btn btn--sm" onClick={() => focus(id)}>
-          <Crosshair size={13} /> Focus
-        </button>
-        <button className="btn btn--sm btn--primary" disabled={!edge.robot_passable} title={edge.robot_passable ? 'Look inside the bore' : edge.not_passable_reason} onClick={() => enterPipe(id, crawler?.id ?? null)}>
-          <ArrowRight size={13} /> Enter pipe
-        </button>
+        <Button size="sm" icon={<Crosshair size={13} />} onClick={() => focus(id)}>
+          Focus
+        </Button>
+        <Button size="sm" variant="primary" icon={<ArrowRight size={13} />} disabledReason={edge.robot_passable ? undefined : edge.not_passable_reason || 'Not passable by a crawler'} title={edge.robot_passable ? 'Look inside the bore' : undefined} onClick={() => enterPipe(id, crawler?.id ?? null)}>
+          Enter pipe
+        </Button>
       </footer>
     </>
   );
@@ -391,7 +390,7 @@ function RobotInspector({ id }: { id: string }) {
           <div className="insp__name">{r.class === 'inpipe' ? 'INPIPE · internal inspection crawler' : 'OUTRIG · external maintenance robot'}</div>
         </div>
         <Chip tone={tone} sm>{r.mode !== 'DOCKED' && <Dot tone={tone} pulse />}{ROBOT_MODE_LABEL[r.mode]}</Chip>
-        <button className="icon-btn" style={{ width: 26, height: 26 }} onClick={() => select(null)} aria-label="Close inspector"><X size={15} /></button>
+        <IconButton size="sm" onClick={() => select(null)} aria-label="Close inspector" icon={<X size={15} />} />
       </header>
       <div className="insp__scroll scroll">
         <section className="insp__sec" style={{ paddingTop: 8 }}>
@@ -450,13 +449,13 @@ function RobotInspector({ id }: { id: string }) {
         )}
       </div>
       <footer className="insp__foot">
-        <button className="btn btn--sm" data-on={following} onClick={() => follow(following ? null : id)}>
-          <Radar size={13} /> {following ? 'Following' : 'Follow'}
-        </button>
+        <Button size="sm" icon={<Radar size={13} />} pressed={following} onClick={() => follow(following ? null : id)}>
+          {following ? 'Following' : 'Follow'}
+        </Button>
         {r.class === 'inpipe' && (
-          <button className="btn btn--sm btn--primary" disabled={!r.pose.segment_id} onClick={() => r.pose.segment_id && enterPipe(r.pose.segment_id, id)}>
-            <Gauge size={13} /> Robot cam
-          </button>
+          <Button size="sm" variant="primary" icon={<Gauge size={13} />} disabledReason={r.pose.segment_id ? undefined : 'Crawler is not inside a pipe segment'} onClick={() => r.pose.segment_id && enterPipe(r.pose.segment_id, id)}>
+            Robot cam
+          </Button>
         )}
       </footer>
     </>

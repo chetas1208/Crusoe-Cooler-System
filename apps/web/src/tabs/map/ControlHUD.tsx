@@ -1,5 +1,8 @@
 import { useMemo } from 'react';
 import { DriveLinkBar } from './DriveLinkBar';
+import { RoutePanel } from './RoutePanel';
+import { ControlStrip } from './ControlStrip';
+import { useStageInsets } from './stageInsets';
 import { useWorld, usePreviewDrive } from '@loopkeeper/core/store';
 import { useControl, controlActions } from '@loopkeeper/core/control';
 import { whereOnFloor } from '../../lib/where';
@@ -47,6 +50,7 @@ export function ControlHUD({ immersive, onToggleImmersive }: ControlHUDProps) {
   const mechanicalFixtures = useWorld((s) => s.mechanical_fixtures);
   const robot = selectedRobotId ? robots[selectedRobotId] : undefined;
   const ctl = useControl();
+  const stage = useStageInsets();
   const noRobot = !robot;
   const reason = 'Select a robot first';
 
@@ -94,26 +98,32 @@ export function ControlHUD({ immersive, onToggleImmersive }: ControlHUDProps) {
         pointerEvents: 'none',
         display: 'flex',
         flexDirection: 'column',
-        justifyContent: 'space-between',
-        padding: '0 16px',
+        justifyContent: 'flex-start',
+        paddingLeft: stage.left + 12,
+        paddingRight: stage.right + 12,
         boxSizing: 'border-box',
       }}
     >
       {/* Top Bar: Viewport Badge & Camera Mode Selector */}
       <div
+        data-stage-inset="top"
+        data-panel="hud-top"
         style={{
           display: 'flex',
           justifyContent: 'center',
           alignItems: 'center',
           gap: 12,
           flexWrap: 'wrap',
-          margin: '0 auto',
+          // the collapsed View dock sits at the stage's top-left corner; the badges centre in what is left of the row (margin, not padding, so the panel rect excludes the dock)
+          margin: cameraMode === 'tactical' ? '0 0 0 108px' : '0 auto',
+          width: cameraMode === 'tactical' ? 'calc(100% - 108px)' : '100%',
+          boxSizing: 'border-box',
         }}
       >
         {/* V9 Non-Destructive Ghost Preview Banner */}
         {usePreviewDrive((s) => s.active) && (
           <div
-            className="hud-preview-banner panel"
+            className="hud-preview-banner panel" data-panel="preview-banner"
             style={{
               pointerEvents: 'auto',
               display: 'flex',
@@ -158,10 +168,13 @@ export function ControlHUD({ immersive, onToggleImmersive }: ControlHUDProps) {
 
         {/* Viewport Badge */}
         <div
-          className="hud-pill panel"
+          className="hud-pill panel" data-panel="badge"
           style={{
             pointerEvents: 'auto',
             display: 'flex',
+            maxWidth: '100%',
+            boxSizing: 'border-box',
+            flexWrap: 'wrap',
             alignItems: 'center',
             gap: 8,
             padding: '6px 12px',
@@ -192,10 +205,14 @@ export function ControlHUD({ immersive, onToggleImmersive }: ControlHUDProps) {
 
         {/* Camera Perspective Mode Switcher */}
         <div
-          className="hud-cam-modes panel"
+          className="hud-cam-modes panel" data-panel="cam-modes"
           style={{
             pointerEvents: 'auto',
             display: 'flex',
+            flexWrap: 'wrap',
+            justifyContent: 'center',
+            maxWidth: '100%',
+            boxSizing: 'border-box',
             alignItems: 'center',
             gap: 4,
             padding: 3,
@@ -268,6 +285,11 @@ export function ControlHUD({ immersive, onToggleImmersive }: ControlHUDProps) {
         </div>
       </div>
 
+      {/* V12 route + traffic strip: under the viewport badge, clear of the preset dock at the bottom */}
+      <div className="hud-route-wrap" style={{ display: 'flex', justifyContent: 'center', pointerEvents: 'none', marginTop: 6 }}>
+        <RoutePanel />
+      </div>
+
       {/* Center Reticle in First-Person Mode */}
       {cameraMode === 'first_person' && !noRobot && (
         <div
@@ -303,17 +325,20 @@ export function ControlHUD({ immersive, onToggleImmersive }: ControlHUDProps) {
 
       {/* Bottom Controls Bar: Camera Sub-View Chooser & Driving HUD */}
       <div
+        data-hud-bottom
         style={{
           display: 'flex',
           flexDirection: 'column',
           alignItems: 'center',
           gap: 8,
+          marginTop: 'auto',
+          width: '100%',
         }}
       >
         {/* First-Person Mounted Viewpoints (Slots 1-5) */}
         {cameraMode === 'first_person' && !noRobot && (
           <div
-            className="hud-subviews panel"
+            className="hud-subviews panel" data-panel="subviews"
             style={{
               pointerEvents: 'auto',
               display: 'flex',
@@ -347,7 +372,7 @@ export function ControlHUD({ immersive, onToggleImmersive }: ControlHUDProps) {
         {/* Third-Person Mode Selector (Chase / Orbit / Cutaway) */}
         {cameraMode === 'third_person' && !noRobot && (
           <div
-            className="hud-subviews panel"
+            className="hud-subviews panel" data-panel="subviews"
             style={{
               pointerEvents: 'auto',
               display: 'flex',
@@ -390,12 +415,13 @@ export function ControlHUD({ immersive, onToggleImmersive }: ControlHUDProps) {
           </div>
         )}
 
+        <ControlStrip />
         {selectedRobotId && <DriveLinkBar robotId={selectedRobotId} />}
 
         {/* V5 Manipulation & Mechanical Repair HUD for OUTRIG */}
         {isDriving && robotClass === 'outrig' && (
           <div
-            className="hud-manipulation-bar panel"
+            className="hud-manipulation-bar panel" data-panel="manipulation"
             style={{
               pointerEvents: 'auto',
               display: 'flex',
@@ -501,7 +527,7 @@ export function ControlHUD({ immersive, onToggleImmersive }: ControlHUDProps) {
         {/* V5 In-Pipe Deposit Cleaning HUD for INPIPE */}
         {isDriving && robotClass === 'inpipe' && (
           <div
-            className="hud-inpipe-bar panel"
+            className="hud-inpipe-bar panel" data-panel="inpipe"
             style={{
               pointerEvents: 'auto',
               display: 'flex',
@@ -541,7 +567,7 @@ export function ControlHUD({ immersive, onToggleImmersive }: ControlHUDProps) {
         {/* Driving Telemetry & Controls Indicator */}
         {isDriving && (
           <div
-            className="hud-drive-telemetry panel"
+            className="hud-drive-telemetry panel" data-panel="drive-telemetry"
             style={{
               pointerEvents: 'auto',
               display: 'flex',

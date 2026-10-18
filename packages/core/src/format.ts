@@ -1,3 +1,4 @@
+import { FAULT_INFO, humanizeKind } from './faultLabels';
 import { READING_META, type AssetStatus, type FaultKind, type IncidentStage, type IncidentStatus, type RobotMode, type Severity } from './contracts';
 
 export function formatReading(metric: string, v: number | undefined | null) {
@@ -53,16 +54,15 @@ export const STAGE_LABEL: Record<IncidentStage, string> = {
   verified: 'Verified',
 };
 
-export const CAUSE_LABEL: Record<FaultKind | 'unknown', string> = {
-  fouling: 'Pipe fouling',
-  strainer_blockage: 'Strainer blockage',
-  valve_stuck: 'Valve stuck',
-  pump_degradation: 'Pump degradation',
-  sensor_drift: 'Sensor drift',
+const CAUSE_LABEL_BASE: Record<FaultKind | 'unknown', string> = {
+  ...(Object.fromEntries(Object.entries(FAULT_INFO).map(([k, v]) => [k, v.label])) as Record<FaultKind, string>),
   workload_spike: 'Workload surge',
-  leak: 'Leak',
   unknown: 'Under investigation',
 };
+/** Cause chip labels. Kinds this build does not know (newer backend) fall back to a humanized label instead of `undefined`. */
+export const CAUSE_LABEL: Record<FaultKind | 'unknown', string> = new Proxy(CAUSE_LABEL_BASE, {
+  get: (t, k) => (typeof k === 'string' ? (t as Record<string, string>)[k] ?? humanizeKind(k) : undefined),
+});
 
 export const ROBOT_MODE_LABEL: Record<RobotMode, string> = {
   IDLE: 'Idle',

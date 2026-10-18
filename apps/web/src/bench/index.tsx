@@ -5,6 +5,7 @@ import { attachRenderer, startSampling, stopSampling, summarize } from './probe'
 import { installWsCounter } from './net';
 import { benchEnabled } from './flag';
 import { runBenchmark, SCENARIOS, type RunOptions } from './run';
+import { dist, round } from './stats';
 
 /** `?bench` in the URL turns the harness on. Without it none of this code runs and nothing is drawn. */
 export { benchEnabled };
@@ -40,15 +41,41 @@ function download(name: string, data: unknown) {
   setTimeout(() => URL.revokeObjectURL(url), 2000);
 }
 
-/** Minimal runner for people: Run -> wait -> JSON downloads. No live FPS readout by design. */
+/** display refresh as the browser reports it: median gap between 120 consecutive requestAnimationFrame callbacks on an otherwise idle page */
+function measureRefresh(): Promise<{ hz: number; interval_ms: number; frames: number }> {
+  return new Promise((resolve) => {
+    const ts: number[] = [];
+    const tick = (t: number) => {
+      ts.push(t);
+      if (ts.length < 120) return void requestAnimationFrame(tick);
+      const iv: number[] = [];
+      for (let i = 1; i < ts.length; i++) iv.push(ts[i] - ts[i - 1]);
+      const d = dist(iv);
+      resolve({ hz: round(1000 / d.p50, 1), interval_ms: round(d.p50, 2), frames: ts.length });
+    };
+    requestAnimationFrame(tick);
+  });
+}
+
+/**
+ * Minimal runner for people: Run -> wait -> JSON downloads. No FPS counter by design.
+ * The only live number is the display refresh the browser reports through requestAnimationFrame (a property of your screen / browser,
+ * not of this app); everything else leaves through the JSON.
+ */
 export function BenchPanel() {
   const [msg, setMsg] = useState('idle');
   const [busy, setBusy] = useState(false);
   const [report, setReport] = useState<unknown>(null);
+  const [ab, setAb] = useState(false);
+  const [refresh, setRefresh] = useState<{ hz: number; interval_ms: number; frames: number } | null>(null);
+  const measure = () => measureRefresh().then(setRefresh);
+  useEffect(() => {
+    void measure();
+  }, []);
   const run = async (presets: RunOptions['presets']) => {
     setBusy(true);
     try {
-      const r = await runBenchmark({ presets, label: 'manual', onProgress: setMsg });
+      const r = await runBenchmark({ presets, label: 'manual', onProgress: setMsg, ...(ab ? { tileModes: ['off', 'on'] as const } : {}) });
       setReport(r);
       if (window.__lkBench) window.__lkBench.last = r;
       download(`loopkeeper-bench-${Date.now()}.json`, r);
@@ -66,6 +93,15 @@ export function BenchPanel() {
         <button disabled={busy} onClick={() => run(['high'])}>Run (High)</button>
         <button disabled={busy} onClick={() => run(['high', 'balanced', 'performance'])}>Run all presets</button>
         <button disabled={!report} onClick={() => report && download(`loopkeeper-bench-${Date.now()}.json`, report)}>Save JSON</button>
+      </div>
+      <label style={{ display: 'block', marginTop: 6 }}>
+        <input type="checkbox" checked={ab} disabled={busy} onChange={(e) => setAb(e.target.checked)} /> A/B server tiles off vs on
+      </label>
+      <div style={{ marginTop: 6 }}>
+        Display refresh (rAF): {refresh ? `${refresh.hz} Hz (${refresh.interval_ms} ms)` : 'measuring…'}{' '}
+        <button disabled={busy} onClick={() => void measure()}>
+          Re-measure
+        </button>
       </div>
       <div style={{ marginTop: 6, opacity: 0.8 }}>{msg}</div>
       <div style={{ marginTop: 4, opacity: 0.6 }}>Keep this tab focused and visible while it runs.</div>

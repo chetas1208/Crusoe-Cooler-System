@@ -20,6 +20,17 @@ from .fluids import Fluid
 
 Json = dict[str, Any]
 
+# --- V12 leak boundary (CR-02) -------------------------------------------------------------------------------------------
+# A manifold leak/rupture is a real pressure-driven mass loss: an orifice (local-loss valve element, K = 1/Cd^2 on the orifice area) from the row's supply manifold node to an
+# AMBIENT fixed-pressure boundary (atmospheric). pandapipes solves it in the same Newton iteration, so
+#   Q_leak = Cd * A * sqrt(2 * dP / rho)      (no friction length: dP = rho Q^2 / (2 Cd^2 A^2) exactly)
+# emerges from the manifold gauge pressure; the make-up flows through the reference node (expansion tank) so total mass is
+# conserved: ext_grid make-up = sum(leaks). Isolating the row (zone valve + rack valves closed) leaves the manifold with no
+# live element, so the leak branch is pruned and the leak flow is exactly 0 (contained, NOT repaired). The leak site is the
+# manifold node immediately downstream of the zone valve (the model puts the zone valve in series at the header's end).
+LEAK_CD = 0.62
+P_ATM_BAR = 1.01325
+
 
 @dataclass
 class HydInputs:
@@ -33,6 +44,7 @@ class HydInputs:
     pump_head_mult: dict[str, float]     # pump id -> head multiplier (aging)
     rho: dict[str, float]                # loop -> density at current loop temperature
     mu: dict[str, float]
+    leaks: dict[str, float] = field(default_factory=dict)   # zone supply-header edge id -> orifice area m2 (live leak at that row's manifold)
 
 
 @dataclass
@@ -52,6 +64,9 @@ class HydResult:
     mass_balance: dict[str, float]       # loop -> |sum split flows - trunk| / trunk
     wall_ms: float = 0.0
     tried: int = 0
+    leak_kg_s: dict[str, float] = field(default_factory=dict)    # header edge id -> leak mass flow (kg/s); 0.0 when contained
+    leak_p_pa: dict[str, float] = field(default_factory=dict)    # absolute pressure at the leak site
+    makeup_kg_s: float = 0.0                                     # reference-node (expansion tank) make-up flow, TCS loop
 
     def zero(self) -> bool:
         return self.q["tcs"] <= 0 and self.q["fws"] <= 0
@@ -94,6 +109,7 @@ class FacilityHydraulics:
         self.design_rho = {l: fluids[l].rho(cfg["physics"]["fluids"][l]["design_t_c"]) for l in ("tcs", "fws")}
         self.nets: dict[str, PipeNetwork] = {}
         self._edge_design_k: dict[str, float] = {}
+        self.leak_sites: dict[str, str] = {}     # zone supply-header edge id -> manifold junction (leak boundary location)
         self._build()
 
     # ----------------------------------------------------------------- helpers
@@ -164,6 +180,11 @@ class FacilityHydraulics:
             tcs.add_pipe(rd, f"n_{r}_out", zr, L_r, dn, self._kconv(kd["drop"], dn, "tcs"))
         tcs.add_pipe("cdu_hx", "n_cdu_tr", "j_tcs_pin", 1.0, 150.0, self._kconv(kd["tcs_hx"], 150.0, "tcs"))
         tcs.set_ext_grid("j_tcs_pin")
+        for z in self.zones:                      # leak boundaries (inactive until a leak is injected); AFTER the reference ext_grid
+            hdr = self.zone_hdr[z]["supply"]
+            self.leak_sites[hdr] = f"n_{z}_s_end"
+            tcs.add_valve(f"leak_{hdr}", f"n_{z}_s_end", f"j_amb_{hdr}", 10.0, 1.0 / LEAK_CD ** 2, False)
+            tcs.add_boundary(f"j_amb_{hdr}", P_ATM_BAR)
         fws = self.nets["fws"]
         fws.add_pipe("cdu_hx", "n_cdu_fs", "n_cdu_fr", 1.0, 200.0, self._kconv(kd["fws_hx"], 200.0, "fws"))
         fws.add_pipe("chiller", "n_fws_chiller_r", "j_fws_pin", 1.0, 200.0, self._kconv(kd["fws_chiller"], 200.0, "fws"))
@@ -225,6 +246,14 @@ class FacilityHydraulics:
             tcs.set_valve(f"valve_{r}", k_loss=self._kconv(k, self.rack_dn[r], "tcs"), opened=not closed)
             sig[f"theta:{r}"] = theta
             sig[f"closed!:valve_{r}"] = float(closed)
+        for hdr in self.leak_sites:
+            a = float(inp.leaks.get(hdr, 0.0))
+            live = a > 0.0
+            if live:
+                tcs.set_valve(f"leak_{hdr}", d_mm=math.sqrt(4.0 * a / math.pi) * 1000.0, k_loss=1.0 / LEAK_CD ** 2, opened=True)
+            else:
+                tcs.set_valve(f"leak_{hdr}", opened=False)
+            sig[f"leak!:{hdr}"] = a
         pc = hc["pumps"]
         for loop, net in self.nets.items():
             for pid in self.pump_ids[loop]:
@@ -255,6 +284,9 @@ class FacilityHydraulics:
         zone_q = {z: 0.0 for z in self.zones}
         head = {"tcs": 0.0, "fws": 0.0}
         mb = {"tcs": 0.0, "fws": 0.0}
+        leak: dict[str, float] = {}
+        leak_p: dict[str, float] = {}
+        makeup = 0.0
         if not bad:
             for loop, r in res.items():
                 for pid in self.pump_ids[loop]:
@@ -278,12 +310,20 @@ class FacilityHydraulics:
                 zone_q[zz] = edge_q[self.zone_hdr[zz]["supply"]]
             tr = res["tcs"]
             trunk = abs(tr.mdot["p_10.post"])
-            if trunk > 1e-9:
-                mb["tcs"] = abs(sum(abs(tr.mdot[f"coldplate_{r}"]) for r in self.all_racks) - trunk) / trunk
+            for hdr, junc in self.leak_sites.items():
+                if tr.active.get(f"leak_{hdr}"):
+                    leak[hdr] = abs(tr.mdot[f"leak_{hdr}"])
+                    leak_p[hdr] = tr.junction_p_pa.get(junc, 0.0)
+                else:
+                    leak[hdr] = 0.0
+            makeup = -tr.ext_grid_mdot      # pandapipes sign: ext_grid mdot > 0 leaves the network; make-up is injection
+            if trunk > 1e-9:       # supply trunk = rack flows + leaks (every leak site is on a supply manifold, downstream of the trunk)
+                mb["tcs"] = abs(sum(abs(tr.mdot[f"coldplate_{r}"]) for r in self.all_racks) + sum(leak.values()) - trunk) / trunk
             fr = res["fws"]
             mb["fws"] = abs(abs(fr.mdot["p_01.post"]) - abs(fr.mdot["p_03.post"])) / max(abs(fr.mdot["p_01.post"]), 1e-9) \
                 if abs(fr.mdot["p_01.post"]) > 1e-9 else 0.0
         resid = max((r.residual for r in res.values()), default=0.0) if not bad else float("inf")
         return HydResult(not bad, "; ".join(bad) or None, resid, q, zone_q, rack_q, edge_q, edge_dp, edge_p, strainer_dp, head,
                          {l: r.ext_grid_mdot for l, r in res.items()}, mb,
-                         sum(r.wall_ms for r in res.values()), sum(r.iterations_tried for r in res.values()))
+                         sum(r.wall_ms for r in res.values()), sum(r.iterations_tried for r in res.values()),
+                         leak_kg_s=leak, leak_p_pa=leak_p, makeup_kg_s=float(makeup))

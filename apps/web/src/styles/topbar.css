@@ -34,7 +34,53 @@
 .disclosure { display: flex; align-items: center; gap: 8px; width: 100%; padding: 12px 0 8px; color: var(--t2); font-size: 12px; font-weight: 550; }
 .disclosure:hover { color: var(--t1); }
 
-@media (max-width: 1240px) { .topbar__right .vital:nth-child(2) { display: none; } .status__sub { display: none; } .brand__word { display: none; } }
-@media (max-width: 1180px) { .hide-md { display: none; } }
-@media (max-width: 900px) { .hide-sm { display: none; } }
 
+
+/* ───────── V12 top bar: ONE grid (brand | tabs | actions), nowrap labels, fitted by TopBar.tsx (data-d = how much secondary content was dropped) ───────── */
+:root { --topbar-top: 12px; --topbar-band: 48px; }               /* the bar occupies y = 12..60 px; panels start below `--topbar-top + --topbar-band + 12px` */
+.topbar { grid-template-columns: minmax(max-content, 1fr) auto minmax(max-content, 1fr); white-space: nowrap; }
+.topbar :is(.vital__label, .vital__value, .status__name, .status__live, .brand__word, .btn--sim, .cm-launcher, .chip--panel) { white-space: nowrap; }
+.topbar__vitals { display: flex; align-items: center; gap: 18px; }
+.topbar__panels { display: flex; align-items: center; gap: 6px; }
+.topbar__chips { display: flex; align-items: center; gap: 4px; }
+.topbar .chip--panel { height: 32px; padding: 0 11px; font-size: 12px; cursor: pointer; transition: background-color 0.15s ease, color 0.15s ease; }
+.topbar .chip--panel svg { display: none; flex: none; }
+.topbar .chip--panel:hover { color: var(--t1); background: var(--panel-3); }
+.topbar .chip--panel[data-active='true'] { color: var(--accent); background: var(--accent-soft); border-color: rgba(91, 227, 208, 0.3); }
+.seg__ico { display: none; flex: none; }
+.btn--sim .sim__short { display: none; }
+.btn--sim { white-space: nowrap; }
+.topbar .topbar__right { flex-shrink: 0; }
+
+/* drop order: 1 sub-line (tooltip) | 2 chip words -> icons | 3 model chip | 4 TCS flow | 5 "Simulate" | 6 wordmark | 7 key hints | 8 vitals + chips | 9 icon tabs | 10 name */
+.topbar[data-d='1'] .status__sub, .topbar[data-d='2'] .status__sub, .topbar[data-d='3'] .status__sub, .topbar[data-d='4'] .status__sub, .topbar[data-d='5'] .status__sub, .topbar[data-d='6'] .status__sub, .topbar[data-d='7'] .status__sub, .topbar[data-d='8'] .status__sub, .topbar[data-d='9'] .status__sub, .topbar[data-d='10'] .status__sub { display: none; }
+.topbar[data-d='2'] .chip--panel svg, .topbar[data-d='3'] .chip--panel svg, .topbar[data-d='4'] .chip--panel svg, .topbar[data-d='5'] .chip--panel svg, .topbar[data-d='6'] .chip--panel svg, .topbar[data-d='7'] .chip--panel svg, .topbar[data-d='8'] .chip--panel svg, .topbar[data-d='9'] .chip--panel svg, .topbar[data-d='10'] .chip--panel svg { display: block; }
+.topbar[data-d='2'] .chip--panel .chip__lbl, .topbar[data-d='3'] .chip--panel .chip__lbl, .topbar[data-d='4'] .chip--panel .chip__lbl, .topbar[data-d='5'] .chip--panel .chip__lbl, .topbar[data-d='6'] .chip--panel .chip__lbl, .topbar[data-d='7'] .chip--panel .chip__lbl, .topbar[data-d='8'] .chip--panel .chip__lbl, .topbar[data-d='9'] .chip--panel .chip__lbl, .topbar[data-d='10'] .chip--panel .chip__lbl { display: none; }
+.topbar[data-d='3'] .hide-md, .hide-sm, .topbar[data-d='4'] .hide-md, .hide-sm, .topbar[data-d='5'] .hide-md, .hide-sm, .topbar[data-d='6'] .hide-md, .hide-sm, .topbar[data-d='7'] .hide-md, .hide-sm, .topbar[data-d='8'] .hide-md, .hide-sm, .topbar[data-d='9'] .hide-md, .hide-sm, .topbar[data-d='10'] .hide-md, .hide-sm { display: none; }
+.topbar[data-d='4'] .vital--flow, .topbar[data-d='5'] .vital--flow, .topbar[data-d='6'] .vital--flow, .topbar[data-d='7'] .vital--flow, .topbar[data-d='8'] .vital--flow, .topbar[data-d='9'] .vital--flow, .topbar[data-d='10'] .vital--flow { display: none; }
+.topbar[data-d='5'] .btn--sim .sim__long, .topbar[data-d='6'] .btn--sim .sim__long, .topbar[data-d='7'] .btn--sim .sim__long, .topbar[data-d='8'] .btn--sim .sim__long, .topbar[data-d='9'] .btn--sim .sim__long, .topbar[data-d='10'] .btn--sim .sim__long { display: none; }
+.topbar[data-d='5'] .btn--sim .sim__short, .topbar[data-d='6'] .btn--sim .sim__short, .topbar[data-d='7'] .btn--sim .sim__short, .topbar[data-d='8'] .btn--sim .sim__short, .topbar[data-d='9'] .btn--sim .sim__short, .topbar[data-d='10'] .btn--sim .sim__short { display: inline; }
+.topbar[data-d='6'] .brand__word, .topbar[data-d='7'] .brand__word, .topbar[data-d='8'] .brand__word, .topbar[data-d='9'] .brand__word, .topbar[data-d='10'] .brand__word { display: none; }
+.topbar[data-d='7'] .seg__item > .kbd, .topbar[data-d='8'] .seg__item > .kbd, .topbar[data-d='9'] .seg__item > .kbd, .topbar[data-d='10'] .seg__item > .kbd { display: none; }
+.topbar[data-d='8'] .topbar__vitals, .topbar__sep--vitals, .topbar__chips, .topbar[data-d='9'] .topbar__vitals, .topbar__sep--vitals, .topbar__chips, .topbar[data-d='10'] .topbar__vitals, .topbar__sep--vitals, .topbar__chips { display: none; }
+.topbar[data-d='9'] .seg__ico, .topbar[data-d='10'] .seg__ico { display: block; }
+.topbar[data-d='9'] .seg__lbl, .topbar[data-d='10'] .seg__lbl { display: none; }
+.topbar[data-d='9'] .seg__item, .topbar[data-d='10'] .seg__item { padding: 0 11px; }
+.topbar[data-d='9'] .btn--sim .lk-btn__label, .topbar[data-d='10'] .btn--sim .lk-btn__label { display: none; }
+.topbar[data-d='9'] .btn--sim, .topbar[data-d='10'] .btn--sim { min-width: 32px; justify-content: center; padding: 0 8px; }
+.topbar[data-d='10'] .status__name { display: none; }
+
+/* Dashboard overlays start below the bar with a deliberate gap (contract with the dashboard owner: --topbar-h) */
+
+/* The Communications TAB: the fifth item of the tab group, same weight as the four tabs, always visible on the regular chrome (>= 900 px) */
+.topbar__center { gap: 10px; }
+.topbar__sep--tabs { height: 22px; }
+.seg--comms { padding: 3px; }
+.topbar .seg--comms .cm-launcher--tab { height: 30px; min-height: 0; padding: 0 14px; gap: 8px; border: 0; border-radius: 10px; background: transparent; color: var(--t2); font-size: 12.5px; font-weight: 560; letter-spacing: 0; transition: color 0.2s, background-color 0.2s; }
+.topbar .seg--comms .cm-launcher--tab:hover { color: var(--t1); }
+.topbar .seg--comms .cm-launcher--tab[aria-pressed='true'] { color: var(--t1); background: rgba(255, 255, 255, 0.1); box-shadow: 0 1px 0 rgba(255, 255, 255, 0.08) inset, 0 4px 14px -4px rgba(0, 0, 0, 0.5); }
+.topbar .seg--comms .cm-launcher--tab .cm-badge { min-width: 18px; line-height: 18px; }
+.topbar .seg--comms .cm-launcher--tab[data-conn='RECONNECTING'], .topbar .seg--comms .cm-launcher--tab[data-conn='STALE'], .topbar .seg--comms .cm-launcher--tab[data-conn='OFFLINE'], .topbar .seg--comms .cm-launcher--tab[data-conn='ERROR'] { border: 0; }
+/* connection word: drawn on wide bars, otherwise visually hidden but kept for assistive tech (the button's aria-label also names it) */
+.topbar .cm-launcher__state { position: absolute; width: 1px; height: 1px; margin: -1px; padding: 0; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; display: inline; }
+.topbar:is([data-d='0'], [data-d='1']) .cm-launcher__state { position: static; width: auto; height: auto; margin: 0; overflow: visible; clip: auto; }

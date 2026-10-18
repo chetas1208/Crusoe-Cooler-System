@@ -46,11 +46,10 @@
 .tm-st[data-tone='bad'] { background: rgba(255,79,79,.22); color: #ff9a9a; }
 .tm-st[data-tone='warn'] { background: rgba(255,154,60,.22); color: #ffc58a; }
 .tm-warn { margin: 0; color: #ffc58a; font-size: 11px; }
-@media (max-width: 1099px) { .dd-rail { top: auto; bottom: 12px; left: 12px; right: 12px; width: auto; max-height: 55vh; } }
 .dd-pick { max-width: 150px; min-height: 26px; border-radius: 7px; border: 1px solid var(--line, rgba(255,255,255,.14)); background: rgba(255,255,255,.04); color: var(--t1, #fff); font: inherit; font-size: 11px; }
 .dd-pick option { background: #11151c; }
 .tm-budget { margin: 0 0 6px; color: var(--t2, #aab2c0); font-size: 10.5px; }
-.ex[data-timeline='closed'] .dd-rail, .ex[data-timeline='closed'] .sc-panel, .ex[data-timeline='closed'] .cm-dock { bottom: 24px; }
+.ex[data-timeline='closed'] .dd-rail { bottom: 24px; }
 .dd-rail--sheet { position: static; width: auto; max-width: none; max-height: none; overflow: visible; pointer-events: auto; }
 .dd-sheetchips { display: flex; flex-wrap: wrap; gap: 6px; margin: 0 0 8px; }
 .dd-sheetchips .chip { min-height: 44px; min-width: 44px; }

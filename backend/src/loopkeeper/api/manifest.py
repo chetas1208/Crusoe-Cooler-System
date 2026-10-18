@@ -17,13 +17,14 @@ from pathlib import Path
 from typing import Any, Optional
 
 from fastapi import APIRouter, Depends, HTTPException, Request
+from .safe_reads import SafeReadRoute
 from fastapi.responses import Response
 
 from .context import RunScope, principal_of, run_scope
 from .stream import assets_service
 
-router = APIRouter()
-asset_router = APIRouter()
+router = APIRouter(route_class=SafeReadRoute)
+asset_router = APIRouter(route_class=SafeReadRoute)
 IMMUTABLE = "public, max-age=31536000, immutable"
 _HASH = re.compile(r"^[0-9a-f]{64}$")
 

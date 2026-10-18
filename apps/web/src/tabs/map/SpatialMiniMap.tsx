@@ -1,6 +1,6 @@
 import { useMemo } from 'react';
 import { useWorld } from '@loopkeeper/core/store';
-import { useView, useMapCamera, siteModel, roadSel, rowSel, fitCamera, measureInsets } from '@loopkeeper/scene';
+import { useView, useMapCamera, siteModel, roadSel, rowSel, fitCamera, measureInsets, stageSize } from '@loopkeeper/scene';
 
 const COL = {
   tcs_supply: '#2fd3e8',
@@ -75,7 +75,7 @@ export function SpatialMiniMap({
   };
 
   return (
-    <div className="spatial-minimap-wrap" style={{ position: 'relative', width, height }}>
+    <div className="spatial-minimap-wrap" data-panel="minimap" style={{ position: 'relative', width, height }}>
       <svg
         width={width}
         height={height}
@@ -116,7 +116,7 @@ export function SpatialMiniMap({
             const r = (ev.currentTarget.ownerSVGElement as SVGSVGElement).getBoundingClientRect();
             const x = (ev.clientX - r.left - offX) / scale + bounds.minX;
             const z = (ev.clientY - r.top - offZ) / scale + bounds.minZ;
-            const goal = fitCamera({ boxes: [{ min: [x - 5, 0, z - 4], max: [x + 5, 3.4, z + 4] }], width: window.innerWidth, height: window.innerHeight, insets: measureInsets(), azimuth: 0.35, elevation: 0.9, fov: 32, fill: 0.8 });
+            const goal = fitCamera({ boxes: [{ min: [x - 5, 0, z - 4], max: [x + 5, 3.4, z + 4] }], ...stageSize(), insets: measureInsets(), azimuth: 0.35, elevation: 0.9, fov: 32, fill: 0.8 });
             useMapCamera.getState().setTactical(goal);
           }}
         />

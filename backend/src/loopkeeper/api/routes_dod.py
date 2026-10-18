@@ -10,11 +10,12 @@ from __future__ import annotations
 from typing import Any
 
 from fastapi import APIRouter, Depends, HTTPException
+from .safe_reads import SafeReadRoute
 
 from .context import RunScope, run_scope
 from .scrub import scrub
 
-router = APIRouter()
+router = APIRouter(route_class=SafeReadRoute)
 SEATS = {"SEN-01": "goal architect / planner", "SEN-02": "INPIPE coordinator", "SEN-03": "OUTRIG coordinator", "SEN-04": "safety arbiter", "SEN-05": "independent verifier"}
 LIMITS = {"max_depth": 3, "max_active_llm_subtasks_per_incident": 6, "max_concurrent_high_cost_calls": 2, "max_plan_revisions": 2}
 
@@ -56,7 +57,7 @@ def contracts(sc: RunScope = Depends(run_scope("read"))):
 def verifications(incident_id: str, sc: RunScope = Depends(run_scope("read"))):
     tr = _track(sc)
     if tr is not None:
-        vs = sorted((v for v in tr.verifications.values() if v.get("incident_id") == incident_id), key=lambda v: v.get("attempt", 0))
+        vs = sorted((v for v in list(tr.verifications.values()) if v.get("incident_id") == incident_id), key=lambda v: v.get("attempt", 0))
     else:
         c = _contract(sc, incident_id) or {}
         vs = c.get("history", [])
@@ -68,7 +69,7 @@ def team(incident_id: str, sc: RunScope = Depends(run_scope("read"))):
     tr = _track(sc)
     if tr is None:
         raise HTTPException(404, "team graph is available for the live run only")
-    tasks = [t for t in tr.tasks.values() if t.get("incident_id") == incident_id]
+    tasks = [t for t in list(tr.tasks.values()) if t.get("incident_id") == incident_id]
     if not tasks:
         raise HTTPException(404, "unknown incident")
     nodes = [{"id": t["id"], "seat": t.get("agent_id") or "SEN-01", "role": t.get("role"), "kind": t.get("kind"), "title": t.get("title"), "status": t.get("status"),

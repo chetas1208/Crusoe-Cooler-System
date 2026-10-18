@@ -34,3 +34,36 @@ Command: `node scripts/e2e/mobile_matrix.mjs --url "http://localhost:5183/?api=h
 * Found and fixed with this matrix: (1) my sheet rendered inside the Execution container and floated mid-screen, now portaled to `body`; (2) on 844x390 the sheet covered the header chip rail, so Team/Scorecard were unreachable, now the toggles are repeated inside the sheet; (3) sheets were translucent and stacked into an unreadable mix, now opaque; (4) Comms launcher / chips measured 32 px high, now 44 px on phones (`html[data-phone='1']`, `pointer: coarse`).
 * Touch targets after the fix (phones/tablet-emulated): launcher 44 px, chips 44 px, sheet buttons 44 px. On the 1024x768 desktop layout chips are 22 px high (desktop sizing, mouse).
 * Not covered: physical devices, soft-keyboard behaviour in the search box, long-id stress at 320 px, 4G throttling of these panels, 100x open/close leak check (the store-level close/reopen x3 flow passes in `scripts/e2e/comms_flows.mjs`).
+
+---
+
+# V12: one experience in every layout and orientation (Agent J)
+
+Why: Communications, Done, Team and Scorecard existed only inside the Execution tab on the regular chrome, and the compact (phone) chrome was keyed to one media query, so a rotated phone, a tablet in landscape or a 900-1280 px window showed a different, poorer product. Landscape was a squeezed portrait (3D stage 0 px high).
+
+## What changed
+* **Layout model** (`features/responsive/layout.ts`, hook `useLayoutMode`): `layout = phone-portrait | phone-landscape | tablet | desktop` from window size, orientation and pointer (coarse/fine); also `compact` (compact chrome: slim top bar + tab bar/rail) and `host` (`dock | drawer | sheet`). It writes `html[data-layout|orient|compact|comms-host]`; every layout rule is keyed to those attributes (no media query). Rules: short side <= 500 = phone; fine pointer and >= 1280x720 = desktop; the rest = tablet; compact when phone or <= 860 px wide; host = dock if regular chrome and >= 900x520, else drawer in landscape, else sheet. Unit-tested (`responsive/__tests__/layout.test.ts`).
+* **One panel host** (`PanelsHost.tsx`, registry `panels.ts`): Communications / Done / Team / Scorecard are tabs of ONE host, one visible at a time, from every tab. Dock = fixed right column of 320-400 px and the app (stage, top bar, tab panels, camera fit) narrows beside it, so nothing is covered; drawer = right drawer, 40 % width, full height; sheet = bottom sheet with peek / half (exactly the panel area, stage stays visible) / expanded snap points, grabber drag, explicit buttons. Same tab strip in all three. Closing only hides: ingestion, polling, filters, scroll, run, selection live in their stores (tested). Opening one closes the others, an external flag (evidence link, persisted flag) wins (tested). Escape closes and returns focus to the opener for every panel; arrow/Home/End roving tabs.
+* **Launchers**: Comms chip with state dot (and word on wide bars) + unread badge in the top bar (regular chrome) and in the tab bar/rail (compact); Done/Team/Scorecard chips in the top bar, a "panels" button in the tab bar/rail, and the host tab strip from any open panel. Default: docked open only when the app keeps >= 1200 px beside the dock (>= 1600 px wide), collapsed elsewhere.
+* **Landscape phone is a design, not a squeezed portrait**: tab rail on the left (4 tabs + Comms + panels), 3D stage ~54 % of the width, each tab's panels in a scroll column on the right, compact top bar on top, panels as a right drawer over the column. Portrait keeps stage / panels / bottom tab bar. Same chips, sheet/drawer chrome and tokens in both.
+* **Camera fit** now solves for the stage box (`stageSize()`), not the window, with compact stage overlays (Map HUD row, drive pad) declared via `data-stage-inset`; before, the hall was cropped beside the dock and in landscape.
+* **Map HUD** on small stages: one row (status pill + icon camera modes); drive pad collapses to a one-line status chip until Preview/live drive is on. **Execution** compact layout: wrapped rail, one-column library, timeline that keeps its lanes. Soft keyboard: `interactive-widget=resizes-content`, tab bar hides while the keyboard is up, focused fields scroll into view.
+* **Top bar**: one grid (brand | tabs | actions), nowrap, fitted at runtime: it starts full and drops secondary content in a fixed order (sub-line to tooltip, chip words to icons, model chip, TCS flow, "Simulate", wordmark, key hints, vitals + chips, icon tabs, name) until the clusters fit without touching. At 1280-1440 px this removes the model chip and the TCS flow vital that used to overlap the tabs.
+* Review findings fixed: panel entry on compact chrome, Expand/Collapse keep focus (aria-disabled), one close button and one heading in host mode, Shell typing guard includes SELECT, Escape in the search box clears the field first, feed window clamps a stale scroll offset (a filter switch or reopen could render 0 rows until the next animation frame; unit-tested).
+
+## Parity table (what lives where; enforced per device pair by `scripts/e2e/mobile_matrix.mjs`)
+| Feature | Phone portrait (390x844) | Phone landscape (844x390, 932x430) | Tablet portrait (768x1024, 820x1180) | Tablet landscape / desktop (1024x768 ... 1440x900) |
+|---|---|---|---|---|
+| 4 tabs | bottom tab bar | left tab rail | bottom tab bar | top bar segmented control |
+| Comms launcher chip (state dot, unread) | tab bar | rail | tab bar | top bar |
+| Done / Team / Scorecard entry | tab-bar "panels" button + host tab strip | rail "panels" button + drawer tab strip | tab-bar "panels" button + host tab strip | top-bar chips (wide bars) + dock tab strip |
+| Panel host | bottom sheet (peek / half / expanded) | right drawer, 40 % width, full height | bottom sheet | right dock 320-400 px, app narrows beside it |
+| 3D stage | top 34 dvh | left ~54 % | top 40 dvh | whole area (minus dock) |
+| Dashboard panels | scroll area under the stage | scroll column right of the stage | scroll area under the stage | overlays |
+| Map: roster, inspector, presets | scroll area under the stage | scroll column | scroll area | drawers |
+| Map: HUD (status pill, camera modes, drive) | on the stage; drive pad on the stage | on the stage | on the stage | HUD + keyboard controller |
+| Execution: scenario input + library, playback, inspector | scroll area under the stage | scroll column | scroll area | overlay + bottom timeline + right inspector |
+| Agents | list + inspector stacked | list and inspector side by side | stacked | delegation graph + inspector |
+| Spatial view picker | layers button -> sheet | layers button -> drawer | layers button -> sheet | n/a (layer controls on the stage) |
+| Search / Simulate | compact top bar | compact top bar | compact top bar | top bar |
+Intentional single difference: the on-screen drive pad exists only in the compact chrome (desktop keeps the keyboard controller and the robot panel's manual-control buttons); the parity inventory excludes it for that reason.

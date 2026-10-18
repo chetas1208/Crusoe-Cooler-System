@@ -1,164 +1,90 @@
 import React from 'react';
-import { Play, Zap, Shield, AlertTriangle, CheckCircle2, Wrench } from 'lucide-react';
+import { Play, Ban, Eye, Film } from 'lucide-react';
+import { Badge, Button, type Tone } from '../../ui/kit/index';
+import { classify, resolveTarget, type Definition, type LiveVerdict, type PreviewSpec, type SupportState, type TopoLite, type ValidatorView } from './scenarioSpec';
 
-export interface ScenarioCardData {
-  scenario_id: string;
-  severity: 'SEVERE' | 'MODERATE';
-  label: string;
-  learning_goal: string;
-  seed: number;
-  duration_sim_s: number;
-  required_assets: string[];
-  required_robot_tools: string[];
-  failure_injection_switches: string[];
-  readiness?: {
-    status: string;
-    ready: boolean;
-    unsupported_faults?: any[];
-  };
-}
+export type ScenarioCardData = Definition;
 
 interface ScenarioCardProps {
-  data: ScenarioCardData;
-  onStart(scenarioId: string, speed: number): void;
-  loading?: boolean;
+  data: Definition;
+  topo: TopoLite | null;
+  validator: ValidatorView | null;
+  /** the spec this scenario launches (hazard kind when the backend accepts it, else registry faults) */
+  spec: PreviewSpec;
+  verdict?: LiveVerdict;
+  /** the validator's reasons for not using the hazard kind */
+  hazardNotes?: string[];
+  /** another launch is in flight */
+  busy?: boolean;
+  recording?: boolean;
+  onOpen(scenarioId: string): void;
+  onRecord(scenarioId: string, speed: number): void;
 }
 
-export function ScenarioCard({ data, onStart, loading }: ScenarioCardProps) {
-  const isSevere = data.severity === 'SEVERE';
-  const ready = data.readiness?.ready ?? true;
+export const TONE: Record<SupportState, Tone> = { live: 'nominal', partial: 'warning', unsupported: 'critical' };
 
+export function ScenarioCard({ data, topo, validator, spec, verdict, hazardNotes, busy, recording, onOpen, onRecord }: ScenarioCardProps) {
+  const sup = classify(data, topo, validator, verdict, spec);
+  const blocked = sup.state === 'unsupported' && !verdict; // a refused launch stays retryable: the backend may have changed since
   return (
-    <div
-      className="ex-card"
-      style={{
-        background: 'var(--panel-2, #14171f)',
-        border: '1px solid var(--line, #232936)',
-        borderRadius: 8,
-        padding: 16,
-        display: 'flex',
-        flexDirection: 'column',
-        gap: 10,
-        position: 'relative',
-        boxShadow: '0 4px 12px rgba(0,0,0,0.25)',
-      }}
-    >
-      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-        <div style={{ display: 'flex', gap: 6, alignItems: 'center' }}>
-          <span
-            className="mono"
-            style={{
-              fontWeight: 700,
-              fontSize: 13,
-              letterSpacing: 0.5,
-              color: isSevere ? '#ff5252' : '#ffb300',
-              background: isSevere ? 'rgba(255,82,82,0.12)' : 'rgba(255,179,0,0.12)',
-              padding: '2px 8px',
-              borderRadius: 4,
-              border: `1px solid ${isSevere ? 'rgba(255,82,82,0.3)' : 'rgba(255,179,0,0.3)'}`,
-            }}
-          >
-            {data.scenario_id}
-          </span>
-          <span
-            style={{
-              fontSize: 10,
-              fontWeight: 600,
-              textTransform: 'uppercase',
-              color: isSevere ? '#ff5252' : '#ffb300',
-            }}
-          >
-            {data.severity}
-          </span>
-        </div>
-
-        <div style={{ display: 'flex', gap: 6, alignItems: 'center' }}>
-          <span
-            className="chip tone-nominal"
-            style={{
-              fontSize: 10,
-              padding: '1px 6px',
-              display: 'flex',
-              alignItems: 'center',
-              gap: 4,
-              color: '#00e5ff',
-              background: 'rgba(0,229,255,0.1)',
-              borderColor: 'rgba(0,229,255,0.3)',
-            }}
-          >
-            <CheckCircle2 size={10} />
-            {data.readiness?.status || 'READY'}
-          </span>
-          <span style={{ fontSize: 11, color: 'var(--t3, #8a99ad)' }}>30:00</span>
-        </div>
+    <article className="sl-card" data-severity={data.severity} data-support={sup.state} data-testid={`scenario-${data.scenario_id}`}>
+      <div className="sl-card__top">
+        <span className="sl-id mono">{data.scenario_id}</span>
+        <span className="sl-sev">{data.severity}</span>
+        <Badge tone={TONE[sup.state]} sm title={sup.reasons.join('\n') || sup.label} className="sl-chip">{sup.label}</Badge>
       </div>
+      <h4 className="sl-title">{data.label}</h4>
+      <p className="sl-goal">{data.learning_goal}</p>
 
-      <div>
-        <h4 style={{ margin: 0, fontSize: 14, fontWeight: 600, color: 'var(--t1, #f0f4f8)' }}>
-          {data.label}
-        </h4>
-        <p
-          style={{
-            margin: '4px 0 0',
-            fontSize: 12,
-            lineHeight: 1.45,
-            color: 'var(--t2, #b0c0d4)',
-          }}
+      <ul className="sl-faults" aria-label="Faults this scenario injects">
+        {spec.faults.map((f, i) => {
+          const r = f.resolved ?? resolveTarget(f.target_id, topo);
+          return (
+            <li key={i}>
+              <span className="mono">{f.kind}</span>
+              <span aria-hidden> → </span>
+              <span className="mono" data-missing={topo && !r.found ? 'true' : undefined}>{f.target_id}</span>
+              {f.capability !== 'real' && <em className="sl-cap" data-cap={f.capability}>{f.capability}</em>}
+            </li>
+          );
+        })}
+      </ul>
+
+      {sup.outcome && <p className="sl-outcome">{sup.outcome}</p>}
+      {sup.reasons.length > 0 && (
+        <ul className="sl-reasons" data-state={sup.state}>
+          {sup.reasons.map((r, i) => <li key={i}>{r}</li>)}
+        </ul>
+      )}
+      {sup.simulated.length > 0 && (
+        <div className="sl-sim">
+          <b>Simulated as</b>
+          <ul>{sup.simulated.map((r, i) => <li key={i}>{r}</li>)}</ul>
+        </div>
+      )}
+      {hazardNotes && hazardNotes.length > 0 && spec.mode === 'registry' && (
+        <p className="sl-note sl-note--dim">The backend does not accept this scenario&apos;s hazard fault kind yet ({hazardNotes[0]}); showing the registry faults.</p>
+      )}
+
+      <div className="sl-actions">
+        <Button
+          variant={blocked ? 'secondary' : 'primary'}
+          icon={blocked ? <Ban size={14} /> : verdict ? <Eye size={14} /> : <Play size={14} />}
+          disabled={busy}
+          disabledReason={busy ? 'Another scenario is launching' : undefined}
+          onClick={() => onOpen(data.scenario_id)}
         >
-          {data.learning_goal}
-        </p>
-      </div>
-
-      <div style={{ display: 'flex', flexDirection: 'column', gap: 4, fontSize: 11 }}>
-        <div style={{ display: 'flex', gap: 6, color: 'var(--t3, #8a99ad)' }}>
-          <span style={{ minWidth: 64 }}>Assets:</span>
-          <span className="mono" style={{ color: 'var(--t2, #b0c0d4)' }}>
-            {data.required_assets.join(', ')}
-          </span>
-        </div>
-        <div style={{ display: 'flex', gap: 6, color: 'var(--t3, #8a99ad)' }}>
-          <span style={{ minWidth: 64 }}>Robot tools:</span>
-          <span style={{ color: 'var(--t2, #b0c0d4)' }}>
-            {data.required_robot_tools.join(', ')}
-          </span>
-        </div>
-      </div>
-
-      <div style={{ marginTop: 'auto', paddingTop: 8, display: 'flex', gap: 8 }}>
-        <button
-          className="btn btn--primary"
-          disabled={loading || !ready}
-          onClick={() => onStart(data.scenario_id, 1)}
-          style={{
-            flex: 1,
-            display: 'flex',
-            justifyContent: 'center',
-            alignItems: 'center',
-            gap: 6,
-            fontSize: 12,
-            padding: '6px 12px',
-          }}
+          {blocked ? 'Preview (cannot start)' : verdict && verdict.status !== 'injected' ? 'Preview / retry' : 'Preview and launch'}
+        </Button>
+        <Button
+          icon={<Film size={14} />}
+          loading={recording}
+          disabledReason={!data.readiness.ready ? 'The backend registry does not mark this scenario ready for a recorded episode' : undefined}
+          onClick={() => onRecord(data.scenario_id, 1)}
         >
-          <Play size={13} />
-          {loading ? 'Recording...' : 'Start Episode'}
-        </button>
-        <button
-          className="btn"
-          disabled={loading || !ready}
-          title="Fast recorded generation (3× pace)"
-          onClick={() => onStart(data.scenario_id, 3)}
-          style={{
-            display: 'flex',
-            alignItems: 'center',
-            gap: 4,
-            fontSize: 12,
-            padding: '6px 10px',
-          }}
-        >
-          <Zap size={13} />
-          3×
-        </button>
+          {recording ? 'Recording...' : 'Record replay'}
+        </Button>
       </div>
-    </div>
+    </article>
   );
 }

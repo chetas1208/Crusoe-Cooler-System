@@ -18,9 +18,11 @@ interface ButtonProps {
   haptics?: 'light' | 'medium' | 'select' | 'none';
   /** stretch to share a row equally */
   flex?: boolean;
+  /** accessible name when `label` is empty (icon-only buttons) */
+  a11yLabel?: string;
 }
 
-export function Button({ label, onPress, icon: Icon, variant = 'default', tone = 'accent', size = 'md', disabled, active, style, haptics = 'light', flex }: ButtonProps) {
+export function Button({ label, onPress, icon: Icon, variant = 'default', tone = 'accent', size = 'md', disabled, active, style, haptics = 'light', flex, a11yLabel }: ButtonProps) {
   const h = size === 'md' ? 44 : 36;
   const primary = variant === 'primary';
   const toned = variant === 'tone';
@@ -31,6 +33,9 @@ export function Button({ label, onPress, icon: Icon, variant = 'default', tone =
   return (
     <PressableScale
       disabled={disabled}
+      accessibilityRole="button"
+      accessibilityLabel={label || a11yLabel}
+      accessibilityState={{ disabled: !!disabled }}
       onPress={() => {
         if (haptics === 'light') haptic.light();
         else if (haptics === 'medium') haptic.medium();

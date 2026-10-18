@@ -12,14 +12,15 @@ from __future__ import annotations
 from typing import Any, Literal, Optional
 
 from fastapi import APIRouter, Depends, HTTPException, Query
+from .safe_reads import SafeReadRoute
 
 from ..comms.schema import KINDS, to_v1
 from ..engine.eventlog import to_envelope
 from .context import RunScope, run_scope
 from .scrub import scrub
 
-router = APIRouter()
-MAX_LIMIT = 200
+router = APIRouter(route_class=SafeReadRoute)
+MAX_LIMIT = 500
 AgentClass = Literal["SENTINEL", "INPIPE", "OUTRIG", "OPERATOR", "SYSTEM", "PROVIDER"]
 Kind = Literal["agent_message", "task_transition", "tool_event", "verification", "safety", "operator", "simulation", "provider"]
 
@@ -100,11 +101,15 @@ def list_communications(after_seq: int = Query(default=0, ge=0), before_seq: Opt
 
 
 @router.get("/runs/{run_id}/replay/communications")
-def replay_communications(cursor_tick: int = Query(ge=0), after_seq: int = Query(default=0, ge=0), limit: int = Query(default=100, ge=1, le=MAX_LIMIT),
+def replay_communications(cursor_tick: Optional[int] = Query(default=None, ge=0), to_tick: Optional[int] = Query(default=None, ge=0), after_seq: int = Query(default=0, ge=0), limit: int = Query(default=100, ge=1, le=MAX_LIMIT),
                           kind: Optional[Kind] = Query(default=None), agent_class: Optional[AgentClass] = Query(default=None),
                           thread_id: Optional[str] = Query(default=None, max_length=96), include_parent: bool = Query(default=False),
                           sc: RunScope = Depends(run_scope("read"))):
     st = _storage(sc)
+    if cursor_tick is None:                                # `to_tick` is the replay window's own name for the same bound
+        cursor_tick = to_tick
+    if cursor_tick is None:
+        raise HTTPException(422, "cursor_tick (or to_tick) is required")
     out = _page(st, sc.run_id, after_seq=after_seq, before_seq=None, limit=limit, kind=kind, agent_class=agent_class, thread_id=thread_id,
                 until_tick=cursor_tick, desc=False, include_parent=include_parent)
     out["cursor_tick"] = cursor_tick

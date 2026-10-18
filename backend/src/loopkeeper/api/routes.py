@@ -10,6 +10,7 @@ import time
 from typing import Any, Literal, Optional
 
 from fastapi import APIRouter, Body, Depends, HTTPException, Query, Request
+from .safe_reads import SafeReadRoute
 from fastapi.responses import JSONResponse
 
 from pydantic import ValidationError
@@ -17,7 +18,7 @@ from pydantic import ValidationError
 from . import models as M
 from . import models_control as C
 from . import models_runs as R
-from .context import ReadOnlyRun, RunScope, ctx_of, principal_of, rate_limit, run_scope
+from .context import ReadOnlyRun, RunScope, ctx_of, principal_of, rate_limit, run_scope, submit_as
 from .projections import agent_graph
 from .scrub import scrub
 from .security import json_error
@@ -28,7 +29,7 @@ from ..scenarios import build_recorded_episode, clock_payload, get_definition, l
 
 log = logging.getLogger("loopkeeper.api")
 EXC = dict(response_model_exclude_unset=True)
-router = APIRouter()
+router = APIRouter(route_class=SafeReadRoute)
 
 
 def both(method: str, path: str, **kw: Any):
@@ -183,12 +184,20 @@ async def post_command(body: M.CommandRequest, request: Request, sc: RunScope = 
     cmd = body.model_dump(exclude_none=True)
     cmd.update(actor_type="operator", principal=sc.principal.id, run_id=sc.run_id)
     try:
-        res = await sc.engine.submit(cmd)
+        res = await submit_as(sc.engine, cmd)
     except Exception:
         log.exception("engine.submit failed")
         return ack(False, "engine unavailable", 503)
     ok = bool(res.get("accepted"))
-    return ack(ok, None if ok else (res.get("reason") or "rejected"))
+    if not ok and res.get("durable") is False:                     # storage down: nothing was applied, the client may retry the same command_id later
+        return ack(False, res.get("reason") or "database unavailable", 503)
+    out = ack(ok, None if ok else (res.get("reason") or "rejected"))
+    if ok and res.get("durable") is False:                        # applied, but not yet persisted
+        import json as _json
+        body_ = _json.loads(out.body)
+        body_.update(durable=False, reason="applied; will persist when the database recovers")
+        return JSONResponse(body_, status_code=202)
+    return out
 
 
 # ─────────────────────────── robot control leases (§10) ───────────────────────────
@@ -226,7 +235,7 @@ async def _control(sc: RunScope, request: Request, robot_id: str, kind: str, arg
     cmd = {"command_id": cid, "kind": kind, "target_id": robot_id, "args": args, "actor_type": "operator",
            "principal": sc.principal.id, "run_id": sc.run_id}
     try:
-        res = dict(await sc.engine.submit(cmd))
+        res = dict(await submit_as(sc.engine, cmd))
     except Exception:
         log.exception("engine.submit failed")
         return refusal("not_controllable", "engine unavailable", 503)
@@ -346,8 +355,8 @@ async def set_run_state(body: StateRequest, sc: RunScope = Depends(run_scope("co
         if not sc.is_active or body.state == "stopped":
             raise NotSupported("this engine can only pause/resume the live run")
         kind = "pause" if body.state == "paused" else "resume"
-        res = await sc.engine.submit({"command_id": _uuid(), "kind": kind, "actor_type": "operator",
-                                      "principal": sc.principal.id, "run_id": sc.run_id})
+        res = await submit_as(sc.engine, {"command_id": _uuid(), "kind": kind, "actor_type": "operator",
+                                               "principal": sc.principal.id, "run_id": sc.run_id})
         if not res.get("accepted"):
             raise RunError("invalid", str(res.get("reason") or "rejected"), 409)
         rec = sc.ctx.runs.get_run(sc.run_id)
@@ -382,25 +391,51 @@ def run_clock(sc: RunScope = Depends(run_scope("read"))):
     return clock_payload(sc.run_id, tick, speed, world_version=tick, paused=rec.get("state") == "paused")
 
 
+def problem_response(e: Exception) -> JSONResponse:
+    """Machine-readable refusal body for replay/fork: ``{error: {code, message, reason, detail}, detail: <message>}`` + X-Problem-Code; never an opaque 5xx."""
+    if isinstance(e, NotSupported):
+        code, msg, status, det = "not_supported", str(e), 501, None
+    elif isinstance(e, RunNotFound):
+        code, msg, status, det = "run_not_found", "unknown run", 404, None
+    elif isinstance(e, RunError):
+        code, msg, status, det = e.code, e.message, e.status, e.detail
+    elif isinstance(e, StorageError):
+        code, msg, status, det = "storage_unavailable", f"the run store is unavailable ({e})", 503, None
+    else:
+        code, msg, status, det = "internal_refusal", f"the request failed ({type(e).__name__})", 500, {"exception": type(e).__name__}
+    body = json_error(msg, code, reason=code)
+    if det is not None:
+        body["error"]["detail"] = det
+    return JSONResponse(body, status_code=status, headers={"X-Problem-Code": code})
+
+
 @router.get("/runs/{run_id}/replay", response_model=R.ReplayWindow, **EXC)
 async def run_replay(start_tick: Optional[int] = Query(default=None, ge=0), end_tick: Optional[int] = Query(default=None, ge=0),
                      stride: int = Query(default=1, ge=1, le=100_000), events: int = Query(default=1, ge=0, le=1),
-                     limit: int = Query(default=5000, ge=1), sc: RunScope = Depends(run_scope("read"))):
-    """Read-only. Never mutates the live run; operators must fork to act on history."""
+                     limit: int = Query(default=5000, ge=1), cursor: Optional[str] = Query(default=None, max_length=40),
+                     sc: RunScope = Depends(run_scope("read"))):
+    """Read-only. Never mutates the live run; operators must fork to act on history. ``cursor`` (= the previous ``next_cursor``) pages the window's events."""
+    runs = sc.ctx.runs
+    lim = min(limit, sc.ctx.settings.replay_page_max * 10)
     try:
-        out = await sc.ctx.runs.replay(sc.run_id, start_tick, end_tick, stride, bool(events),
-                                       min(limit, sc.ctx.settings.replay_page_max * 10))
-    except (NotSupported, RunError, RunNotFound) as e:
-        raise _problem(e)
-    return scrub(out)
+        fast = getattr(runs, "replay_json", None)
+        if callable(fast):                                   # scrubbed + cached JSON bytes for closed windows
+            from fastapi.responses import Response           # noqa: PLC0415
+            return Response(await fast(sc.run_id, start_tick, end_tick, stride, bool(events), lim, cursor), media_type="application/json")
+        return scrub(await runs.replay(sc.run_id, start_tick, end_tick, stride, bool(events), lim))
+    except (NotSupported, RunError, RunNotFound, StorageError) as e:
+        return problem_response(e)
 
 
 @router.post("/runs/{run_id}/fork", status_code=201, response_model=R.ForkResult, **EXC)
 async def fork(body: R.ForkRequest, sc: RunScope = Depends(run_scope("fork"))):
     try:
         return await sc.ctx.runs.fork(sc.run_id, body.model_dump(exclude_none=True), sc.principal.id)
-    except (NotSupported, RunError, RunNotFound) as e:
-        raise _problem(e)
+    except (NotSupported, RunError, RunNotFound, StorageError) as e:
+        return problem_response(e)
+    except Exception as e:                                   # noqa: BLE001  a fork must always answer with a reason, not an opaque 500
+        log.error("fork of %s failed: %s", sc.run_id, type(e).__name__)
+        return problem_response(e)
 
 
 class SpeedRequest(C.StrictWire):
@@ -657,11 +692,14 @@ def readiness(ctx) -> tuple[bool, list[str], Optional[dict]]:
     return not reasons, reasons, health
 
 
+@router.head("/health/live", include_in_schema=False)
 @router.get("/health/live")
 def health_live():
     return {"status": "ok"}
 
 
+@router.head("/health", include_in_schema=False)
+@router.head("/health/ready", include_in_schema=False)
 @router.get("/health")
 @router.get("/health/ready")
 def health_ready(request: Request):
@@ -737,6 +775,13 @@ def _laya_eval_summary() -> dict:
     """Numbers come from the last real evaluation artifact (never hard-coded); None if it has not been run."""
     import json as _json
     from pathlib import Path as _P
+    try:                                                  # V12 (agent X): held-out numbers of the calibrated ensemble from artifacts/v11/laya_eval.json
+        from loopkeeper.intelligence.laya_eval import status_summary
+        v12 = status_summary()
+        if v12.get("available"):
+            return v12
+    except Exception:                                     # noqa: BLE001
+        pass
     f = _P(__file__).resolve().parents[4] / "artifacts" / "v5" / "laya_eval.json"
     try:
         d = _json.loads(f.read_text())
@@ -763,7 +808,7 @@ def laya_status():
     inst = get_laya_classifier()
     d = _laya_summary(inst)
     d.update(provider="Laya", role="System 1 incident triage (advisory; never grants authority)",
-             confidence_threshold=inst.CONFIDENCE_THRESHOLD, total_queries=inst.total_queries, total_abstentions=inst.total_abstentions)
+             confidence_threshold=(inst.calibration.tau if inst.calibration.fitted else inst.CONFIDENCE_THRESHOLD), total_queries=inst.total_queries, total_abstentions=inst.total_abstentions)
     return d
 
 

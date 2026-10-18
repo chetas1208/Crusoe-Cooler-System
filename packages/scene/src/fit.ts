@@ -115,8 +115,24 @@ export function overviewBoxes(topo: Topology): Array<{ min: Vec3; max: Vec3 }> {
 /** Free region (CSS px) the panels leave in a canvas: same rule the Shell uses for the camera rig's safe area. */
 export function measureInsets(): { left: number; right: number; top: number; bottom: number } {
   // phone layout: panels live BELOW the stage (normal flow), so the stage is the whole canvas under the compact top bar
-  if (typeof document !== 'undefined' && document.documentElement.dataset.phone === '1') return { left: 0, right: 0, top: 64, bottom: 0 };
-  const W = window.innerWidth;
+  if (typeof document !== 'undefined' && document.documentElement.dataset.phone === '1') {
+    // compact chrome: the stage is its own box under the compact top bar; stage overlays (the Map HUD row, the drive pad) opt in with data-stage-inset="top|bottom|left|right"
+    const st = document.querySelector('.stage')?.getBoundingClientRect();
+    const ins = { left: 0, right: 0, top: 64, bottom: 0 };
+    if (st) {
+      document.querySelectorAll<HTMLElement>('[data-stage-inset]').forEach((el) => {
+        const r = el.getBoundingClientRect();
+        if (r.width < 2 || r.height < 2) return;
+        const side = el.dataset.stageInset as 'top' | 'bottom' | 'left' | 'right';
+        if (side === 'top') ins.top = Math.max(ins.top, Math.round(r.bottom - st.top + 6));
+        if (side === 'bottom') ins.bottom = Math.max(ins.bottom, Math.round(st.bottom - r.top + 6));
+        if (side === 'left') ins.left = Math.max(ins.left, Math.round(r.right - st.left + 6));
+        if (side === 'right') ins.right = Math.max(ins.right, Math.round(st.right - r.left + 6));
+      });
+    }
+    return ins;
+  }
+  const W = document.querySelector<HTMLElement>('.app')?.clientWidth ?? window.innerWidth; // the app narrows beside the dock
   const H = window.innerHeight;
   let left = 0;
   let right = 0;
@@ -132,4 +148,11 @@ export function measureInsets(): { left: number; right: number; top: number; bot
     if (side === 'top') top = Math.max(top, r.bottom + 6);
   });
   return { left: Math.round(left), right: Math.round(right), top: Math.round(top), bottom: Math.round(bottom) };
+}
+
+/** The canvas box every camera fit must solve for. It is the window on a regular desktop, but narrower beside the Communications dock and a column of the screen on landscape phones. */
+export function stageSize(): { width: number; height: number } {
+  if (typeof document === 'undefined') return { width: 1440, height: 900 };
+  const r = document.querySelector('.stage')?.getBoundingClientRect();
+  return r && r.width > 120 && r.height > 120 ? { width: r.width, height: r.height } : { width: window.innerWidth, height: window.innerHeight };
 }

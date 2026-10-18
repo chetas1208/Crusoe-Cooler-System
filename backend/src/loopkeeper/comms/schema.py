@@ -22,7 +22,7 @@ KIND_OF_SUBTYPE = {
     "task.delegated": "TASK_ASSIGN", "mission.ack": "ACK", "observation": "OBSERVATION", "tool.started": "REQUEST_TOOL", "tool.completed": "TOOL_ACCEPTED",
     "tool.failed": "TOOL_REJECTED", "policy.blocked": "TOOL_REJECTED", "policy.command_refused": "SAFETY_VETO", "task.blocked": "SAFETY_VETO",
     "dag.cycle_refused": "SAFETY_VETO", "nav.deadlock_unresolved": "SAFETY_VETO", "drive.rejected": "SAFETY_VETO", "task.replan": "REPLAN",
-    "verification.started": "VERIFICATION_REQUEST", "verification.passed": "VERIFICATION_RESULT", "verification.failed": "VERIFICATION_RESULT",
+    "verification.started": "VERIFICATION_REQUEST", "verification.passed": "VERIFICATION_RESULT", "verification.failed": "VERIFICATION_RESULT", "verification.unreviewed": "VERIFICATION_RESULT",
     "approval.requested": "PROPOSE_PLAN", "approval.approved": "PLAN_APPROVED", "approval.held": "PLAN_REJECTED", "approval.expired": "PLAN_REJECTED",
     "approval.rejected": "PLAN_REJECTED", "provider.error": "MODEL_ERROR", "run.ended": "STOP", "task.hypothesis": "HYPOTHESIS",
     "task.request_observation": "REQUEST_OBSERVATION", "incident.escalated": "ESCALATION", "agent.heartbeat": "HEARTBEAT",

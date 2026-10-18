@@ -29,6 +29,7 @@ export default function RootLayout() {
       <StatusBar style="light" />
       <Stack screenOptions={{ headerShown: false, contentStyle: { backgroundColor: colors.bg }, animation: 'fade' }}>
         <Stack.Screen name="(tabs)" />
+        <Stack.Screen name="incident/[id]" options={{ animation: 'slide_from_right' }} />
       </Stack>
       <BootOverlay />
     </GestureHandlerRootView>

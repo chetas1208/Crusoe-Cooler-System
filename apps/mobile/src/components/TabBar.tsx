@@ -4,7 +4,7 @@ import Animated, { useAnimatedStyle, useSharedValue, withSpring } from 'react-na
 import { BlurView } from 'expo-blur';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import type { BottomTabBarProps } from 'expo-router/js-tabs';
-import { Bot, Orbit, SlidersHorizontal, TriangleAlert, type LucideIcon } from 'lucide-react-native';
+import { Bot, LayoutDashboard, Map as MapIcon, Play, type LucideIcon } from 'lucide-react-native';
 import { colors, toneColor } from '@/theme';
 import { haptic } from '@/lib/haptics';
 import { useOpenIncidents } from '@/hooks/useIncidents';
@@ -16,10 +16,10 @@ export function useTabBarHeight() {
 }
 
 const ICONS: Record<string, { icon: LucideIcon; label: string }> = {
-  index: { icon: Orbit, label: 'Live' },
-  incidents: { icon: TriangleAlert, label: 'Incidents' },
-  fleet: { icon: Bot, label: 'Fleet' },
-  system: { icon: SlidersHorizontal, label: 'System' },
+  index: { icon: LayoutDashboard, label: 'Dashboard' },
+  map: { icon: MapIcon, label: 'Map' },
+  agents: { icon: Bot, label: 'Agents' },
+  execution: { icon: Play, label: 'Execution' },
 };
 
 /** Blurred bottom tab bar with a spring-sliding indicator and a severity-coloured incident badge. */
@@ -47,7 +47,7 @@ export function TabBar({ state, navigation }: BottomTabBarProps) {
           const meta = ICONS[route.name] ?? ICONS.index;
           const Icon = meta.icon;
           const color = focused ? colors.accent : colors.t3;
-          const badge = route.name === 'incidents' && open.length > 0;
+          const badge = route.name === 'index' && open.length > 0;
           return (
             <PressableScale
               key={route.key}

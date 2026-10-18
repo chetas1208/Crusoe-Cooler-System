@@ -3,6 +3,7 @@ import { View } from 'react-native';
 import Animated, { FadeIn, LinearTransition } from 'react-native-reanimated';
 import { Ban, Check, ChevronDown, CircleDashed, Cpu, ShieldCheck, Wrench, X , Network } from 'lucide-react-native';
 import { formatSimClock, labelOfId, roleLabel } from '@loopkeeper/core';
+import { useWorld } from '@loopkeeper/core/store';
 import type { AgentRole, AgentTask, ToolCall } from '@loopkeeper/core/contracts';
 import { alpha, colors, toneColor, type Tone } from '@/theme';
 import { haptic } from '@/lib/haptics';
@@ -42,7 +43,7 @@ function StatusGlyph({ t, size = 26 }: { t: AgentTask; size?: number }) {
   );
 }
 
-function ToolCallRow({ call }: { call: ToolCall }) {
+export function ToolCallRow({ call }: { call: ToolCall }) {
   const [open, setOpen] = useState(false);
   const c = call.status === 'ok' ? colors.nominal : call.status === 'error' || call.status === 'rejected' ? colors.critical : colors.watch;
   return (
@@ -81,8 +82,9 @@ function ToolCallRow({ call }: { call: ToolCall }) {
   );
 }
 
-const TaskNode = memo(function TaskNode({ t, depth, last, onFocus }: { t: AgentTask; depth: number; last: boolean; onFocus?: (id: string) => void }) {
+export const TaskNode = memo(function TaskNode({ t, depth, last, onFocus }: { t: AgentTask; depth: number; last: boolean; onFocus?: (id: string) => void }) {
   const [open, setOpen] = useState(t.status === 'working');
+  const robots = useWorld((s) => s.robots);
   const lane = LANE[t.role];
   const indent = Math.min(depth, 2) * 14;
   return (
@@ -179,7 +181,7 @@ const TaskNode = memo(function TaskNode({ t, depth, last, onFocus }: { t: AgentT
                   <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 6 }}>
                     {[...(t.robot_id ? [t.robot_id] : []), ...t.asset_ids].map((id) => (
                       <PressableScale key={id} onPress={() => onFocus?.(id)} scaleTo={0.94}>
-                        <Chip sm mono tone={id.startsWith('c_') ? 'inpipe' : id.startsWith('o_') ? 'outrig' : 'neutral'}>{labelOfId(id)}</Chip>
+                        <Chip sm mono tone={robots[id]?.class ?? 'neutral'}>{labelOfId(id)}</Chip>
                       </PressableScale>
                     ))}
                   </View>

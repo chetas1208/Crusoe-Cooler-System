@@ -1,4 +1,5 @@
 import type { AgentTask, Incident } from '@loopkeeper/core/contracts';
+import type { EnvTag } from './envelopes';
 import { FAMILIES, deriveStatus, type DerivedStatus, type RobotCtx } from './status';
 
 export const NODE_W = 188;
@@ -43,6 +44,8 @@ export interface EdgeData extends Record<string, unknown> {
   dim: boolean;
   label?: string;
   verify?: 'pass' | 'reject' | 'pending';
+  /** agent-envelope kinds the run log recorded for the child task (delegation edges only) */
+  env?: EnvTag[];
 }
 
 export interface FlowNode {
@@ -75,6 +78,8 @@ export interface GraphInput {
   collapsed: ReadonlySet<string>;
   selectedId: string | null;
   matches: (t: AgentTask, s: DerivedStatus) => boolean;
+  /** child task id -> envelope tags (from the communications log); absent = none recorded */
+  envelopes?: Record<string, EnvTag[]>;
 }
 
 export interface GraphOutput {
@@ -224,6 +229,7 @@ export function buildGraph(inp: GraphInput): GraphOutput {
           dim: !inp.matches(t, st) && !inp.matches(src, srcSt ?? st),
           label: escalated ? (t.kind === 'escalate' ? 'escalated' : 'replan after reject') : undefined,
           verify,
+          env: isDelegation ? inp.envelopes?.[t.id] : undefined,
         },
       });
     }

@@ -5,6 +5,7 @@ back into the world. If the engine offers ``telemetry()/trace()/agent_tasks()`` 
 """
 from __future__ import annotations
 
+import threading
 from collections import deque
 from typing import Any, Deque, Optional
 
@@ -22,9 +23,14 @@ class Projection:
         self.series: dict[tuple[str, str], Deque[tuple[float, float]]] = {}
         self.tasks: dict[str, Json] = {}
         self.task_order: list[str] = []
+        self._lock = threading.RLock()        # request handlers run on a thread pool: catch_up() mutates, queries iterate
 
     # -- ingestion --------------------------------------------------------
     def catch_up(self) -> None:
+        with self._lock:
+            self._catch_up()
+
+    def _catch_up(self) -> None:
         while True:
             evs = self._engine.events_since(self.last_seq, self._page)
             if not evs:
@@ -36,6 +42,10 @@ class Projection:
                 return
 
     def seed_from_world(self, world: Json) -> None:
+        with self._lock:
+            self._seed_from_world(world)
+
+    def _seed_from_world(self, world: Json) -> None:
         t = world.get("sim_time_s", 0.0)
         for aid, st in (world.get("assets") or {}).items():
             for m, v in (st.get("readings") or {}).items():
@@ -58,7 +68,7 @@ class Projection:
                 for m, v in ((patch or {}).get("readings") or {}).items():
                     self._push(aid, m, t, v)
         elif typ == "snapshot":
-            self.seed_from_world(p)
+            self._seed_from_world(p)
         elif typ == "agent.task":
             task = p.get("task") or {}
             tid = task.get("id")
@@ -81,20 +91,23 @@ class Projection:
 
     # -- queries ----------------------------------------------------------
     def telemetry(self, asset_id: str, metric: str, window_s: float) -> Optional[Json]:
-        d = self.series.get((asset_id, metric))
-        if not d:
-            return None
-        tmax = d[-1][0]
-        pts = [[round(t, 1), round(v, 3)] for t, v in d if t >= tmax - window_s]
+        with self._lock:
+            d = self.series.get((asset_id, metric))
+            if not d:
+                return None
+            tmax = d[-1][0]
+            pts = [[round(t, 1), round(v, 3)] for t, v in list(d) if t >= tmax - window_s]
         return {"asset_id": asset_id, "metric": metric, "unit": READING_UNITS.get(metric, ""), "points": pts}
 
     def trace(self, incident_id: str) -> list[Json]:
-        out = [self.tasks[i] for i in self.task_order if self.tasks[i].get("incident_id") == incident_id]
+        with self._lock:
+            out = [self.tasks[i] for i in self.task_order if self.tasks[i].get("incident_id") == incident_id]
         out.sort(key=lambda t: (t.get("started_tick", 0), t.get("id", "")))
         return out
 
     def all_tasks(self) -> list[Json]:
-        return [self.tasks[i] for i in self.task_order]
+        with self._lock:
+            return [self.tasks[i] for i in self.task_order]
 
 
 def agent_graph(run_id: str, tasks: list[Json]) -> Json:

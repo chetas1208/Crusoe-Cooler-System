@@ -1,13 +1,15 @@
 import { useSupervisors } from '../../lib/supervisors';
 import { useMemo } from 'react';
-import { Bot, Check, Wrench } from 'lucide-react';
+import { Bot, EyeOff, Wrench } from 'lucide-react';
 import { useShallow } from 'zustand/react/shallow';
 import { useWorld, type FeedItem } from '@loopkeeper/core/store';
-import { CAUSE_LABEL, INCIDENT_STATUS_LABEL, ROBOT_MODE_LABEL, formatDuration, formatSimClock, labelOfId } from '@loopkeeper/core';
+import { ROBOT_MODE_LABEL, formatSimClock, labelOfId } from '@loopkeeper/core';
 import type { Incident, Robot } from '@loopkeeper/core/contracts';
 import { entityFocus, useMapCamera, useView } from '@loopkeeper/scene';
 import { Chip } from '../../ui/kit';
 import { useUi, usePinnedIncident } from '../../ui/store';
+import { ModelCard, QuietSummary, RunSummary } from './RunSummary';
+import { Button } from '../../ui/kit/index';
 
 const sevTone = (i: Incident) => (i.closed_tick ? (i.status === 'dismissed' ? 'isolated' : 'nominal') : i.status === 'escalated' ? 'critical' : i.severity);
 
@@ -29,35 +31,8 @@ export function locateInMap(inc: Incident) {
 
 function TopIncident() {
   const inc = usePinnedIncident();
-  const simTime = useWorld((s) => s.simTimeS);
-  const setTab = useUi((s) => s.setTab);
-  if (!inc || inc.closed_tick) {
-    return (
-      <div className="dd__quiet" role="status">
-        <Check size={14} strokeWidth={2.4} />
-        <span>No active cooling incidents</span>
-      </div>
-    );
-  }
-  const tone = sevTone(inc);
-  return (
-    <article className="dd__inc" data-tone={tone}>
-      <header>
-        <span className="mono dd__id">{inc.id}</span>
-        <span className="dd__muted">open {formatDuration(simTime - inc.opened_at_s)}</span>
-      </header>
-      <h3>{inc.title}</h3>
-      <div className="dd__chips">
-        <Chip tone={tone} sm>{inc.status === 'escalated' ? 'Needs operator' : INCIDENT_STATUS_LABEL[inc.status]}</Chip>
-        <Chip sm>{CAUSE_LABEL[inc.cause]}</Chip>
-      </div>
-      <p>{inc.summary}</p>
-      <div className="dd__actions">
-        <button className="btn btn--sm btn--primary" onClick={() => locateInMap(inc)}>Locate in Map</button>
-        <button className="btn btn--sm btn--ghost" onClick={() => (useUi.getState().pin(inc.id), useView.getState().focusIncident(inc.id), setTab('agents'))}>Open in Agents</button>
-      </div>
-    </article>
-  );
+  if (!inc || inc.closed_tick) return <QuietSummary />;
+  return <RunSummary inc={inc} onLocate={() => locateInMap(inc)} />;
 }
 
 const MODE_TONE = (r: Robot) => (r.mode === 'FAILED' || r.mode === 'BLOCKED' || r.mode === 'SAFE_HOLD' || r.mode === 'ABORTED' ? 'critical' : r.mode === 'NEEDS_CHARGE' ? 'warning' : r.mode === 'DOCKED' || r.mode === 'IDLE' ? undefined : r.class === 'inpipe' ? 'inpipe' : 'outrig');
@@ -80,7 +55,7 @@ function Robots() {
           display: 'flex',
           justifyContent: 'space-between',
           alignItems: 'center',
-          fontSize: 11,
+          fontSize: 12,
           padding: '6px 10px',
           background: 'rgba(255, 255, 255, 0.04)',
           borderRadius: 6,
@@ -149,12 +124,19 @@ function Events() {
   );
 }
 
-/** Right dock: the one thing that needs attention, who is working on it, and what just happened. */
-export function RightDock() {
+/** Right dock: the one thing that needs attention (with a way into it), the model's honest status, who is working, what just happened. */
+export function RightDock({ onHide }: { onHide(): void }) {
   return (
     <aside className="dd panel" data-inset="right" aria-label="Operations summary">
       <section>
+        <div className="dd__bar">
+          <h2>Summary</h2>
+          <Button size="sm" variant="ghost" icon={<EyeOff size={13} />} onClick={onHide} title="Hide summary panel">Hide</Button>
+        </div>
         <TopIncident />
+      </section>
+      <section>
+        <ModelCard />
       </section>
       <section>
         <h2>Robots</h2>

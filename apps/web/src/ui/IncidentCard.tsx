@@ -7,6 +7,7 @@ import { useView } from '@loopkeeper/scene';
 import { Chip, Dot, Eyebrow, Ring } from './kit';
 import { StageDots } from './Dock';
 import { useUi, usePinnedIncident } from './store';
+import { Button, IconButton } from './kit/index';
 
 const sevTone = (i: Incident) => (i.closed_tick ? (i.status === 'dismissed' ? 'isolated' : 'nominal') : i.status === 'escalated' ? 'critical' : i.severity);
 
@@ -44,13 +45,9 @@ export function IncidentCard() {
               </div>
               <div className="incident__title">{inc.title}</div>
             </div>
-            <button className="icon-btn" style={{ width: 26, height: 26 }} onClick={() => setCollapsed(!collapsed)} aria-label={collapsed ? 'Expand incident' : 'Collapse incident'}>
-              {collapsed ? <ChevronDown size={15} /> : <ChevronUp size={15} />}
-            </button>
+            <IconButton size="sm" onClick={() => setCollapsed(!collapsed)} aria-label={collapsed ? 'Expand incident' : 'Collapse incident'} aria-expanded={!collapsed} icon={collapsed ? <ChevronDown size={15} /> : <ChevronUp size={15} />} />
             {manualPin && (
-              <button className="icon-btn" style={{ width: 26, height: 26 }} onClick={() => pin(null)} aria-label="Unpin incident" title="Back to auto">
-                <X size={14} />
-              </button>
+              <IconButton size="sm" onClick={() => pin(null)} aria-label="Unpin incident" tip="Back to auto" icon={<X size={14} />} />
             )}
           </header>
 
@@ -73,18 +70,19 @@ export function IncidentCard() {
                   <VerificationBlock inc={inc} />
                   <Hypotheses inc={inc} />
                   <div className="incident__actions">
-                    <button className="btn btn--sm" onClick={() => focus(inc.id)}>
-                      <Crosshair size={13} /> Show on map
-                    </button>
-                    <button
-                      className="btn btn--sm"
+                    <Button size="sm" icon={<Crosshair size={13} />} onClick={() => focus(inc.id)}>
+                      Show on map
+                    </Button>
+                    <Button
+                      size="sm"
+                      icon={<Network size={13} />}
                       onClick={() => {
                         useView.getState().focusIncident(inc.id);
                         setMode('agents');
                       }}
                     >
-                      <Network size={13} /> Agent trace
-                    </button>
+                      Agent trace
+                    </Button>
                   </div>
                 </div>
               </motion.div>
@@ -120,13 +118,13 @@ function ApprovalBanner({ inc }: { inc: Incident }) {
       </div>
       <div className="approval__btns">
         {!held && auto && (
-          <button className="btn btn--sm" onClick={() => void commands.hold(a.id)}>
+          <Button size="sm" onClick={() => void commands.hold(a.id)}>
             Hold
-          </button>
+          </Button>
         )}
-        <button className="btn btn--sm btn--primary" onClick={() => void commands.approve(a.id)}>
+        <Button size="sm" variant="primary" onClick={() => void commands.approve(a.id)}>
           Approve
-        </button>
+        </Button>
       </div>
       <ul className="approval__steps">
         {a.steps.slice(0, 5).map((s, i) => (
@@ -175,7 +173,7 @@ function VerificationBlock({ inc }: { inc: Incident }) {
             <span className="check__icon">{c.pass ? <Check size={11} strokeWidth={3} /> : <X size={11} strokeWidth={3} />}</span>
             <span className="check__label">{c.label}</span>
             <span className="check__vals num">
-              {c.before.toFixed(2)} <i>→</i> <b>{c.after.toFixed(2)}</b> <em>{c.unit}</em>
+              {typeof c.before === 'number' ? c.before.toFixed(2) : '—'} <i>→</i> <b>{typeof c.after === 'number' ? c.after.toFixed(2) : 'not measured'}</b> <em>{c.unit}</em>
             </span>
           </div>
         ))}

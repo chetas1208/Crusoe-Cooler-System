@@ -9,6 +9,7 @@ import { Chip, useTick } from '../../ui/kit';
 import { useUi } from '../../ui/store';
 import { StatusIcon } from './DelegationGraph';
 import { deriveStatus, familyOf, isHumanControlled, modelNote, oneLine, planLadder, redact, robotLabel, type DerivedStatus, type RobotCtx } from './status';
+import { Button, IconButton } from '../../ui/kit/index';
 
 const ROLE_POLICY: Record<string, string> = {
   sentinel: 'Reads telemetry and topology, proposes missions and work orders. Cannot move hardware directly; changes go through the approved command bus.',
@@ -112,7 +113,7 @@ function Detail({ task, robots, onSelect }: { task: AgentTask; robots: Record<st
           <div className="ag-ih__t">{task.title}</div>
           <div className="ag-ih__id mono">{task.id} · {task.role} · {task.kind}</div>
         </div>
-        <button className="icon-btn" style={{ width: 26, height: 26 }} onClick={() => onSelect(null)} aria-label="Close inspector"><X size={15} /></button>
+        <IconButton size="sm" onClick={() => onSelect(null)} aria-label="Close inspector" icon={<X size={15} />} />
       </header>
 
       <div className="ag-ibody scroll">
@@ -263,18 +264,19 @@ function Detail({ task, robots, onSelect }: { task: AgentTask; robots: Record<st
       </div>
 
       <footer className="ag-iact">
-        <button className="btn btn--sm" disabled={!target} title={target ? `Show ${target} on the map` : 'This task has no asset to locate'} onClick={locate}><Crosshair size={13} /> Locate asset</button>
-        <button className="btn btn--sm" disabled={!task.robot_id || !robot} title={task.robot_id ? (robot ? 'Follow the robot on the map' : 'The robot is no longer reported') : 'No robot is assigned to this task'} onClick={follow}><Bot size={13} /> Follow robot</button>
-        <button className="btn btn--sm" disabled={!inc} onClick={openExec}><ExternalLink size={13} /> Open in Execution</button>
-        <button
-          className="btn btn--sm"
-          data-warn={pending}
-          disabled={!pending}
-          title={pending ? 'Approve or hold the waiting intervention' : ap ? `Approval is ${ap.status}` : 'No intervention is waiting on this incident'}
+        <Button size="sm" icon={<Crosshair size={13} />} disabledReason={target ? undefined : 'This task has no asset to locate'} title={target ? `Show ${target} on the map` : undefined} onClick={locate}>Locate asset</Button>
+        <Button size="sm" icon={<Bot size={13} />} disabledReason={!task.robot_id ? 'No robot is assigned to this task' : !robot ? 'The robot is no longer reported' : undefined} title={robot ? 'Follow the robot on the map' : undefined} onClick={follow}>Follow robot</Button>
+        <Button size="sm" icon={<ExternalLink size={13} />} disabledReason={inc ? undefined : 'This task has no incident to open'} onClick={openExec}>Open in Execution</Button>
+        <Button
+          size="sm"
+          variant={pending ? 'warn' : 'secondary'}
+          icon={<ShieldAlert size={13} />}
+          disabledReason={pending ? undefined : ap ? `Approval is ${ap.status}` : 'No intervention is waiting on this incident'}
+          title={pending ? 'Approve or hold the waiting intervention' : undefined}
           onClick={() => reviewRef.current?.scrollIntoView({ block: 'nearest', behavior: 'smooth' })}
         >
-          <ShieldAlert size={13} /> Review intervention
-        </button>
+          Review intervention
+        </Button>
       </footer>
     </aside>
   );
@@ -383,8 +385,8 @@ function Review({ inc, reviewRef, highlight }: { inc: Incident; reviewRef: React
         <>
           <div className="ag-review__t num">{left === null ? 'Explicit approval required. Nothing runs until you approve.' : `Auto-approves in ${left} s unless you hold it.`}</div>
           <div className="ag-review__b">
-            <button className="btn btn--sm btn--primary" disabled={busy} onClick={() => void run('approve')}><ShieldCheck size={13} /> Approve</button>
-            <button className="btn btn--sm" disabled={busy} onClick={() => void run('hold')}>Hold</button>
+            <Button size="sm" variant="primary" loading={busy} icon={<ShieldCheck size={13} />} onClick={() => void run('approve')}>Approve</Button>
+            <Button size="sm" disabled={busy} onClick={() => void run('hold')}>Hold</Button>
           </div>
         </>
       )}

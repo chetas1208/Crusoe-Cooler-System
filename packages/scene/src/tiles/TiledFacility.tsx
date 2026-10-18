@@ -6,30 +6,35 @@ import { authFetch } from '@loopkeeper/core/client';
 import { useView } from '../view';
 import { TileStreamingManager } from './manager';
 import { STATUS_COLOR, marginColor } from '../theme';
+import { useTileMode, type TileMode } from './mode';
 import type { Manifest, TileStats } from './types';
 
 declare global {
   interface Window {
-    __lkTiles?: { stats: () => TileStats | null; manager: () => TileStreamingManager | null };
+    __lkTiles?: {
+      stats: () => TileStats | null;
+      manager: () => TileStreamingManager | null;
+      mode: () => TileMode;
+      state: () => TileState;
+      /** manifest fetch attempts so far (retries included) and the last failure, for the verification scripts */
+      attempts: () => { count: number; lastError: string | null };
+    };
   }
 }
 
-/** `?tiles=1` (or localStorage lk.tiles=1) turns the server-tile path on; the procedural facility is the default and the fallback. */
-export const tilesRequested = (() => {
-  try {
-    return typeof location !== 'undefined' && (new URLSearchParams(location.search).get('tiles') === '1' || localStorage.getItem('lk.tiles') === '1');
-  } catch {
-    return false;
-  }
-})();
+export { tilesRequested } from './mode';
 
 export type TileState = 'off' | 'loading' | 'ready' | 'failed';
+
+/** retry schedule after the manifest or LOD0 failed (offline, 404, 5xx, topology mismatch): the procedural facility is drawn meanwhile */
+export const RETRY_MS = [4_000, 15_000, 60_000, 180_000];
 
 /** Streams the server render manifest's tiles into the scene. Reports its state so the procedural scene can take over on failure. */
 export function TiledFacility({ onState }: { onState: (s: TileState) => void }) {
   const topoVersion = useWorld((s) => (s.topology ? s.topology.facility.topology_hash : ''));
   const facilityId = useWorld((s) => s.topology?.facility.id ?? 'lab_01');
   const [mgr, setMgr] = useState<TileStreamingManager | null>(null);
+  const [retry, setRetry] = useState(0);
   const tier = useView((s) => s.quality);
   const { camera, size } = useThree();
   const acc = useRef(0);
@@ -37,17 +42,25 @@ export function TiledFacility({ onState }: { onState: (s: TileState) => void }) 
   const vel = useRef(new THREE.Vector3());
   const tintTick = useRef(0);
   const col = useRef(new THREE.Color());
+  const attempts = useRef({ count: 0, lastError: null as string | null });
+  const stateRef = useRef<TileState>('off');
+  const report = (s: TileState) => {
+    stateRef.current = s;
+    onState(s);
+  };
 
   useEffect(() => {
     const t = activeTransport();
     const base = t?.info.kind === 'live' ? t.info.url?.replace(/\/$/, '') : undefined;
     if (!base || !topoVersion) {
-      onState('failed'); // embedded mock: no manifest exists, never fake one
+      report('failed'); // embedded mock: no manifest exists, never fake one
       return;
     }
     const ctl = new AbortController();
     let m: TileStreamingManager | null = null;
-    onState('loading');
+    let timer: ReturnType<typeof setTimeout> | undefined;
+    report('loading');
+    attempts.current.count++;
     (async () => {
       try {
         const r = await authFetch(`${base}/api/v1/facilities/${encodeURIComponent(facilityId)}/render-manifest`, { signal: ctl.signal, headers: { Accept: 'application/json' } });
@@ -59,20 +72,41 @@ export function TiledFacility({ onState }: { onState: (s: TileState) => void }) 
         await m.start(ctl.signal);
         if (ctl.signal.aborted) return;
         setMgr(m);
-        onState('ready');
+        report('ready');
       } catch (e) {
         if ((e as Error).name === 'AbortError') return;
+        m?.dispose();
+        m = null;
+        attempts.current.lastError = (e as Error).message;
         console.warn('tile streaming unavailable, using the procedural facility:', e);
-        onState('failed');
+        report('failed');
+        const wait = RETRY_MS[Math.min(attempts.current.count - 1, RETRY_MS.length - 1)];
+        timer = setTimeout(() => setRetry((n) => n + 1), wait);
       }
     })();
-    window.__lkTiles = { stats: () => m?.stats ?? null, manager: () => m };
     return () => {
       ctl.abort();
+      if (timer) clearTimeout(timer);
       m?.dispose();
       setMgr(null);
     };
-  }, [topoVersion, facilityId, onState]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [topoVersion, facilityId, retry]);
+
+  useEffect(() => {
+    window.__lkTiles = {
+      stats: () => mgrRef.current?.stats ?? null,
+      manager: () => mgrRef.current,
+      mode: () => useTileMode.getState().mode,
+      state: () => stateRef.current,
+      attempts: () => attempts.current,
+    };
+    return () => {
+      delete window.__lkTiles;
+    };
+  }, []);
+  const mgrRef = useRef<TileStreamingManager | null>(null);
+  mgrRef.current = mgr;
 
   useEffect(() => mgr?.setQuality(tier), [mgr, tier]);
 
@@ -101,18 +135,18 @@ export function TiledFacility({ onState }: { onState: (s: TileState) => void }) 
     <primitive
       object={mgr.group}
       onPointerOver={(e: { intersections: THREE.Intersection[]; stopPropagation(): void }) => {
-        const id = mgr.entityAt(e.intersections[0]);
-        if (id) {
+        const p = mgr.pick(e.intersections);
+        if (p) {
           e.stopPropagation();
-          useView.getState().hover(id);
+          useView.getState().hover(p.id);
         }
       }}
       onPointerOut={() => useView.getState().hover(null)}
       onClick={(e: { intersections: THREE.Intersection[]; stopPropagation(): void }) => {
-        const id = mgr.entityAt(e.intersections[0]);
-        if (id) {
+        const p = mgr.pick(e.intersections);
+        if (p) {
           e.stopPropagation();
-          useView.getState().select(id);
+          useView.getState().select(p.id);
         }
       }}
     />

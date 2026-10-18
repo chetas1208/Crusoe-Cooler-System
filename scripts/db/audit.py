@@ -299,6 +299,9 @@ def main() -> int:
               f"(project-size cap is per project; check via Neon console whether both endpoints belong to one project)")
         print(f"\n===== summary =====\nprimary {pretty(res['primary']['db_bytes'])} + telemetry {pretty(res['telemetry']['db_bytes'])} = {pretty(total)} "
               f"({100*total/LIMIT_BYTES:.1f}% of 1 GiB, if both are on one project)")
+        pct = 100 * total / LIMIT_BYTES
+        print(f"size guard level (same thresholds as storage/maintenance.py SizeGuard, 80/90 % of the summed size): {'CRITICAL' if pct >= 90 else 'WARN' if pct >= 80 else 'ok'}"
+              "  (the live process reports its own state in /health/detail via maintenance.guard_status())")
     print(f"findings: {len(WARN)}")
     for w in WARN:
         print("  -", w)

@@ -98,6 +98,11 @@ class ThermalNetwork:
         self.eff = 0.0
         self.ntu = 0.0
         self.guard_tripped: str | None = None
+        # facility heat-rejection plant (CR-03): design duty and the supply-temperature rise above the chiller setpoint
+        # that appears when the plant cannot remove the heat the CDU hands it (see _facility_step). 0 when healthy.
+        self.q_design_w = 0.0
+        self.facility_rise_k = 0.0
+        self.facility_cap_w = None            # None = plant healthy (diagnostic / truth)
 
     # ---------------------------------------------------------------- CDU
     def cdu_duty(self, t_hot_in: float, m_hot: float, t_cold_in: float, m_cold: float) -> tuple[float, float, float]:
@@ -128,6 +133,8 @@ class ThermalNetwork:
         self.sec.set_temperature(t_sup)
         self.fws.set_temperature(fws_in_c + q_tot / (m_fws * self.cp_f))
         self.q_hx_w, self.eff, self.ntu = q_tot, eff, ntu
+        self.q_design_w = q_tot
+        self.facility_rise_k = 0.0
 
     # ---------------------------------------------------------------- step
     @property
@@ -139,8 +146,10 @@ class ThermalNetwork:
         return self.ret.t_c
 
     def step(self, dt: float, loads_w: dict[str, float], q_vol_rack: dict[str, float], q_vol_fws: float,
-             fws_in_c: float) -> dict[str, float]:
-        """Advance thermal state by dt. Returns mass flows used (kg/s) for diagnostics."""
+             fws_in_c: float, facility: dict[str, Any] | None = None) -> dict[str, float]:
+        """Advance thermal state by dt. Returns mass flows used (kg/s) for diagnostics.
+        `fws_in_c` is the water temperature entering the CDU (the plant adds `facility_rise_k` to the chiller setpoint);
+        `facility` is FaultState.facility (CR-03) or None/{} for a healthy heat-rejection plant."""
         ft, ff = self.fluids["tcs"], self.fluids["fws"]
         t_sup = self.sec.t_c
         rho_t = ft.rho(t_sup)
@@ -161,8 +170,30 @@ class ThermalNetwork:
         self.q_hx_w = q
         self.sec.step(dt, self.ret.t_c, m_tcs, -q)
         self.fws.step(dt, fws_in_c, m_fws, +q)
+        self._facility_step(dt, facility)
         self._guard()
         return {"tcs": m_tcs, "fws": m_fws, **{f"rack:{r}": m for r, m in m_rack.items()}}
+
+    def _facility_step(self, dt: float, facility: dict[str, Any] | None) -> None:
+        """Facility heat-rejection plant with finite capacity Q_cap = cap_frac * rated_margin * Q_design.
+
+        The plant holds the setpoint while it can remove the heat the CDU rejects into the FWS loop (q_hx). Above capacity
+        the facility water buffer (C = buffer_j_per_k) heats at (q_hx - Q_cap)/C, so the supply temperature rises above
+        setpoint (`facility_rise_k`, capped at rise_max_k = plant trip/limit); below capacity the buffer recovers at the same
+        rate. Energy-conserving: the heat the CDU can no longer reject accumulates in the TCS loop and the chips, so the
+        only containment is to cut the heat load (or restore the plant). Healthy plant: the rise decays with tau_rec."""
+        if not facility or not facility.get("active"):
+            self.facility_cap_w = None
+            if self.facility_rise_k > 0.0:
+                tau = float(self.th.get("facility_recover_tau_s", 120.0))
+                self.facility_rise_k *= math.exp(-dt / tau)
+                if self.facility_rise_k < 1e-3:
+                    self.facility_rise_k = 0.0
+            return
+        cap = facility["cap_frac"] * facility["rated_margin"] * self.q_design_w
+        self.facility_cap_w = cap
+        d = (self.q_hx_w - cap) / facility["buffer_j_per_k"] * dt
+        self.facility_rise_k = min(max(self.facility_rise_k + d, 0.0), facility["rise_max_k"])
 
     def _guard(self) -> None:
         lo, hi = self.th["temp_guard_c"]["min"], self.th["temp_guard_c"]["max"]
@@ -180,7 +211,8 @@ class ThermalNetwork:
     def get_state(self) -> dict[str, Any]:
         return {"rack": {r: self.rack[r].get_state() for r in self.racks},
                 "ret": self._lv(self.ret), "sec": self._lv(self.sec), "fws": self._lv(self.fws),
-                "q_hx": self.q_hx_w, "eff": self.eff, "ntu": self.ntu}
+                "q_hx": self.q_hx_w, "eff": self.eff, "ntu": self.ntu,
+                "q_design": self.q_design_w, "fac_rise": self.facility_rise_k}
 
     @staticmethod
     def _lv(v: LoopVolume) -> dict[str, float]:
@@ -193,3 +225,4 @@ class ThermalNetwork:
             lv = getattr(self, name)
             lv.loop.T_coolant_C, lv.loop.T_in_C, lv.loop.m_dot_kg_s = s[name]["t"], s[name]["t_in"], s[name]["m"]
         self.q_hx_w, self.eff, self.ntu = float(s["q_hx"]), float(s["eff"]), float(s["ntu"])
+        self.q_design_w, self.facility_rise_k = float(s.get("q_design", self.q_hx_w)), float(s.get("fac_rise", 0.0))

@@ -1,7 +1,7 @@
 import { create } from 'zustand';
 import { useWorld } from '@loopkeeper/core/store';
 import type { Topology, Vec3 } from '@loopkeeper/core/contracts';
-import { fitCamera, measureInsets, OVERVIEW_VIEW, overviewBoxes, siteModel, useDashView, useMapCamera, useView, type CamGoal, type Road } from '@loopkeeper/scene';
+import { fitCamera, measureInsets, stageSize, OVERVIEW_VIEW, overviewBoxes, siteModel, useDashView, useMapCamera, useView, type CamGoal, type Road } from '@loopkeeper/scene';
 import { useUi } from './store';
 
 /**
@@ -26,7 +26,7 @@ export const PRESET_LABEL: Record<Exclude<PresetId, 'road'>, { label: string; hi
   fit: { label: 'Fit facility', hint: 'Frame the whole hall in the free area between the panels' },
 };
 
-const common = () => ({ width: window.innerWidth, height: window.innerHeight, insets: measureInsets(), fov: OVERVIEW_VIEW.fov });
+const common = () => ({ ...stageSize(), insets: measureInsets(), fov: OVERVIEW_VIEW.fov });
 
 export function roadBox(r: Road, wallH = 3.3): { min: Vec3; max: Vec3 } {
   return { min: [r.x0 - 1, 0, r.z0 - 2.2], max: [r.x1 + 1, wallH, r.z1 + 2.2] };

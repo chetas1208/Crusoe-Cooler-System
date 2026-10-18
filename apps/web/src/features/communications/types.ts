@@ -48,12 +48,17 @@ export interface CommunicationEventV1 {
   model_provider?: string;
   model_id?: string;
   visibility?: string;
+  /** what the sender was allowed to do (observe / plan / act / system) */
+  permission_scope?: string;
+  idempotency_key?: string;
   schema_version: string;
   /** compact structured detail (tool name, args digest, trace ids...). Rendered as escaped JSON text only. */
   detail?: Record<string, unknown>;
 }
 
 export type ConnState = 'CONNECTING' | 'LIVE' | 'RECONNECTING' | 'REPLAY' | 'STALE' | 'OFFLINE' | 'ERROR';
+
+export type Density = 'comfortable' | 'compact';
 
 export type RoleFilter = 'all' | 'sentinel' | 'inpipe' | 'outrig' | 'tools' | 'failures' | 'operator';
 export const ROLE_FILTERS: Array<{ id: RoleFilter; label: string }> = [

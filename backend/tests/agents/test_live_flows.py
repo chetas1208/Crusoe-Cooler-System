@@ -35,7 +35,9 @@ async def test_each_fault_kind_closes_verified(kind, target, final, seed):
         if final == "resolved":
             assert [x["stage"] for x in inc["stage_log"]][:3] == ["observed", "hypothesized", "investigated"]
             assert inc["stage_log"][-1] == {**inc["stage_log"][-1], "stage": "verified", "outcome": "ok"}
-            assert inc["verification"]["status"] == "verified" and inc["verification"]["checks"]
+            # no model client here: the measured recovery is real, but with no independent (model) review it is never recorded as "verified" (V12 review #1)
+            assert inc["verification"]["status"] == "rejected" and inc["verification"]["dod"]["layer_a"] == "PASS" and inc["verification"]["checks"]
+            assert "not counted as verified" in inc["verification"]["failed_reason"]
             tasks = st.tasks(inc["id"])
             kinds = {t["kind"] for t in tasks}
             assert {"classify", "review.hydraulics", "review.thermal", "review.accessibility", "reconcile", "verify"} <= kinds
@@ -62,7 +64,8 @@ async def test_ineffective_repair_is_rejected_then_replanned():
         log = [(x["stage"], x.get("outcome")) for x in inc["stage_log"]]
         assert ("verified", "rejected") in log and log[-1] == ("verified", "ok")
         vers = sorted((v for v in st.eng.track.verifications.values()), key=lambda v: v["attempt"])
-        assert [v["status"] for v in vers] == ["rejected", "verified"] and vers[0]["failed_reason"]
+        assert [v["status"] for v in vers] == ["rejected", "rejected"] and vers[0]["failed_reason"]          # 2nd: recovered, but no independent review -> not "verified"
+        assert vers[1]["dod"]["layer_a"] == "PASS" and vers[1]["dod"]["independently_reviewed"] is False
         kinds = [t["kind"] for t in st.tasks(inc["id"])]
         assert "clear" in kinds and "replan" in kinds and kinds.count("verify") == 2
         # the physics really recovered (independent of the verifier's own words)

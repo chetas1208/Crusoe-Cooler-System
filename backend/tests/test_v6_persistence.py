@@ -28,6 +28,14 @@ def _engine(storage, run_id, cfg_name=None, seed=2):
     return create_engine(plant=FacilityPlant(seed=seed, config=cfg), run_id=run_id, seed=seed, storage=storage)
 
 
+@pytest.fixture(autouse=True)
+def _base_snapshot_cadence(monkeypatch):
+    """These tests assume the configured 60 sim-s interval; the storage-budget policy (maintenance.POLICY) stretches it in production
+    (explicit incident / fork / shutdown checkpoints are never subject to it), so give it an unlimited budget here."""
+    from loopkeeper.storage import maintenance
+    monkeypatch.setattr(maintenance.POLICY, "budget", 1e12)
+
+
 async def _record(eng, ticks=260):
     await eng.step_ticks(ticks)                             # > 2 interval snapshots (60 sim-s = 120 ticks)
     eng.take_snapshot("test")

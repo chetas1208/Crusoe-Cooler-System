@@ -181,7 +181,7 @@ async def test_workcell_is_a_facility_bay_followed_by_the_engine_rover_and_one_o
 
 
 @pytest.mark.asyncio
-async def test_crawler_cleaning_targets_its_own_segment_and_reports_the_plant_result():
+async def test_crawler_cleaning_targets_its_own_segment_and_manual_drive_never_heals_the_plant():
     eng = _engine()
     await eng.step_ticks(4)
     ir = Op(eng, "IR-01")
@@ -192,7 +192,9 @@ async def test_crawler_cleaning_targets_its_own_segment_and_reports_the_plant_re
     assert ack["deposit_cleaning"]["segment_id"] == seg                            # not a hard-coded p_trunk (which does not exist in V6)
     for _ in range(8):
         ack = await ir.cmd(action="clean_deposit")
-    assert ack["plant_effect"]["ok"] is True
+    occ = dict(eng.plant.faults.occl)
+    assert ack["plant_effect"]["ok"] is False and "tool_authority_required" in ack["plant_effect"]["reason"]     # manual drive never heals the plant (V12 red team #9)
+    assert dict(eng.plant.faults.occl) == occ
     op = Op(eng, "OR-05")
     await op.acquire()
     assert "no_brush" in (await op.cmd(action="clean_deposit"))["rejected"]["reason"]

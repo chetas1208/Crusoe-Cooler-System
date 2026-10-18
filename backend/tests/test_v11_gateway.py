@@ -258,16 +258,17 @@ def test_call_budget_and_spend_ceilings():
         assert ei.value.code == "call_budget"
     run(go())
     assert len(prov.chat) == 2
-    gw2, prov2, _ = mk(run_spend_ceiling_usd=0.001, incident_spend_ceiling_usd=10)
+    gw2, prov2, _ = mk(run_spend_ceiling_usd=0.003, incident_spend_ceiling_usd=10)
     run(gw2.start())
     async def go2():
-        await call(gw2, kind="replan")                         # ~ $0.00054
-        await call(gw2, kind="replan")                         # crosses the $0.001 line
+        await call(gw2, kind="replan")                         # actual $0.00054, but each call RESERVES its worst case (~$0.0017) before it runs
+        await call(gw2, kind="replan")                         # spent 0.00054 + worst case 0.0017 still fits under $0.003
+        await call(gw2, kind="replan")                         # third: 0.00108 + 0.0017 fits too (0.0028)
         with pytest.raises(GatewayError) as ei:
             await call(gw2, kind="replan")
         assert ei.value.code == "spend_ceiling"
     run(go2())
-    gw3, prov3, _ = mk(incident_spend_ceiling_usd=0.0004)
+    gw3, prov3, _ = mk(incident_spend_ceiling_usd=0.002)
     run(gw3.start())
     async def go3():
         await call(gw3, kind="replan", incident_id="INC-1")

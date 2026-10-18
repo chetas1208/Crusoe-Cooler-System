@@ -20,6 +20,7 @@ import time
 from typing import Any, Callable
 
 from .. import interfaces  # noqa: F401  (Protocol docs)
+from ..storage import maintenance
 from ..storage.base import CommitBatch, LeadershipLost, Storage, StorageError
 from .clock import SimClock
 from .commands import CommandBus
@@ -67,6 +68,10 @@ def world_hash(world: Json) -> str:
     return chash(world_projection(world))
 
 
+COMMIT_ATTEMPTS = 3                 # a transient storage error is retried this many times (0.25 s, 0.5 s apart) before physics halts
+COMMIT_RETRY_BASE_S = 0.25
+
+
 class Engine:
     def __init__(self, run_id: str, cfg: EngineConfig, plant, topology: Json, storage: Storage | None, *, agents=None,
                  wall: Callable[[], float] = time.monotonic, wall_time: Callable[[], float] = time.time,
@@ -108,7 +113,7 @@ class Engine:
         self._drive_note: dict[str, float] = {}
         self._agent_task: asyncio.Task | None = None
         self._agent_cursor = 0
-        self._next_snap_s = cfg.snapshot_interval_s
+        self._next_snap_s = maintenance.POLICY.interval_s(cfg.snapshot_interval_s, cfg.sim_speed)
         self._snap_request: str | None = None
         self._next_sample_s = 0.0
         self.hist: dict[str, list] = {}
@@ -435,9 +440,11 @@ class Engine:
                 hz.extend(self.plant.leak_sim.get_hazard_zones())
             if hasattr(self.plant, "fire_sim"):
                 hz.extend(self.plant.fire_sim.get_hazard_zones())
+            if hasattr(self.plant, "hazards"):      # V12 L2: manifold leak / smoke event zones (physics/hazards.py)
+                hz.extend(self.plant.hazards.get_hazard_zones())
             w["hazard_zones"] = hz
         if hasattr(self.plant, "power_sim"):
-            w["power_state"] = self.plant.power_sim.state.to_dict()
+            w["power_state"] = {**self.plant.power_sim.state.to_dict(), **(self.plant.hazards.power_state() if hasattr(self.plant, "hazards") else {})}
         return w
 
     def telemetry(self, asset_id: str, metric: str, window_s: float = 600.0) -> Json | None:
@@ -603,6 +610,10 @@ class Engine:
         row = {"snapshot_id": new_uuid(), "tick": self.tick, "last_seq": self.seq, "reason": reason, "state": __import__("zlib").compress(blob, 3),
                "world": world, "rng_state": {"engine": doc["rng"]}, "schema_version": STATE_SCHEMA_VERSION, "engine_version": ENGINE_VERSION,
                "content_hash": sha256_hex(blob), "world_hash": world_hash(world), "state_hash": self.state_hash()}
+        try:
+            maintenance.POLICY.observe(len(row["state"]) + len(json.dumps(world, default=str)))     # sizes the snapshot cadence (storage budget)
+        except Exception:                                                                            # noqa: BLE001
+            pass
         self.pending_snaps.append(row)
         self.emit_internal("world.snapshot", self.facility_id, {"snapshot_id": row["snapshot_id"], "tick": row["tick"], "reason": reason,
                                                                   "world_hash": row["world_hash"], "state_hash": row["state_hash"]})
@@ -611,7 +622,7 @@ class Engine:
     # ================================================================ tick
     def _auto_approvals(self) -> None:
         for aid in self.track.due_auto_approvals(self.sim_time):
-            inc, err = self.track.decide(aid, True)
+            inc, err = self.track.decide(aid, True, by="auto:veto_window")
             if inc:
                 self.emit_internal("incident.updated", inc["id"], {"incident": clone(inc)}, actor_type="system")
 
@@ -649,7 +660,7 @@ class Engine:
         if not self.replay:
             if self.sim_time >= self._next_snap_s:
                 self.take_snapshot("interval")
-                self._next_snap_s = self.sim_time + self.cfg.snapshot_interval_s
+                self._next_snap_s = self.sim_time + maintenance.POLICY.interval_s(self.cfg.snapshot_interval_s, self.clock.speed)
         return True
 
     def _sample(self) -> None:
@@ -765,21 +776,33 @@ class Engine:
             return True
         self._maybe_snapshot_request()
         batch, marks = self._collect_batch()
-        events = batch.events
-        try:
-            if self.storage.kind == "memory":
-                self.storage.commit(batch)
-            else:
-                await asyncio.to_thread(self.storage.commit, batch)
-        except LeadershipLost:
-            self.fenced = True
-            self.clock.pause()
-            self.db_down = False
-            log.error("leadership lost: engine fenced (run %s)", self.run_id)
-            return False
-        except StorageError as e:
+        # the LIVE stream gets every event of this commit, stream-only telemetry included: `batch.events` is only the subset worth persisting
+        # (heartbeat / world.diff / robot.pose are thinned for storage). Publishing the subset left permanent seq gaps on the wire, so clients saw
+        # no heartbeats or diffs and a resync snapshot at every gap.
+        events = list(self.pending_events[: marks["events"]])
+        failure: StorageError | None = None
+        attempts = 1 if self.db_down else COMMIT_ATTEMPTS        # already down: the loop itself is the retry (one probe per iteration)
+        for attempt in range(attempts):
+            try:
+                if self.storage.kind == "memory":
+                    self.storage.commit(batch)
+                else:
+                    await asyncio.to_thread(self.storage.commit, batch)
+                failure = None
+                break
+            except LeadershipLost:
+                self.fenced = True
+                self.clock.pause()
+                self.db_down = False
+                log.error("leadership lost: engine fenced (run %s)", self.run_id)
+                return False
+            except StorageError as e:                    # the batch is idempotent (ON CONFLICT everywhere): retry quickly before halting physics
+                failure = e
+                if attempt + 1 < attempts:
+                    await asyncio.sleep(COMMIT_RETRY_BASE_S * (attempt + 1))
+        if failure is not None:
             if not self.db_down:
-                log.error("commit failed (%s): halting physics until storage recovers", e)
+                log.error("%s: halting physics until storage recovers (after %d attempts)", failure, attempts)
             self.db_down = True
             return False
         if self.db_down:
@@ -800,18 +823,24 @@ class Engine:
                 raw["issuer"] = principal
             else:
                 raw.pop("issuer", None)
+            raw.pop("principal", None)      # identity is the `principal=` argument only: a `principal` key inside the body never impersonates
             if actor_type is not None:
                 raw["actor_type"] = actor_type
             else:
                 raw.pop("actor_type", None)
         async with self._lock:
+            if self.db_down and isinstance(raw, dict) and raw.get("kind") not in ("pause", "control.drive", "control.heartbeat"):
+                # evidence cannot be persisted: refuse (not recorded, so the same command_id can be re-sent once storage is back) instead of applying
+                # a change in memory that the ledger and event log would not hold
+                return {"command_id": raw.get("command_id"), "accepted": False, "durable": False,
+                        "reason": "database_unavailable: command refused until evidence can be persisted"}
             ack = self.commands.process(raw, actor_default=actor_type)
             self.publish_poses()
             spec_fast = isinstance(raw, dict) and raw.get("kind") in ("control.drive", "control.heartbeat")
             if not spec_fast:
                 durable = await self.commit()
                 if not durable and ack.get("accepted"):
-                    ack["durable"] = False
+                    ack["durable"] = False            # applied in memory, persisted when storage recovers: callers must surface this
         return ack
 
     def as_actor(self, actor_type: str, principal: str | None = None) -> "ActorView":

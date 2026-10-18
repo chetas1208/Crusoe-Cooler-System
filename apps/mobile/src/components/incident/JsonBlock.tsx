@@ -1,13 +1,14 @@
 import { ScrollView, View } from 'react-native';
 import { colors } from '@/theme';
 import { T } from '@/components/ui';
+import { redact } from '@/features/agents/status';
 
 const MAX = 1400;
 
 export function JsonBlock({ label, value }: { label: string; value: unknown }) {
   let text: string;
   try {
-    text = JSON.stringify(value, null, 2) ?? 'null';
+    text = JSON.stringify(redact(value), null, 2) ?? 'null';
   } catch {
     text = String(value);
   }

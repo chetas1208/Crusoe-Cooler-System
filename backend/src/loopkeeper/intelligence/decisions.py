@@ -213,6 +213,16 @@ def _close_schema(js: dict, closed: dict) -> dict:
     return walk(js)
 
 
+def _clip_text(o: Any, n: int) -> Any:
+    if isinstance(o, str):
+        return " ".join(o.split())[:n]
+    if isinstance(o, list):
+        return [_clip_text(x, n) for x in o]
+    if isinstance(o, dict):
+        return {k: _clip_text(v, n) for k, v in o.items()}
+    return o
+
+
 class DecisionService:
     def __init__(self, client: ModelClient | None, status: ModelStatus, store: DecisionStore | None = None,
                  *, run_id: str = "run", token_budget: int = 60000, max_invalid_retries: int = 1,
@@ -251,6 +261,11 @@ class DecisionService:
     def budget(self, incident_id: str) -> TokenBudget:
         return self._budgets.setdefault(incident_id, TokenBudget(self.token_budget))
 
+    def release(self, incident_id: str) -> None:
+        """An incident's graph has ended: drop its token budget and LLM-subtask semaphore so long runs do not accumulate per-incident state."""
+        self._budgets.pop(incident_id, None)
+        self._inc_sem.pop(incident_id, None)
+
     def set_used(self, incident_id: str, used: int) -> None:
         b = self.budget(incident_id)
         b.used = max(b.used, used)
@@ -269,6 +284,8 @@ class DecisionService:
             reason = self._fallback_reason(req)
             res = self._fallback(req, schema, reason)
         res_rejected = res.rejected
+        if res.source == "fallback" and self.client is not None and not self.replay and not res_rejected:
+            return res           # a TRANSIENT fallback (outage, open breaker, exhausted budget, provider error) is never frozen: a restart / retry may ask the model again
         await self.store.put(f"{self.run_id}:{req.key}", {
             "key": req.key, "run_id": self.run_id, "kind": req.kind, "task_id": req.task_id,
             "incident_id": req.incident_id, "tick": req.tick, "world_version": req.world_version,
@@ -306,7 +323,11 @@ class DecisionService:
 
     def _fallback(self, req: DecisionRequest, schema: type[BaseModel], reason: str,
                   rejected: list[str] | None = None, latency_ms: int = 0, consulted: bool = False) -> DecisionResult:
-        d = schema.model_validate(req.fallback()).model_dump()
+        raw = req.fallback()
+        try:
+            d = schema.model_validate(raw).model_dump()
+        except Exception:                                                  # noqa: BLE001  e.g. an over-long asset label overflowing a bounded text field
+            d = schema.model_validate(_clip_text(raw, 200)).model_dump()     # a schema overflow in the deterministic path is clipped, never an escalation that denies repair
         return DecisionResult(d, det_meta(True, req.kind, latency_ms), "fallback", rejected or [], reason, consulted)
 
     async def _model_path(self, req: DecisionRequest, schema: type[BaseModel]) -> DecisionResult | None:

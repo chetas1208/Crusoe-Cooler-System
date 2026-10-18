@@ -1,98 +1,184 @@
-/* V10 phone layout. Everything is gated on the phone media query, so desktop (>= 861 px wide and >= 481 px tall) is byte-for-byte the previous layout.
-   Pattern: the stage (3D / Tactical 2D) keeps the top of the screen; each tab's panels become a normal-flow scroll area below it; a bottom tab bar replaces the segmented control. */
+/* Compact chrome (V12). One layout system for every phone and every narrow tablet, in BOTH orientations.
+   Gated on html[data-compact='1'], which features/responsive/layout.ts sets from the layout model (never from a media query), so a
+   desktop-size window (>= 861 px wide, or a fine pointer at >= 1280x720) keeps the regular chrome byte-for-byte.
+   `:where()` keeps every selector at the old specificity.
+
+   Portrait : top bar (compact) / stage (3D, 34 dvh) / each tab's panels as a scroll area / bottom tab bar.
+   Landscape: top bar (compact) over [ tab rail | stage | each tab's panels as a scroll column ]; Communications etc. are a right drawer.
+   The vocabulary (tokens, chip, sheet / drawer chrome, panel tabs) is the same in both; only the arrangement changes. */
 .topbar__view { display: none; }
 .mtabs { display: none; }
 
-@media (max-width: 860px), (max-height: 480px) {
-  :root { --mtab-h: 56px; --safe-b: env(safe-area-inset-bottom, 0px); --safe-t: env(safe-area-inset-top, 0px); --safe-l: env(safe-area-inset-left, 0px); --safe-r: env(safe-area-inset-right, 0px); --stage-h: 34dvh; }
-  html, body, #root { overflow-x: hidden; max-width: 100%; }
-  html body { -webkit-text-size-adjust: 100%; }
-  html button, html .btn, html .icon-btn, html .pill, html .seg__item, html [role='tab'] { min-height: 44px; }
-  html .icon-btn { min-width: 44px; }
-  html input, html select, html textarea { font-size: 16px; }                       /* no iOS focus-zoom */
-
-  /* ---- top bar: one compact row (status + view mode + search); tabs move to the bottom ---- */
-  html .topbar { top: calc(6px + var(--safe-t)); left: calc(6px + var(--safe-l)); right: calc(6px + var(--safe-r)); grid-template-columns: minmax(0, 1fr) auto; gap: 6px; }
-  html .topbar__center { display: none; }
-  html .topbar__left { height: 52px; padding-left: 8px; gap: 8px; max-width: 100%; }
-  html .brand__word, html .status__sub, html .topbar__sep, html .hide-md, html .hide-sm { display: none; }
-  html .status { min-width: 0; min-height: 44px; }
-  html .brand { min-width: 44px; min-height: 44px; justify-content: center; }
-  html .status__name { max-width: 34vw; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-  html .topbar__right { height: 52px; padding: 0 4px 0 8px; gap: 4px; }
-  html .topbar__right .vital { display: none; }
-  html .topbar__right .btn--primary span { display: none; }
-  html .topbar__right .btn--primary { min-width: 44px; justify-content: center; padding: 0 !important; }
-  html .topbar__view { display: inline-grid; }
-  html .popover { position: fixed; left: 8px; right: 8px; top: calc(64px + var(--safe-t)); width: auto; max-height: calc(100dvh - 140px); overflow-y: auto; }
-
-  /* ---- stage + bottom tab bar ---- */
-  html .stage { bottom: auto; height: calc(64px + var(--safe-t) + var(--stage-h)); }
-  html .mtabs { position: fixed; z-index: 60; left: 0; right: 0; bottom: 0; display: flex; align-items: stretch; gap: 6px; padding: 4px calc(6px + var(--safe-r)) calc(4px + var(--safe-b)) calc(6px + var(--safe-l)); background: rgba(11, 13, 17, 0.96); border-top: 1px solid var(--line); }
-  html .mtabs__row { flex: 1; display: grid; grid-template-columns: repeat(4, 1fr); gap: 2px; min-width: 0; }
-  html .mtabs__item { display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 2px; min-height: 48px; border-radius: 10px; color: var(--t3); font-size: 11px; font-weight: 560; }
-  html .mtabs__item[aria-selected='true'] { color: var(--accent); background: var(--accent-soft); }
-  html .mtabs__comms { display: flex; align-items: center; }
-  html .mtabs__comms .cm-launcher { min-height: 44px; min-width: 44px; }
-  html .mtabs__comms .cm-launcher span:not(.cm-badge) { display: none; }
-
-  /* ---- comms + viewer-mode bottom sheet ---- */
-  html .sheet { position: fixed; z-index: 70; left: 0; right: 0; bottom: calc(var(--mtab-h) + var(--safe-b)); display: flex; flex-direction: column; background: var(--panel, #12151b); border: 1px solid var(--line-2); border-bottom: 0; border-radius: 16px 16px 0 0; box-shadow: 0 -8px 30px rgba(0, 0, 0, 0.5); outline: none; }
-  html .sheet[data-state='peek'] { height: 38dvh; }
-  html .sheet[data-state='expanded'] { height: calc(100dvh - var(--mtab-h) - var(--safe-b) - 64px - var(--safe-t)); }
-  html .sheet__head { display: flex; align-items: center; gap: 4px; padding: 4px 6px 4px 16px; border-bottom: 1px solid var(--line); flex: none; }
-  html .sheet__head h2 { flex: 1; margin: 0; font-size: 14px; font-weight: 620; }
-  html .sheet__btn { width: 44px; height: 44px; display: grid; place-items: center; border-radius: 10px; color: var(--t2); }
-  html .sheet__body { flex: 1; min-height: 0; overflow: hidden; display: flex; }
-  html .sheet__body .cm-panel { width: 100%; height: 100%; }
-
-  /* ---- Dashboard: stage on top, panels scroll below ---- */
-  html .dash { inset: calc(64px + var(--safe-t) + var(--stage-h)) 0 calc(var(--mtab-h) + var(--safe-b)) 0; overflow-y: auto; display: flex; flex-direction: column; gap: 8px; padding: 8px 8px 12px; background: var(--bg, #0b0d11); pointer-events: auto; }
-  html .dash > .hs, html .dash > .dd, html .dash > .sb, html .dash > .ad { position: static !important; width: auto !important; max-width: none !important; max-height: none !important; inset: auto !important; transform: none !important; }
-  html .dash .hs { flex-wrap: wrap; }
-  html .dash .hs__cell { min-width: 0; flex: 1 1 40%; }
-  html .dash .hs__tip { display: none !important; }
-  html .dash .sb__bar { flex-wrap: wrap; justify-content: flex-start; }
-  html .dash .dd { overflow: visible; }
-  html .dash .dd__list { overflow: visible; max-height: none; }
-  html .ex-void, html .nogl { max-width: calc(100% - 24px); }
-
-  /* ---- Agents: list -> detail, no giant DAG on a phone ---- */
-  html .ag { top: calc(64px + var(--safe-t)); left: 0; right: 0; bottom: calc(var(--mtab-h) + var(--safe-b)); display: flex; flex-direction: column; gap: 8px; padding: 0 8px 8px; overflow-y: auto; pointer-events: auto; background: var(--bg, #0b0d11); }
-  html .ag > * { flex: none; width: auto; max-width: 100%; }
-  html .ag .ag-left { max-height: none; }
-  html .ag-centre { display: none !important; }                           /* the delegation graph needs a canvas; phones get the task list + inspector */
-  html .ag-groups { flex-wrap: wrap; }
-
-  /* ---- Map: robot roster and inspector as stacked panels under the stage; drive controls live in the inspector ---- */
-  html .map-tab-container { top: calc(64px + var(--safe-t) + var(--stage-h)) !important; bottom: calc(var(--mtab-h) + var(--safe-b)) !important; overflow-y: auto !important; pointer-events: auto !important; background: var(--bg, #0b0d11); display: flex; flex-direction: column; gap: 8px; padding: 8px; }
-  html .map-tab-container > div, html .map-leftcol, html .map-rightcol { position: static !important; inset: auto !important; width: 100% !important; height: auto !important; max-height: none !important; display: block !important; }
-  html .map-tab-container > div > div { height: auto !important; }
-  html .map-tab-container aside, html .map-tab-container .map-drawer-collapsed { width: 100% !important; max-width: none !important; height: auto !important; max-height: none !important; }
-  html .drivepad { position: fixed; z-index: 65; right: calc(8px + var(--safe-r)); top: calc(64px + var(--safe-t) + var(--stage-h) - 8px); transform: translateY(-100%); padding: 6px; border-radius: 16px; background: rgba(11, 13, 17, 0.92); border: 1px solid var(--line-2); touch-action: none; user-select: none; }
-  html .drivepad__status { max-width: 152px; font-size: 10px; line-height: 1.3; color: var(--t2); margin-bottom: 6px; }
-  html .drivepad[data-mode='live'] { border-color: var(--accent); }
-  html .drivepad[data-mode='preview'] { border-color: var(--fork, #a78bfa); }
-  html .drivepad__grid { display: grid; grid-template-columns: repeat(3, 48px); grid-auto-rows: 48px; gap: 4px; }
-  html .drivepad__btn { width: 48px; height: 48px; min-height: 48px; display: grid; place-items: center; border-radius: 14px; background: var(--panel-3, #1b2029); border: 1px solid var(--line-2); touch-action: none; -webkit-touch-callout: none; }
-  html .drivepad__btn:active:not(:disabled) { background: var(--accent-soft); border-color: var(--accent); }
-  html .drivepad__btn:disabled { opacity: 0.35; }
-
-  /* ---- Execution: single column, internal scroll ---- */
-  html .ex { top: calc(64px + var(--safe-t)); bottom: calc(var(--mtab-h) + var(--safe-b)); overflow-y: auto; pointer-events: auto; background: var(--bg, #0b0d11); display: flex; flex-direction: column; gap: 8px; padding: 8px; }
-  html .ex > * { position: static !important; inset: auto !important; transform: none !important; width: auto !important; max-width: 100% !important; max-height: none !important; }
-  html .ex-left, html .ex-right, html .ex-tl, html .ex-seq, html .ex-prompt, html .ex-state { position: static !important; inset: auto !important; transform: none !important; width: auto !important; max-width: 100% !important; max-height: none !important; }
-  html .ex-left, html .ex-right { height: auto !important; min-height: 0; }
-  html .ex-tl { height: 220px !important; flex: none; }
-  html .ex [style*='position: absolute'] { position: static !important; inset: auto !important; transform: none !important; }
-  html .ex .cm-dock { display: none; }
-  html .ex-frame { display: none; }
-  html .ex-state { white-space: normal; flex-wrap: wrap; }
+html:where([data-compact='1']) {
+  --mtab-h: 56px;
+  --safe-b: env(safe-area-inset-bottom, 0px);
+  --safe-t: env(safe-area-inset-top, 0px);
+  --safe-l: env(safe-area-inset-left, 0px);
+  --safe-r: env(safe-area-inset-right, 0px);
+  --top-h: calc(64px + var(--safe-t));       /* top bar band */
+  --stage-h: 34dvh;                          /* portrait: stage height under the top bar */
+  --rail-w: 0px;
+  --pn-top: calc(var(--top-h) + var(--stage-h));   /* panel area (each tab's scroll region) */
+  --pn-left: 0px;
+  --pn-bot: calc(var(--mtab-h) + var(--safe-b));
+  -webkit-text-size-adjust: 100%;
+}
+html:where([data-compact='1'][data-layout='tablet'][data-orient='portrait']) { --stage-h: 40dvh; }
+html:where([data-compact='1'][data-orient='landscape']) {
+  --mtab-h: 0px;
+  --rail-w: calc(76px + var(--safe-l));
+  --stage-h: 0px;
+  --top-h: calc(58px + var(--safe-t));
+  --pn-top: var(--top-h);
+  --pn-left: calc(var(--rail-w) + (100vw - var(--rail-w)) * 0.54);
+  --pn-bot: var(--safe-b);
 }
 
-/* short landscape phones: the stage and the panel share the width instead of the height */
-@media (max-height: 480px) and (orientation: landscape) {
-  :root { --stage-h: 0px; }
-  html .topbar__right .btn--primary { display: none; }
-  html .sheet[data-state='peek'] { height: 60dvh; }
-}
+html:where([data-compact='1']), html:where([data-compact='1']) :is(body, #root) { overflow-x: hidden; max-width: 100%; }
+html:where([data-compact='1']) :is(button, .btn, .icon-btn, .pill, .seg__item, [role='tab']) { min-height: 44px; }
+html:where([data-compact='1']) .icon-btn { min-width: 44px; }
+html:where([data-compact='1']) :is(input, select, textarea) { font-size: 16px; }   /* no iOS focus-zoom */
+
+/* ---- top bar: one compact row (status + view mode + search); the tabs move to the bottom (portrait) or the left rail (landscape) ---- */
+html:where([data-compact='1']) .topbar { top: calc(6px + var(--safe-t)); left: calc(6px + var(--safe-l)); right: calc(6px + var(--safe-r)); grid-template-columns: minmax(0, 1fr) auto; gap: 6px; }
+html:where([data-compact='1'][data-orient='landscape']) .topbar { left: calc(6px + var(--rail-w)); }
+html:where([data-compact='1']) :is(.topbar__center, .topbar__panels) { display: none; }
+html:where([data-compact='1']) .topbar__left { height: 52px; padding-left: 8px; gap: 8px; max-width: 100%; }
+html:where([data-compact='1']) :is(.brand__word, .status__sub, .topbar__sep, .hide-md, .hide-sm) { display: none; }
+html:where([data-compact='1']) .status { min-width: 0; min-height: 44px; }
+html:where([data-compact='1']) .brand { min-width: 44px; min-height: 44px; justify-content: center; }
+html:where([data-compact='1']) .status__name { max-width: 34vw; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+html:where([data-compact='1']) .topbar__right { height: 52px; padding: 0 4px 0 8px; gap: 4px; }
+html:where([data-compact='1']) .topbar__right .vital { display: none; }
+html:where([data-compact='1']) .topbar__right .btn--sim .lk-btn__label { display: none; }
+html:where([data-compact='1']) .topbar__right .btn--sim { min-width: 44px; min-height: 44px; justify-content: center; padding: 0 !important; }
+html:where([data-compact='1']) .topbar__view { display: inline-grid; }
+html:where([data-compact='1']) .popover { position: fixed; left: 8px; right: 8px; top: calc(64px + var(--safe-t)); width: auto; max-height: calc(100dvh - 140px); overflow-y: auto; }
+html:where([data-compact='1'][data-orient='landscape']) .popover { left: calc(8px + var(--rail-w)); width: min(420px, calc(100vw - var(--rail-w) - 16px)); right: auto; }
+
+/* ---- stage + tab bar (portrait) / tab rail (landscape) ---- */
+html:where([data-compact='1']) .stage { bottom: auto; height: calc(var(--top-h) + var(--stage-h)); }
+html:where([data-compact='1'][data-orient='landscape']) .stage { left: var(--rail-w); right: calc(100vw - var(--pn-left)); bottom: 0; height: auto; }
+html:where([data-compact='1']) .mtabs { position: fixed; z-index: 60; left: 0; right: 0; bottom: 0; display: flex; align-items: stretch; gap: 6px; padding: 4px calc(6px + var(--safe-r)) calc(4px + var(--safe-b)) calc(6px + var(--safe-l)); background: rgba(11, 13, 17, 0.96); border-top: 1px solid var(--line); }
+html:where([data-compact='1']) .mtabs__row { flex: 1; display: grid; grid-template-columns: repeat(4, 1fr); gap: 2px; min-width: 0; }
+html:where([data-compact='1']) .mtabs__item { display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 2px; min-height: 48px; border-radius: 10px; color: var(--t3); font-size: 12px; font-weight: 560; transition: background-color 0.15s ease, color 0.15s ease; }
+html:where([data-compact='1']) .mtabs__item[aria-selected='true'] { color: var(--accent); background: var(--accent-soft); }
+html:where([data-compact='1']) .mtabs__comms { display: flex; align-items: center; gap: 6px; }
+html:where([data-compact='1']) .mtabs__panels { display: grid; place-items: center; min-width: 44px; min-height: 44px; border-radius: 16px; border: 1px solid var(--line-2); background: rgba(255, 255, 255, 0.04); color: var(--t1); }
+html:where([data-compact='1']) .mtabs__panels[aria-pressed='true'] { background: rgba(91, 227, 208, 0.14); border-color: rgba(91, 227, 208, 0.5); color: var(--accent); }
+html:where([data-compact='1']) .mtabs .cm-launcher { min-height: 44px; min-width: 44px; justify-content: center; }
+html:where([data-compact='1']) .mtabs .cm-launcher :is(.cm-launcher__label, .cm-launcher__state) { display: none; }
+html:where([data-compact='1'][data-orient='landscape']) .mtabs { top: 0; right: auto; width: var(--rail-w); flex-direction: column; gap: 4px; padding: calc(6px + var(--safe-t)) 6px calc(6px + var(--safe-b)) calc(6px + var(--safe-l)); border-top: 0; border-right: 1px solid var(--line); }
+html:where([data-compact='1'][data-orient='landscape']) .mtabs__row { grid-template-columns: 1fr; grid-auto-rows: minmax(48px, 1fr); flex: 1; gap: 4px; }
+html:where([data-compact='1'][data-orient='landscape']) .mtabs__comms { flex-direction: column; align-items: stretch; }
+html:where([data-compact='1'][data-orient='landscape']) .mtabs .cm-launcher { width: 100%; padding: 4px 6px; gap: 4px; }
+/* soft keyboard open: the tab bar gives way to the field (set by useVisualViewportVar) */
+html:where([data-compact='1'][data-kb='1']) .mtabs { display: none; }
+
+/* ---- banners / toasts sit inside the stage, never across the panels ---- */
+html:where([data-compact='1']) .banner { left: 8px; right: calc(8px + var(--safe-r)); top: calc(var(--top-h) + 4px); transform: none; white-space: normal; max-width: none; font-size: 12px; padding: 7px 12px; }
+html:where([data-compact='1'][data-orient='landscape']) .banner { left: calc(var(--rail-w) + 8px); right: calc(100vw - var(--pn-left) + 8px); }
+html:where([data-compact='1']) .toast { left: 8px; right: calc(8px + var(--safe-r)); bottom: calc(var(--pn-bot) + 8px); transform: none; max-width: none; }
+html:where([data-compact='1'][data-orient='landscape']) .toast { left: calc(var(--rail-w) + 8px); right: calc(100vw - var(--pn-left) + 8px); bottom: calc(var(--safe-b) + 8px); }
+
+/* ---- side panels as a sheet (portrait) / drawer (landscape): one chrome ---- */
+html:where([data-compact='1']) .sheet { position: fixed; z-index: 70; left: 0; right: 0; bottom: calc(var(--mtab-h) + var(--safe-b)); display: flex; flex-direction: column; background: var(--panel-solid, #11141a); border: 1px solid var(--line-2); border-bottom: 0; border-radius: 16px 16px 0 0; box-shadow: 0 -8px 30px rgba(0, 0, 0, 0.5); outline: none; animation: sheet-up 0.2s var(--ease); }
+html:where([data-compact='1']) .sheet[data-state='peek'] { height: 34dvh; }
+html:where([data-compact='1']) .sheet[data-state='half'] { height: calc(100dvh - var(--mtab-h) - var(--safe-b) - var(--pn-top)); }   /* exactly the panel area: the stage above stays fully visible */
+html:where([data-compact='1']) .sheet[data-state='expanded'] { height: calc(100dvh - var(--mtab-h) - var(--safe-b) - 64px - var(--safe-t)); }
+html:where([data-compact='1']) .sheet__grab { display: flex; justify-content: center; align-items: center; height: 16px; flex: none; touch-action: none; cursor: grab; }
+html:where([data-compact='1']) .sheet__grab i { width: 36px; height: 4px; border-radius: 2px; background: var(--line-2); }
+html:where([data-compact='1']) .sheet__head { display: flex; align-items: center; gap: 4px; padding: 0 6px 4px 8px; border-bottom: 1px solid var(--line); flex: none; }
+html:where([data-compact='1']) .sheet__head h2 { flex: 1; margin: 0 0 0 8px; font-size: 14px; font-weight: 620; }
+html:where([data-compact='1']) .sheet__btn { width: 44px; height: 44px; display: grid; place-items: center; border-radius: 10px; color: var(--t2); flex: none; }
+html:where([data-compact='1']) .sheet__btn[aria-disabled='true'] { opacity: 0.3; }
+html:where([data-compact='1']) .sheet__btn.cm-x { width: 44px; height: 44px; margin: 0; }
+html:where([data-compact='1']) .sheet__body { flex: 1; min-height: 0; overflow: hidden; display: flex; flex-direction: column; }
+html:where([data-compact='1']) .sheet__body .cm-panel { width: 100%; height: 100%; }
+html:where([data-compact='1'][data-orient='landscape']) .sheet { top: 0; left: auto; right: 0; bottom: 0; width: clamp(300px, 40vw, 440px); border: 1px solid var(--line-2); border-right: 0; border-radius: 16px 0 0 16px; padding: var(--safe-t) var(--safe-r) var(--safe-b) 0; box-shadow: -16px 0 40px -12px rgba(0, 0, 0, 0.7); animation: drawer-in 0.2s var(--ease); }
+html:where([data-compact='1'][data-orient='landscape']) .sheet[data-state] { height: auto; }
+html:where([data-compact='1'][data-orient='landscape']) .sheet__grab { display: none; }
+html:where([data-compact='1'][data-orient='landscape']) .sheet__btn--size { display: none; }
+html:where([data-compact='1'][data-orient='landscape']) .sheet__head { padding-top: 4px; }
+@keyframes sheet-up { from { transform: translateY(24px); opacity: 0; } }
+@keyframes drawer-in { from { transform: translateX(32px); opacity: 0; } }
+@media (prefers-reduced-motion: reduce) { html:where([data-compact='1']) .sheet { animation: none; } }
+
+/* ---- Dashboard: stage, panels scroll beside / below ---- */
+html:where([data-compact='1']) .dash { inset: auto; top: var(--pn-top); left: var(--pn-left); right: 0; bottom: var(--pn-bot); overflow-y: auto; overscroll-behavior: contain; display: flex; flex-direction: column; gap: 8px; padding: 8px 8px 12px; background: var(--bg, #0b0d11); pointer-events: auto; }
+html:where([data-compact='1'][data-orient='landscape']) .dash { padding-right: calc(8px + var(--safe-r)); border-left: 1px solid var(--line); }
+html:where([data-compact='1']) .dash > :is(.hs, .dd, .sb, .ad) { position: static !important; width: auto !important; max-width: none !important; max-height: none !important; inset: auto !important; transform: none !important; flex: none; }
+html:where([data-compact='1']) .dash .hs { flex-wrap: wrap; }
+html:where([data-compact='1']) .dash .hs__cell { min-width: 0; flex: 1 1 40%; }
+html:where([data-compact='1']) .dash .hs__tip { display: none !important; }
+html:where([data-compact='1']) .dash .sb__bar { flex-wrap: wrap; justify-content: flex-start; }
+html:where([data-compact='1']) .dash .dd { overflow: visible; }
+html:where([data-compact='1']) .dash .dd__list { overflow: visible; max-height: none; }
+html:where([data-compact='1']) :is(.ex-void, .nogl) { max-width: calc(100% - 24px); }
+
+/* ---- Agents: list -> detail, no giant DAG on a phone (landscape: list and detail side by side) ---- */
+html:where([data-compact='1']) .ag { top: var(--top-h); left: var(--rail-w); right: 0; bottom: var(--pn-bot); display: flex; flex-direction: column; gap: 8px; padding: 0 8px 8px; overflow-y: auto; overscroll-behavior: contain; pointer-events: auto; background: var(--bg, #0b0d11); }
+html:where([data-compact='1']) .ag > * { flex: none; width: auto; max-width: 100%; }
+html:where([data-compact='1']) .ag .ag-left { max-height: none; }
+html:where([data-compact='1']) .ag-centre { display: none !important; }       /* the delegation graph needs a canvas; phones get the task list + inspector */
+html:where([data-compact='1']) .ag-groups { flex-wrap: wrap; }
+html:where([data-compact='1'][data-orient='landscape']) .ag { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); align-items: start; padding-right: calc(8px + var(--safe-r)); }
+html:where([data-compact='1'][data-orient='landscape']) .ag > .ag-left { grid-column: 1; grid-row: 1 / span 2; }
+
+/* ---- Map: robot roster and inspector as stacked panels under / beside the stage; the HUD stays on the stage ---- */
+html:where([data-compact='1']) .map-tab-container { inset: auto !important; top: var(--pn-top) !important; left: var(--pn-left) !important; right: 0 !important; bottom: var(--pn-bot) !important; overflow-y: auto !important; overscroll-behavior: contain; pointer-events: auto !important; background: var(--bg, #0b0d11); display: flex !important; flex-direction: column; gap: 8px; padding: 8px; }
+html:where([data-compact='1'][data-orient='landscape']) .map-tab-container { border-left: 1px solid var(--line); padding-right: calc(8px + var(--safe-r)) !important; }
+html:where([data-compact='1']) .map-tab-container > div:not(.map-hudwrap), html:where([data-compact='1']) :is(.map-leftcol, .map-rightcol) { position: static !important; inset: auto !important; width: 100% !important; height: auto !important; max-height: none !important; display: block !important; transform: none !important; }
+html:where([data-compact='1']) .map-tab-container > div:not(.map-hudwrap) > div { height: auto !important; }
+html:where([data-compact='1']) .map-tab-container :is(aside, .map-drawer-collapsed) { width: 100% !important; max-width: none !important; height: auto !important; max-height: none !important; }
+html:where([data-compact='1']) .map-hudwrap { position: fixed !important; top: var(--top-h) !important; left: 0 !important; right: 0 !important; bottom: auto !important; height: var(--stage-h) !important; }
+html:where([data-compact='1'][data-orient='landscape']) .map-hudwrap { left: var(--rail-w) !important; right: calc(100vw - var(--pn-left)) !important; bottom: var(--safe-b) !important; height: auto !important; }
+html:where([data-compact='1']) .map-control-hud { top: 6px !important; bottom: 6px !important; padding: 0 8px !important; }
+html:where([data-compact='1']) .map-dock { display: flex; flex-wrap: wrap; justify-content: center; }
+
+/* ---- Execution: stage on top / beside, run panels scroll ---- */
+html:where([data-compact='1']) .ex { inset: auto; top: var(--pn-top); left: var(--pn-left); right: 0; bottom: var(--pn-bot); overflow-y: auto; overscroll-behavior: contain; pointer-events: auto; background: var(--bg, #0b0d11); display: flex; flex-direction: column; gap: 8px; padding: 8px; }
+html:where([data-compact='1'][data-orient='landscape']) .ex { border-left: 1px solid var(--line); padding-right: calc(8px + var(--safe-r)); }
+html:where([data-compact='1']) .ex > * { position: static !important; inset: auto !important; transform: none !important; width: auto !important; max-width: 100% !important; max-height: none !important; }
+html:where([data-compact='1']) :is(.ex-left, .ex-right, .ex-tl, .ex-seq, .ex-prompt, .ex-state) { position: static !important; inset: auto !important; transform: none !important; width: auto !important; max-width: 100% !important; max-height: none !important; }
+html:where([data-compact='1']) :is(.ex-left, .ex-right) { height: auto !important; min-height: 0; }
+html:where([data-compact='1']) .ex-tl { height: auto !important; flex: none; }
+html:where([data-compact='1']) .ex [style*='position: absolute'] { position: static !important; inset: auto !important; transform: none !important; }
+html:where([data-compact='1']) .ex-frame { display: none; }
+html:where([data-compact='1']) .ex-state { white-space: normal; flex-wrap: wrap; }
+
+/* ---- Map drive pad: lives on the stage. Off = a one-line status chip; Preview / live = the thumb pad ---- */
+html:where([data-compact='1']) .drivepad { position: fixed; z-index: 65; right: calc(8px + var(--safe-r)); top: calc(var(--top-h) + var(--stage-h) - 8px); transform: translateY(-100%); padding: 6px; border-radius: 16px; background: rgba(11, 13, 17, 0.92); border: 1px solid var(--line-2); touch-action: none; user-select: none; }
+html:where([data-compact='1'][data-orient='landscape']) .drivepad { right: calc(100vw - var(--pn-left) + 8px); top: auto; bottom: calc(var(--safe-b) + 8px); transform: none; }
+html:where([data-compact='1']) .drivepad__status { max-width: 168px; font-size: 12px; line-height: 1.3; color: var(--t2); margin-bottom: 6px; }
+html:where([data-compact='1']) .drivepad[data-mode='off'] { left: 8px; right: 8px; top: auto; bottom: calc(100dvh - var(--top-h) - var(--stage-h) + 8px); transform: none; padding: 6px 12px; border-radius: 12px; min-height: 32px; display: flex; align-items: center; }
+html:where([data-compact='1'][data-orient='landscape']) .drivepad[data-mode='off'] { left: calc(var(--rail-w) + 8px); right: calc(100vw - var(--pn-left) + 8px); bottom: calc(var(--safe-b) + 8px); }
+html:where([data-compact='1']) .drivepad[data-mode='off'] .drivepad__grid { display: none; }
+html:where([data-compact='1']) .drivepad[data-mode='off'] .drivepad__status { margin: 0; max-width: none; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+html:where([data-compact='1']) .drivepad[data-mode='live'] { border-color: var(--accent); }
+html:where([data-compact='1']) .drivepad[data-mode='preview'] { border-color: var(--sentinel, #a78bfa); }
+html:where([data-compact='1']) .drivepad__grid { display: grid; grid-template-columns: repeat(3, 48px); grid-auto-rows: 48px; gap: 4px; }
+html:where([data-compact='1']) .drivepad__btn { width: 48px; height: 48px; min-height: 48px; display: grid; place-items: center; border-radius: 14px; background: var(--panel-3, #1b2029); border: 1px solid var(--line-2); touch-action: none; -webkit-touch-callout: none; }
+html:where([data-compact='1']) .drivepad__btn:active:not(:disabled) { background: var(--accent-soft); border-color: var(--accent); }
+html:where([data-compact='1']) .drivepad__btn:disabled { opacity: 0.35; }
+
+/* ---- Map HUD on a small stage: one row (status pill that truncates + icon-only camera modes); the fit frames the hall below it (data-stage-inset) ---- */
+html:where([data-compact='1']) .map-control-hud > div:first-child { gap: 6px !important; justify-content: flex-start !important; flex-wrap: wrap; margin: 0 !important; width: 100%; }
+html:where([data-compact='1']) .hud-pill { flex: 1 1 130px; min-width: 0; padding: 4px 10px !important; min-height: 44px; }
+html:where([data-compact='1']) .hud-pill > div { font-size: 12px !important; line-height: 1.25; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; min-width: 0; }
+html:where([data-compact='1']) .hud-pill > div > span:nth-child(n + 2) { display: none; }   /* robot name only; location and direction are in the panel below */
+html:where([data-compact='1']) .hud-cam-modes { max-width: 100%; overflow-x: auto; scrollbar-width: none; gap: 2px !important; }
+html:where([data-compact='1']) .hud-cam-modes .btn { font-size: 0 !important; gap: 0 !important; min-width: 40px; justify-content: center; padding: 4px 8px !important; }
+
+/* ---- Execution on a small screen: wrap the chip rail, one column library, a timeline that keeps its lanes ---- */
+html:where([data-compact='1']) .ex-state { gap: 6px 10px; padding: 10px 12px; }
+html:where([data-compact='1']) .ex-state > div { margin-left: 0 !important; border-left: 0 !important; padding-left: 0 !important; flex-wrap: wrap !important; width: 100%; gap: 6px !important; }
+html:where([data-compact='1']) .ex-state .chip { font-size: 12px !important; min-height: 36px; padding: 2px 12px !important; }
+html:where([data-compact='1']) .ex-library > header { flex-wrap: wrap; gap: 8px; padding: 10px 12px !important; }
+html:where([data-compact='1']) .ex-library > header h3 { font-size: 14px !important; line-height: 1.25; }
+html:where([data-compact='1']) .ex-library > header > div:first-child { min-width: 0; }
+html:where([data-compact='1']) .ex-library > div { padding-left: 12px !important; padding-right: 12px !important; }
+html:where([data-compact='1']) .ex-library > div:last-child { grid-template-columns: minmax(0, 1fr) !important; gap: 10px !important; overflow: visible !important; padding-top: 12px !important; padding-bottom: 12px !important; }
+html:where([data-compact='1']) .ex-tl__body { grid-template-columns: 72px minmax(0, 1fr); min-height: 134px; }
+html:where([data-compact='1']) .ex-track { min-height: 124px; }
+html:where([data-compact='1']) .ex-tl__bar { padding: 8px; }

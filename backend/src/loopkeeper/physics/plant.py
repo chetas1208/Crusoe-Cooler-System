@@ -24,6 +24,7 @@ from .config import load_config
 from .coupling import ThermalNetwork
 from .faults import FaultManager, FaultState
 from .fluids import Fluid
+from .hazards import HazardManager
 from .hydraulics import FacilityHydraulics, HydInputs, HydResult
 from .leak_model import CoolantLeakSimulator
 from .power_fire_proxies import PowerContingencySimulator, RackFireHazardSimulator
@@ -77,6 +78,7 @@ class FacilityPlant:
         self.leak_sim = CoolantLeakSimulator()
         self.power_sim = PowerContingencySimulator()
         self.fire_sim = RackFireHazardSimulator()
+        self.hazards = HazardManager(self)      # V12 hazards (CR-02/04/05): physics/hazards.py
         # topology-derived indexes (zones = rack rows)
         fac = cfg["facility"]
         self.zone_hdr = fac.get("zone_headers") or {"a": {"supply": "p_12", "return": "p_22"}, "b": {"supply": "p_17", "return": "p_27"}}
@@ -150,7 +152,10 @@ class FacilityPlant:
         return self.fluids["fws"].rho(0.5 * (self.fws_in_c + t.fws.t_c))
 
     def load_w(self, r: str) -> float:
-        """Rack heat load, W (all electrical power is rejected to the coolant)."""
+        """Rack heat load, W (all electrical power is rejected to the coolant). V12: scaled by the rack's powered fraction."""
+        return self._load_w_raw(r) * self.hazards.rack_power_factor(r)
+
+    def _load_w_raw(self, r: str) -> float:
         wc, t = self.cfg["physics"]["workload"], self.time
         if r in self.aux_kw:
             # aux racks: slow deterministic variation (hash phase, no RNG); parked when their row or their own valve is isolated for service
@@ -172,6 +177,8 @@ class FacilityPlant:
 
     def pump_running(self, pid: str) -> bool:
         if hasattr(self, "power_sim") and self.power_sim.outage_active and not self.power_sim.state.primary_pumps_powered:
+            return False
+        if self.hazards.pump_blocked(pid):       # V12: pump feed lost / TCS suction lost (leak emptied the make-up tank)
             return False
         c = self.ctl
         duty = c["tcs_duty"] == pid or c["fws_duty"] == pid
@@ -201,7 +208,7 @@ class FacilityPlant:
                       for pid in PUMP_IDS},
             pump_speed={"tcs": c["tcs_speed"], "fws": c["fws_speed"]},
             pump_head_mult={pid: (1.0 if healthy else self._head_mult(pid)) for pid in PUMP_IDS},
-            rho=loops, mu=mus)
+            rho=loops, mu=mus, leaks={} if healthy else self.hazards.leak_inputs())
 
     # ============================================================== hydraulics scheduling
     _TOL = {"o:": ("abs", 0.01), "theta:": ("abs", 0.01), "h0:": ("rel", 0.01), "rho:": ("rel", None)}
@@ -280,18 +287,24 @@ class FacilityPlant:
         self.leak_sim.step(h, loop_pressure_kpa=press_kpa)
         self.power_sim.step(h)
         self.fire_sim.step(h)
+        self.hazards.step(h)
         self._update_vibration(h)
         self._maybe_solve()
         ph = self.cfg["physics"]
         ch = ph["chiller"]
-        self.fws_in_c = self.ctl["chiller_supply_c"] + ch["wobble_k"] * math.sin(2 * math.pi * self.time / ch["wobble_period_s"])
+        # L1/V12: + facility_rise_k = supply-temperature rise when the facility plant cannot reject the CDU heat (CR-03)
+        self.fws_in_c = (self.ctl["chiller_supply_c"] + ch["wobble_k"] * math.sin(2 * math.pi * self.time / ch["wobble_period_s"])
+                         + self.thermal.facility_rise_k)
         loads = {r: self.load_w(r) for r in self.all_racks}
         if self.fire_sim.state.active:
             tr = self.fire_sim.state.target_rack_id
             tr_key = tr[5:] if tr.startswith("rack_") else tr
             if tr_key in loads:
                 loads[tr_key] += self.fire_sim.state.heat_kw * 1000.0
-        self.thermal.step(h, loads, self.hyd.rack_q, self.hyd.q["fws"], self.fws_in_c)
+        for r in self.hazards.runaways:          # V12 CR-05: runaway heat goes into the rack's coolant path
+            if r in loads:
+                loads[r] += self.hazards.extra_heat_w(r)
+        self.thermal.step(h, loads, self.hyd.rack_q, self.hyd.q["fws"], self.fws_in_c, self.faults.facility)   # L1/V12: facility fault truth
         self.guard = self.thermal.guard_tripped
         self._meas_acc += h
         if self._meas_acc + 1e-9 >= self.meas_interval:
@@ -308,6 +321,7 @@ class FacilityPlant:
     def _take_measurement(self) -> None:
         self._meas = measurement.sample(self)
         self._assets, self._kpis = measurement.build_assets(self, self._meas)
+        self.hazards.annotate(self._assets)
 
     # ============================================================== Plant protocol
     def topology(self) -> Json:
@@ -344,8 +358,9 @@ class FacilityPlant:
             "health": {"solver": {"status": "failed" if not sh["converged"] else ("degraded" if sh["degraded"] else "converged"),
                                   "residual": sh["residual"] if sh["residual"] is not None else 0.0},
                        "seed": self.seed, "uptime_s": self.time},
-            "hazard_zones": (self.leak_sim.get_hazard_zones() if hasattr(self, "leak_sim") else []) + (self.fire_sim.get_hazard_zones() if hasattr(self, "fire_sim") else []),
-            "power_state": self.power_sim.state.to_dict() if hasattr(self, "power_sim") else {},
+            "hazard_zones": (self.leak_sim.get_hazard_zones() if hasattr(self, "leak_sim") else []) + (self.fire_sim.get_hazard_zones() if hasattr(self, "fire_sim") else [])
+            + self.hazards.get_hazard_zones(),
+            "power_state": {**(self.power_sim.state.to_dict() if hasattr(self, "power_sim") else {}), **self.hazards.power_state()},
         }
 
     def apply(self, cmd: Json) -> Json:
@@ -372,12 +387,13 @@ class FacilityPlant:
             "tcs_supply_c": t.t_supply, "tcs_return_c": t.t_return, "fws_in_c": self.fws_in_c, "fws_out_c": t.fws.t_c,
             "hx_duty_kw": t.q_hx_w / 1e3,
             "ext_grid_kg_s": dict(h.ext_grid_kg_s), "mass_balance": dict(h.mass_balance),
-            "faults": self.faults.to_json(),
+            "faults": self.faults.to_json(), "hazards": self.hazards.truth(),
+            "leak_kg_s": dict(h.leak_kg_s), "tcs_makeup_kg_s": h.makeup_kg_s,
         }
 
     def energy_balance(self) -> Json:
         t = self.thermal
-        q_it = sum(self.load_w(r) for r in self.all_racks)
+        q_it = sum(self.load_w(r) for r in self.all_racks) + self.hazards.total_extra_heat_w()
         q_rack = sum(t.rack[r].coolant_heat_w() for r in self.all_racks)
         rho_f = self.rho_loc("fws")
         q_fws = self.hyd.q["fws"] * rho_f * t.cp_f * (t.fws.t_c - self.fws_in_c)
@@ -430,7 +446,7 @@ class FacilityPlant:
         return {
             "schema": SCHEMA_VERSION, "topology_hash": self.topo["facility"]["topology_hash"], "seed": self.seed,
             "time": self.time, "tick": self.tick, "ctl": self.ctl, "faults": self.faults.to_json(),
-            "fault_mgr": self.fault_mgr.get_state(), "load_phase": self.load_phase, "vib": self.vib,
+            "fault_mgr": self.fault_mgr.get_state(), "hazards": self.hazards.get_state(), "load_phase": self.load_phase, "vib": self.vib,
             "open_incidents": self.open_incidents, "fws_in_c": self.fws_in_c,
             "rng": {"sensor": self.rng_sensor.get_state(), "fault": self.rng_fault.get_state(), "load": self.rng_load.get_state(),
                     "aux": self.rng_aux.get_state()},
@@ -461,6 +477,7 @@ class FacilityPlant:
         self.faults = FaultState.from_json(s["faults"])
         self.fault_mgr.st = self.faults
         self.fault_mgr.set_state(s["fault_mgr"])
+        self.hazards.set_state(s.get("hazards"))
         self.load_phase, self.vib = s["load_phase"], s["vib"]
         self.open_incidents, self.fws_in_c = int(s["open_incidents"]), float(s["fws_in_c"])
         self.rng_sensor.set_state(s["rng"]["sensor"])

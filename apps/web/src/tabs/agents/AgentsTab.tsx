@@ -6,12 +6,44 @@ import type { AgentRole, AgentTask } from '@loopkeeper/core/contracts';
 import { useView } from '@loopkeeper/scene';
 import { useUi } from '../../ui/store';
 import { refitActivePreset, resetPreset } from '../../ui/presets';
+import { useLayoutMode } from '../../features/responsive/layout';
+import { useRunsPolling } from '../execution/controller';
+import { useExec } from '../execution/state';
 import { AgentInspector } from './AgentInspector';
 import { BottomRibbon } from './BottomRibbon';
 import { DelegationGraph } from './DelegationGraph';
 import { FamilyPanel } from './FamilyPanel';
+import { SeatStrip } from './SeatCards';
+import { useAgentsHide, type HideState } from './hide';
 import { useRobotCtxs, useRows } from './rows';
+import { deriveSeatCards, type SeatEnrich } from './seats';
 import type { DerivedStatus, StatusGroup } from './status';
+import { useAgentsRunId, useSeatTeam } from './teamStore';
+import './seats.css';
+import { Button } from '../../ui/kit/index';
+
+type AgentsPanel = 'seats' | 'roster' | 'inspector' | 'ribbon';
+const PANEL_LABEL: Record<AgentsPanel, string> = { seats: 'Seats', roster: 'Roster', inspector: 'Inspector', ribbon: 'Activity' };
+
+/** Runs are polled by Execution and the panel host; make sure the run id exists when this tab is the first one opened. */
+function RunsFeed() {
+  useRunsPolling();
+  return null;
+}
+
+/** Hide / reopen every panel of this tab. Pressed = visible. */
+function PanelToggles({ hidden, toggle }: { hidden: HideState<AgentsPanel>['hidden']; toggle(k: AgentsPanel): void }) {
+  return (
+    <div className="ag-panels" role="group" aria-label="Show or hide panels">
+      <span className="ag-panels__lab">Panels</span>
+      {(Object.keys(PANEL_LABEL) as AgentsPanel[]).map((k) => (
+        <Button key={k} size="sm" variant="ghost" pressed={!hidden[k]} onClick={() => toggle(k)} title={hidden[k] ? `Show ${PANEL_LABEL[k].toLowerCase()}` : `Hide ${PANEL_LABEL[k].toLowerCase()}`}>
+          {PANEL_LABEL[k]}
+        </Button>
+      ))}
+    </div>
+  );
+}
 
 /**
  * Agents tab. Owner: agents agent.
@@ -58,9 +90,33 @@ export function AgentsTab() {
 
   const select = useCallback((id: string | null) => setTask(id), [setTask]);
 
+  // the five SENTINEL seats for the incident the graph is scoped to (the newest open one when the scope is "all")
+  const { compact } = useLayoutMode();
+  const hide = useAgentsHide();
+  const runsLoaded = useExec((s) => s.runsLoaded);
+  const runId = useAgentsRunId();
+  const teamIncident = scope !== 'all' ? scope : (auto?.id ?? null);
+  const teamOpen = !!(teamIncident && incidents[teamIncident] && !incidents[teamIncident].closed_tick);
+  const teamState = useSeatTeam(runId, teamIncident, teamOpen);
+  const teamTasks = useMemo(() => (teamIncident ? allTasks.filter((t) => t.incident_id === teamIncident) : []), [allTasks, teamIncident]);
+  const enrich = useMemo<SeatEnrich>(() => {
+    const outcomes: NonNullable<SeatEnrich['outcomes']> = {};
+    for (const t of teamTasks) if (t.outcome) outcomes[t.id] = t.outcome;
+    const v = teamIncident ? incidents[teamIncident]?.verification : undefined;
+    return { outcomes, verification: v ? { status: String(v.status), passed: v.checks.filter((c) => c.pass).length, total: v.checks.length, reason: v.failed_reason, attempt: v.attempt } : null };
+  }, [teamTasks, incidents, teamIncident]);
+  const teamForIncident = teamState.incidentId === teamIncident ? teamState.team : null;
+  const cards = useMemo(() => deriveSeatCards(teamForIncident, enrich), [teamForIncident, enrich]);
+  const seatStrip = !hide.hidden.seats && (
+    <SeatStrip cards={cards} team={teamForIncident} incidentId={teamIncident} load={teamState.incidentId === teamIncident ? teamState.load : 'loading'} error={teamState.error} selectedTaskId={taskId} onSelect={select} onHide={() => hide.set('seats', true)} />
+  );
+
   return (
-    <div className="ag">
-      <FamilyPanel rows={rows} group={group} family={family} selectedId={taskId} pendingApprovals={pendingApprovals} onGroup={setGroup} onFamily={setFamily} onSelect={select} />
+    <div className="ag" data-hide-roster={hide.hidden.roster || undefined} data-hide-inspector={hide.hidden.inspector || undefined} data-hide-ribbon={hide.hidden.ribbon || undefined}>
+      {!runsLoaded && <RunsFeed />}
+      {compact && <PanelToggles hidden={hide.hidden} toggle={hide.toggle} />}
+      {compact && seatStrip}
+      {!hide.hidden.roster && <FamilyPanel rows={rows} group={group} family={family} selectedId={taskId} pendingApprovals={pendingApprovals} onGroup={setGroup} onFamily={setFamily} onSelect={select} />}
 
       <section className="ag-centre" aria-label="Delegation graph">
         <header className="ag-head">
@@ -75,17 +131,19 @@ export function AgentsTab() {
             ))}
           </div>
           <Legend />
+          {!compact && <PanelToggles hidden={hide.hidden} toggle={hide.toggle} />}
         </header>
+        {!compact && seatStrip}
 
         {scoped.length === 0 ? (
           <div className="ag-void">
             <div className="ag-void__ico"><Bot size={22} /></div>
             <b>No agent tasks yet</b>
             <p>SENTINEL spawns reviewers and robot tasks when it opens an incident. Force a fault from Engineering test controls in the top bar, or wait for the seeded wear to produce one.</p>
-            <button className="btn btn--sm" onClick={() => useUi.getState().setTab('dashboard')}>Open the dashboard</button>
+            <Button size="sm" onClick={() => useUi.getState().setTab('dashboard')}>Open the dashboard</Button>
           </div>
         ) : (
-          <DelegationGraph tasks={scoped} incidents={incidents} robots={robots} selectedId={taskId} onSelect={select} matches={matches} scopeKey={`${scope}|${group}|${family}`} />
+          <DelegationGraph tasks={scoped} incidents={incidents} robots={robots} selectedId={taskId} onSelect={select} matches={matches} envelopes={teamState.incidentId === teamIncident && scope !== 'all' ? teamState.envelopes : undefined} scopeKey={`${scope}|${group}|${family}`} />
         )}
         {(group || family) && scoped.length > 0 && (
           <button className="ag-clear" onClick={() => (setGroup(null), setFamily(null))}>
@@ -94,8 +152,8 @@ export function AgentsTab() {
         )}
       </section>
 
-      <AgentInspector taskId={taskId} robots={robots} onSelect={select} />
-      <BottomRibbon rows={rows} onSelect={select} />
+      {!hide.hidden.inspector && <AgentInspector taskId={taskId} robots={robots} onSelect={select} />}
+      {!hide.hidden.ribbon && <BottomRibbon rows={rows} onSelect={select} />}
     </div>
   );
 }

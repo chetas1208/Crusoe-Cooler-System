@@ -2,7 +2,7 @@ import { create } from 'zustand';
 import { useWorld } from '@loopkeeper/core/store';
 import type { Vec3 } from '@loopkeeper/core/contracts';
 import { clamp } from '@loopkeeper/core';
-import { fitCamera, measureInsets, OVERVIEW_VIEW, overviewBoxes } from './fit';
+import { fitCamera, measureInsets, OVERVIEW_VIEW, overviewBoxes, stageSize } from './fit';
 import { siteModel } from './siteModel';
 
 export type ViewMode = 'facility' | 'pipe' | 'agents';
@@ -65,7 +65,9 @@ export const DEFAULT_CAM: CamGoal = { azimuth: 0.2, elevation: 1.15, distance: 4
 function fitGoal(box?: { min: Vec3; max: Vec3 }, o?: { azimuth?: number; elevation?: number; fill?: number }): CamGoal | null {
   const topo = useWorld.getState().topology;
   if (!topo || typeof window === 'undefined') return null;
-  return fitCamera({ boxes: box ? [box] : overviewBoxes(topo), width: window.innerWidth, height: window.innerHeight, insets: measureInsets(), ...OVERVIEW_VIEW, ...o });
+  // the canvas is not always the window: beside the dock / the phone landscape panel column the stage is narrower
+  const { width, height } = stageSize();
+  return fitCamera({ boxes: box ? [box] : overviewBoxes(topo), width, height, insets: measureInsets(), ...OVERVIEW_VIEW, ...o });
 }
 
 function roomBox(kinds: string[]): { min: Vec3; max: Vec3 } | undefined {

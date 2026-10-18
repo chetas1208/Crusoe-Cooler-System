@@ -213,7 +213,7 @@ class CommandBus:
     # ---- handlers: (args, target, issuer, command_id) -> (accepted, reason, outcome) -------------------
     def _decide(self, approval_id: str, approve: bool, issuer: str, cid: str):
         eng = self.eng
-        inc, err = eng.track.decide(approval_id, approve)
+        inc, err = eng.track.decide(approval_id, approve, by=f"operator:{issuer}")
         if err:
             return False, err, {}
         eng.emit_internal("incident.updated", inc["id"], {"incident": clone(inc)}, actor_type="operator", actor_id=issuer, command_id=cid)

@@ -1,40 +1,32 @@
 import { useEffect, useState } from 'react';
-import { useCommunications } from '../communications/communicationStore';
-import { CommunicationsPanel } from '../communications/CommunicationsPanel';
-import { BottomSheet, type SheetState } from './BottomSheet';
+import { BottomSheet } from './BottomSheet';
 import { MobileTabBar } from './MobileTabBar';
 import { DriveButtons } from './DriveButtons';
-import { usePhoneLayout, useVisualViewportVar } from './phone';
+import { PanelsHost } from './PanelsHost';
+import { useLayoutMode } from './layout';
+import { useVisualViewportVar } from './phone';
 import { ViewerSwitch } from '../visualization/ViewerSwitch';
 
-/** Everything the phone layout adds on top of the unchanged desktop component tree: bottom tab bar + Communications bottom sheet + viewer-mode sheet. */
+/**
+ * Everything the layout model adds on top of the component tree: the panel host (dock / drawer / sheet, every layout), and for the
+ * compact chrome the tab bar (a bottom bar in portrait, a left rail in landscape), the drive pad and the viewer-mode sheet.
+ */
 export function PhoneChrome() {
-  const phone = usePhoneLayout();
+  const { compact } = useLayoutMode();
   useVisualViewportVar();
-  const open = useCommunications((s) => s.open);
-  const setOpen = useCommunications((s) => s.setOpen);
-  const [state, setState] = useState<SheetState>('peek');
-  useEffect(() => {
-    if (open) setState((s) => (s === 'closed' ? 'peek' : s));
-  }, [open]);
   const [viewerOpen, setViewerOpen] = useState(false);
   useEffect(() => {
     const h = () => setViewerOpen(true);
     window.addEventListener('lk-viewer-mode', h);
     return () => window.removeEventListener('lk-viewer-mode', h);
   }, []);
-  if (!phone) return null;
   return (
     <>
-      <MobileTabBar />
-      <DriveButtons />
-      {open && (
-        <BottomSheet state={state} onState={setState} title="Communications" onClose={() => setOpen(false)}>
-          <CommunicationsPanel variant="sheet" onClose={() => setOpen(false)} />
-        </BottomSheet>
-      )}
-      {viewerOpen && (
-        <BottomSheet state="expanded" onState={() => setViewerOpen(false)} title="Spatial view" onClose={() => setViewerOpen(false)}>
+      {compact && <MobileTabBar />}
+      {compact && <DriveButtons />}
+      <PanelsHost />
+      {compact && viewerOpen && (
+        <BottomSheet state="expanded" onState={() => setViewerOpen(false)} title="Spatial view" onClose={() => setViewerOpen(false)} className="sheet--viewer">
           <ViewerSwitch onPick={() => setViewerOpen(false)} />
         </BottomSheet>
       )}

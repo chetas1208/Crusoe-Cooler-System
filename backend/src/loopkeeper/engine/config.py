@@ -33,7 +33,7 @@ class EngineConfig:
     pose_period_s: float = 0.1               # robot.pose cadence (wall)
     diff_period_s: float = 0.5               # world.diff cadence (wall)
     health_period_s: float = 5.0
-    heartbeat_period_s: float = 10.0
+    heartbeat_period_s: float = 2.0          # < the web client stale threshold (5 s): the stream must never look silent
     agent_tick_period_s: float = 1.0         # AgentRuntime.on_tick cadence (wall)
     ring_size: int = 20000                   # events kept in memory for events_since
     max_active_runs: int = 2

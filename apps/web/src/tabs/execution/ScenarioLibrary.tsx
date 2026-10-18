@@ -1,293 +1,168 @@
 import React, { useState, useEffect } from 'react';
-import { X, Layers, AlertOctagon, ShieldAlert, Sparkles, RefreshCw } from 'lucide-react';
-import { ScenarioCard, type ScenarioCardData } from './ScenarioCard';
+import { Layers, RefreshCw } from 'lucide-react';
+import { Button, IconButton, Panel, SegmentedControl, ErrorState, EmptyState, LoadingSkeleton } from '../../ui/kit/index';
+import { ScenarioCard } from './ScenarioCard';
+import { ScenarioLaunch } from './ScenarioLaunch';
 import { useExecutionPanels } from './ExecutionPanelsStore';
-import { useExec, resolveRunsApi } from './state';
+import { useExec } from './state';
 import { apiFetch } from './api';
 import { ScenarioComposer } from './ScenarioComposer';
-
-const FALLBACK_SCENARIOS: ScenarioCardData[] = [
-  {
-    scenario_id: 'CR-01',
-    severity: 'SEVERE',
-    label: 'CDU circulation collapse',
-    learning_goal: 'Distinguish TCS circulation loss from thermal-only alarms and execute duty pump swap.',
-    seed: 12001,
-    duration_sim_s: 1800,
-    required_assets: ['pump_t1', 'pump_t2', 'cdu_01'],
-    required_robot_tools: ['pump kit', 'camera'],
-    failure_injection_switches: ['pump_degradation'],
-  },
-  {
-    scenario_id: 'CR-02',
-    severity: 'SEVERE',
-    label: 'Manifold rupture and aisle flood',
-    learning_goal: 'Isolate ruptured manifold segment, clear floor hazard, and verify pressure recovery without unsafe entry.',
-    seed: 12002,
-    duration_sim_s: 1800,
-    required_assets: ['p_hs_c', 'valve_zc'],
-    required_robot_tools: ['pipe clamp', 'pressure kit'],
-    failure_injection_switches: ['leak'],
-  },
-  {
-    scenario_id: 'CR-03',
-    severity: 'SEVERE',
-    label: 'Heat rejection collapse',
-    learning_goal: 'Separate FWS chiller boundary failure from TCS pressure loss and shed compute load.',
-    seed: 12003,
-    duration_sim_s: 1800,
-    required_assets: ['chiller_01', 'cdu_01', 'pump_t1'],
-    required_robot_tools: ['camera'],
-    failure_injection_switches: ['set_chiller_setpoint'],
-  },
-  {
-    scenario_id: 'CR-04',
-    severity: 'SEVERE',
-    label: 'Power and cooling double contingency',
-    learning_goal: 'Constrain actions by available power, prioritize survivability, and coordinate compute load shedding.',
-    seed: 12004,
-    duration_sim_s: 1800,
-    required_assets: ['pump_t1', 'pump_f1', 'rack_a1'],
-    required_robot_tools: ['camera'],
-    failure_injection_switches: ['trip_pump'],
-  },
-  {
-    scenario_id: 'CR-05',
-    severity: 'SEVERE',
-    label: 'Electrical rack smoke/fire',
-    learning_goal: 'Emergency containment with prohibited autonomous rack repair inside an energized/smoke hazard.',
-    seed: 12005,
-    duration_sim_s: 1800,
-    required_assets: ['rack_a1'],
-    required_robot_tools: ['camera'],
-    failure_injection_switches: ['workload_spike'],
-  },
-  {
-    scenario_id: 'CR-06',
-    severity: 'SEVERE',
-    label: 'Multi-row fouling and starvation',
-    learning_goal: 'Localize common hydraulic restriction and verify flow recovery after cartridge exchange.',
-    seed: 12006,
-    duration_sim_s: 1800,
-    required_assets: ['strainer_02', 'p_hs_b', 'p_hs_c', 'p_hs_d'],
-    required_robot_tools: ['basket', 'brush', 'camera'],
-    failure_injection_switches: ['strainer_blockage'],
-  },
-  {
-    scenario_id: 'CR-07',
-    severity: 'SEVERE',
-    label: 'Stuck valve and misleading telemetry cascade',
-    learning_goal: 'Prove the verifier rejects premature success from a biased sensor.',
-    seed: 12007,
-    duration_sim_s: 1800,
-    required_assets: ['valve_a1', 'sn_flow_trunk', 'rack_a1'],
-    required_robot_tools: ['valve actuator', 'calibration kit', 'camera'],
-    failure_injection_switches: ['valve_stuck', 'sensor_drift'],
-  },
-  {
-    scenario_id: 'MD-01',
-    severity: 'MODERATE',
-    label: 'Single-rack strainer restriction',
-    learning_goal: 'Moderate service degradation with a safe, serviceable cartridge path.',
-    seed: 22001,
-    duration_sim_s: 1800,
-    required_assets: ['strainer_02', 'rack_e5'],
-    required_robot_tools: ['basket', 'camera'],
-    failure_injection_switches: ['strainer_blockage'],
-  },
-  {
-    scenario_id: 'MD-02',
-    severity: 'MODERATE',
-    label: 'Temperature-sensor drift',
-    learning_goal: 'Classify a false positive without unnecessary repair.',
-    seed: 22002,
-    duration_sim_s: 1800,
-    required_assets: ['sn_flow_trunk', 'rack_b1'],
-    required_robot_tools: ['calibration kit', 'camera'],
-    failure_injection_switches: ['sensor_drift'],
-  },
-];
+import { useScenarioLive } from './scenarioLive';
+import { buildSpec, classify, isTerminal } from './scenarioSpec';
 
 export function ScenarioLibrary() {
-  const [scenarios, setScenarios] = useState<ScenarioCardData[]>(FALLBACK_SCENARIOS);
   const [filter, setFilter] = useState<'ALL' | 'SEVERE' | 'MODERATE'>('ALL');
-  const [loadingId, setLoadingId] = useState<string | null>(null);
+  const [recordingId, setRecordingId] = useState<string | null>(null);
   const setPanel = useExecutionPanels((s) => s.setPanel);
   const setActiveView = useExecutionPanels((s) => s.setActiveView);
   const say = useExec((s) => s.say);
 
-  useEffect(() => {
-    let unmounted = false;
-    async function load() {
-      try {
-        const res = await apiFetch('/scenarios');
-        if (res.ok) {
-          const json = await res.json();
-          if (json.scenarios && Array.isArray(json.scenarios) && !unmounted) {
-            setScenarios(json.scenarios);
-          }
-        }
-      } catch (err) {
-        // use fallback if backend is unreachable
-      }
-    }
-    void load();
-    return () => {
-      unmounted = true;
-    };
-  }, []);
+  const defs = useScenarioLive((s) => s.defs);
+  const load = useScenarioLive((s) => s.defsLoad);
+  const loadError = useScenarioLive((s) => s.defsError);
+  const topo = useScenarioLive((s) => s.topo);
+  const topoError = useScenarioLive((s) => s.topoError);
+  const validations = useScenarioLive((s) => s.validations);
+  const plans = useScenarioLive((s) => s.plans);
+  const hazardNotes = useScenarioLive((s) => s.hazardNotes);
+  const verdicts = useScenarioLive((s) => s.verdicts);
+  const openId = useScenarioLive((s) => s.openId);
+  const launch = useScenarioLive((s) => s.launch);
+  const loadCatalog = useScenarioLive((s) => s.loadCatalog);
+  const open = useScenarioLive((s) => s.open);
 
-  const handleStart = async (scenarioId: string, speed: number) => {
-    setLoadingId(scenarioId);
-    say('info', `Generating 30:00 recorded episode for ${scenarioId} (${speed}× speed)...`);
-    const sc = scenarios.find((s) => s.scenario_id === scenarioId);
+  useEffect(() => {
+    if (load === 'idle') void loadCatalog();
+  }, [load, loadCatalog]);
+
+  const busy = !!launch && (launch.submitting || (!!launch.view && !isTerminal(launch.view.status)));
+
+  // "recorded episode" path (older V8 flow): a replay to scrub, separate from the live launch
+  const handleRecord = async (scenarioId: string, speed: number) => {
+    setRecordingId(scenarioId);
+    say('info', `Generating 30:00 recorded episode for ${scenarioId}...`);
+    const sc = defs.find((s) => s.scenario_id === scenarioId);
     try {
       const res = await apiFetch('/runs', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           scenario_id: scenarioId,
-          seed: sc?.seed || 12002,
+          seed: sc?.seed ?? 12002,
           duration_sim_s: 1800,
           simulation_speed: speed,
           mode: 'LIVE',
           idempotency_key: `v8-exec-${scenarioId}-${Date.now()}`,
         }),
       });
-
       if (!res.ok) {
-        const txt = await res.text();
-        say('warning', `Failed to start episode: ${txt}`);
-        setLoadingId(null);
+        say('warning', `Failed to record episode: HTTP ${res.status} ${await res.text()}`);
         return;
       }
-
       const run = await res.json();
-      say('ok', `Episode ${run.run_id} ready (30:00 horizon, outcome: ${run.meta?.verdict?.outcome || 'CONTAINED'}).`);
+      say('ok', `Episode ${run.run_id} ready (30:00 horizon, outcome: ${run.meta?.verdict?.outcome ?? 'not reported'}).`);
       useExec.getState().select(run.run_id);
       useExec.getState().setMode('replay');
       setActiveView('player');
       setPanel('scenarioLibrary', false);
       setPanel('runsPanel', true);
-      setPanel('runInspector', true);
       setPanel('timelinePanel', true);
+      setPanel('runInspector', true); // on a phone the last one wins: Run Details
     } catch (e: any) {
-      say('warning', `Episode launch error: ${e.message || String(e)}`);
+      say('warning', `Episode record error: ${e.message || String(e)}`);
     } finally {
-      setLoadingId(null);
+      setRecordingId(null);
     }
   };
 
-  const filtered = scenarios.filter((s) => {
-    if (filter === 'SEVERE') return s.severity === 'SEVERE';
-    if (filter === 'MODERATE') return s.severity === 'MODERATE';
-    return true;
-  });
+  const severe = defs.filter((s) => s.severity === 'SEVERE').length;
+  const moderate = defs.filter((s) => s.severity === 'MODERATE').length;
+  const filtered = defs.filter((s) => filter === 'ALL' || s.severity === filter);
+  const tally = { live: 0, partial: 0, unsupported: 0 };
+  for (const d of defs) tally[classify(d, topo, validations[d.scenario_id]?.view ?? null, verdicts[d.scenario_id], plans[d.scenario_id]).state]++;
+  const openDef = defs.find((d) => d.scenario_id === openId) ?? null;
+
+  const sub =
+    load === 'ready' && defs.length > 0
+      ? `${tally.live} live · ${tally.partial} partial · ${tally.unsupported} unsupported, as reported by this backend`
+      : load === 'loading'
+        ? 'Loading the scenario catalog from the backend...'
+        : 'Catalog comes from the backend only';
 
   return (
-    <div
-      className="panel ex-library"
-      style={{
-        position: 'absolute',
-        top: 48,
-        left: 20,
-        width: 'calc(100% - 40px)',
-        maxWidth: 1200,
-        maxHeight: 'calc(100vh - 120px)',
-        background: 'rgba(11, 14, 20, 0.94)',
-        backdropFilter: 'blur(16px)',
-        border: '1px solid var(--line, #232936)',
-        borderRadius: 10,
-        zIndex: 40,
-        display: 'flex',
-        flexDirection: 'column',
-        boxShadow: '0 12px 36px rgba(0,0,0,0.6)',
-        overflow: 'hidden',
-      }}
+    <Panel
+      panelId="scenario-library"
+      className="ex-library sl-lib"
+      surface="solid"
+      icon={<Layers size={16} />}
+      title={`Scenario Library: ${defs.length ? `${defs.length} incidents` : 'incidents'}`}
+      subtitle={sub}
+      flush
+      scroll
+      onClose={() => setPanel('scenarioLibrary', false)}
+      closeLabel="Close Library (Esc)"
+      actions={
+        <>
+          <SegmentedControl
+            label="Severity filter"
+            size="sm"
+            value={filter}
+            onChange={setFilter}
+            items={[
+              { id: 'ALL', label: `All (${defs.length})` },
+              { id: 'SEVERE', label: `Severe (${severe})` },
+              { id: 'MODERATE', label: `Moderate (${moderate})` },
+            ]}
+          />
+          <IconButton aria-label="Reload the catalog" size="sm" icon={<RefreshCw size={15} className={load === 'loading' ? 'spin' : undefined} />} onClick={() => void loadCatalog()} />
+        </>
+      }
     >
-      <header
-        style={{
-          padding: '12px 18px',
-          borderBottom: '1px solid var(--line, #232936)',
-          display: 'flex',
-          justifyContent: 'space-between',
-          alignItems: 'center',
-          background: 'rgba(20, 24, 34, 0.7)',
-        }}
-      >
-        <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
-          <Layers size={18} style={{ color: 'var(--nominal, #00e5ff)' }} />
-          <div>
-            <h3 style={{ margin: 0, fontSize: 15, fontWeight: 700, color: 'var(--t1, #f0f4f8)' }}>
-              Scenario Library — 9 Physical Incidents
-            </h3>
-            <span style={{ fontSize: 11, color: 'var(--t3, #8a99ad)' }}>
-              30:00 exact world horizon · Seven Catastrophic & Two Moderate cases · Governed repairs & counterfactuals
-            </span>
-          </div>
-        </div>
-
-        <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
-          <div style={{ display: 'flex', gap: 4, background: 'var(--panel-2, #14171f)', padding: 2, borderRadius: 6 }}>
-            {(['ALL', 'SEVERE', 'MODERATE'] as const).map((f) => (
-              <button
-                key={f}
-                className="chip"
-                data-active={filter === f}
-                onClick={() => setFilter(f)}
-                style={{
-                  fontSize: 11,
-                  padding: '3px 10px',
-                  border: 'none',
-                  background: filter === f ? 'var(--panel-3, #222a38)' : 'transparent',
-                }}
-              >
-                {f === 'ALL' ? 'All (9)' : f === 'SEVERE' ? 'Severe (7)' : 'Moderate (2)'}
-              </button>
-            ))}
-          </div>
-
-          <button
-            className="btn btn--icon"
-            onClick={() => setPanel('scenarioLibrary', false)}
-            title="Close Library (Esc)"
-            style={{ width: 30, height: 30, padding: 0 }}
-          >
-            <X size={16} />
-          </button>
-        </div>
-      </header>
-
-      <div style={{ padding: '14px 18px 0 18px' }}>
+      <div className="sl-composer">
         <ScenarioComposer
           compact
           onCompleted={() => {
             setPanel('scenarioLibrary', false);
             setPanel('runsPanel', true);
-            setPanel('runInspector', true);
             setPanel('timelinePanel', true);
+            setPanel('runInspector', true); // on a phone the last one wins: Run Details
           }}
         />
       </div>
 
-      <div
-        style={{
-          padding: 18,
-          overflowY: 'auto',
-          display: 'grid',
-          gridTemplateColumns: 'repeat(auto-fill, minmax(340px, 1fr))',
-          gap: 16,
-        }}
-      >
+      <div className="sl-grid">
+        {load === 'error' && (
+          <div className="sl-wide" data-testid="catalog-error">
+            <ErrorState title="Scenario catalog unavailable" detail={loadError ?? undefined} onRetry={() => void loadCatalog()} retryLabel="Retry">
+              GET /scenarios failed. No scenarios are shown because none are made up locally.
+            </ErrorState>
+          </div>
+        )}
+        {load === 'ready' && defs.length === 0 && (
+          <div className="sl-wide">
+            <EmptyState title="No scenarios reported">{loadError ?? 'GET /scenarios returned no entries.'}</EmptyState>
+          </div>
+        )}
+        {(load === 'idle' || load === 'loading') && defs.length === 0 && <div className="sl-wide"><LoadingSkeleton lines={4} label="Loading scenarios" /></div>}
+        {load === 'ready' && topoError && <p className="sl-wide sl-note sl-note--warn" role="status">Topology unavailable ({topoError}): targets cannot be resolved, so asset checks are skipped.</p>}
         {filtered.map((sc) => (
           <ScenarioCard
             key={sc.scenario_id}
             data={sc}
-            onStart={handleStart}
-            loading={loadingId === sc.scenario_id}
+            topo={topo}
+            validator={validations[sc.scenario_id]?.view ?? null}
+            spec={plans[sc.scenario_id] ?? buildSpec(sc, topo)}
+            hazardNotes={hazardNotes[sc.scenario_id]}
+            verdict={verdicts[sc.scenario_id]}
+            busy={busy && launch?.scenarioId !== sc.scenario_id}
+            recording={recordingId === sc.scenario_id}
+            onOpen={open}
+            onRecord={handleRecord}
           />
         ))}
       </div>
-    </div>
+
+      {openDef && <ScenarioLaunch def={openDef} onClose={() => open(null)} />}
+    </Panel>
   );
 }

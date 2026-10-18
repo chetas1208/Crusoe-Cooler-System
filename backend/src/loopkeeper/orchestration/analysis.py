@@ -98,6 +98,8 @@ def compute_metrics(ctx: AgentContext, det: Json, inc_id: str, cf: Json, clean: 
     hyd_ok = [r for r in mr if cfr.get(r, 0) <= 0.2 or h.avg(r, "flow_kg_s", 6) >= 0.9 * cfr[r]]
     m["margin"] = min(norm_margin(r) for r in hyd_ok) if hyd_ok else 99.0
     m["margin_excl"] = 0 if hyd_ok else 1
+    _pool = mr or racks or list(fac.racks)
+    m["margin_all"] = min((norm_margin(r) for r in _pool), default=m["margin"])        # thermal margin over EVERY rack in scope, whether or not its hydraulics have recovered
 
     def dev(r: str) -> float:
         return abs(h.avg(r, "flow_kg_s", 6) - cfr[r]) / max(cfr[r], 0.1)
@@ -176,6 +178,11 @@ def scope_label(ctx: AgentContext, det: Json) -> str:
     return "Loop"
 
 
+# Pass thresholds are ABSOLUTE (configuration), never derived from the faulted baseline: worse damage must not loosen the bar.
+COLLATERAL_MAX_PCT = 6.0
+DRIFT_COLLATERAL_MAX_PCT = 4.0
+
+
 def checks_for(ctx: AgentContext, det: Json, before: Json, after: Json) -> list[Json]:
     warn = ctx.fac.warn_k
     checks: list[Json] = []
@@ -195,7 +202,7 @@ def checks_for(ctx: AgentContext, det: Json, before: Json, after: Json) -> list[
         if not after.get("margin_excl"):
             add("margin", f"Thermal margin at nominal load - {sl}", "K", before.get("margin", 0), after["margin"], warn, "min")
         add("collateral", "Collateral flow deviation" + (" (not judged - other faults active)" if after.get("collateral_skipped") else ""), "%",
-            before.get("collateral", 0) * 100, after["collateral"] * 100, max(6.0, before.get("collateral", 0) * 100 + 4), "max")
+            before.get("collateral", 0) * 100, after["collateral"] * 100, COLLATERAL_MAX_PCT, "max")
     elif c == "pump_degradation":
         add("head", "Head vs pump curve", "%", before.get("head_ratio", 0) * 100, after["head_ratio"] * 100, 96, "min")
         add("vib", "Bearing vibration", "mm/s", before.get("vibration", 0), after["vibration"], 2.8, "max")
@@ -205,7 +212,7 @@ def checks_for(ctx: AgentContext, det: Json, before: Json, after: Json) -> list[
         add("residual", "Meter vs rack-meter residual", "kg/s", before.get("residual_kg_s", 0), after["residual_kg_s"], after["tol_kg_s"], "max")
         add("collateral", "True flows unchanged" + (" (not judged - other faults active)" if after.get("collateral_skipped") else ""), "%",
             before.get("collateral", 0) * 100, after["collateral"] * 100,
-            max(4.0, before.get("collateral", 0) * 100 + 3), "max")
+            DRIFT_COLLATERAL_MAX_PCT, "max")
     return checks
 
 

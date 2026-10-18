@@ -22,6 +22,7 @@ import json
 from typing import Any, Optional
 
 from fastapi import WebSocket, WebSocketDisconnect
+from starlette.websockets import WebSocketState
 
 from ..assets.interest import InterestError, InterestManager, ZoneIndex
 from ..assets.store import AssetService
@@ -38,6 +39,7 @@ CLOSE_NOT_FOUND = 4404
 CLOSE_TOO_BIG = 1009
 INTEREST_MAX_BYTES = 16384        # subscribe frames may exceed ws_max_message_bytes (long visible_zone_ids lists) up to this
 MANIFEST_POLL_S = 2.0
+MAX_CATCHUP_PAGES = 40          # x ws_catchup_page events; a longer gap is answered with a snapshot
 
 
 class StreamState:
@@ -119,6 +121,14 @@ async def stream_endpoint(ws: WebSocket) -> None:
     sub_proto, header_token = _tokens_from_subprotocols(ws)
     token = bearer_from_header(ws.headers.get("authorization")) or header_token
     await ws.accept(subprotocol=sub_proto)
+    ws.app.state.ws_clients = getattr(ws.app.state, "ws_clients", 0) + 1       # read by /health/detail
+    try:
+        await _serve(ws, ctx, token)
+    finally:
+        ws.app.state.ws_clients = max(0, getattr(ws.app.state, "ws_clients", 1) - 1)
+
+
+async def _serve(ws: WebSocket, ctx: ApiContext, token: Optional[str]) -> None:
 
     principal = await _authenticate(ws, ctx, token)
     if principal is None:
@@ -146,27 +156,48 @@ async def stream_endpoint(ws: WebSocket) -> None:
 
     sub = engine.subscribe()
     st = StreamState(ws, ctx, engine, run_id)
-    sender = asyncio.create_task(_pump(st, sub, since, force_snapshot))
-    receiver = asyncio.create_task(_drain_client(st))
-    watcher = asyncio.create_task(_manifest_watch(st))
+    tasks = [_spawn(_pump(st, sub, since, force_snapshot)), _spawn(_drain_client(st)), _spawn(_manifest_watch(st))]
+    sender, receiver = tasks[0], tasks[1]
     try:
-        done, pending = await asyncio.wait({sender, receiver}, return_when=asyncio.FIRST_COMPLETED)
-        for t in pending:
-            t.cancel()
-        for t in done:
-            exc = t.exception()
-            if exc and not isinstance(exc, (WebSocketDisconnect, asyncio.CancelledError)):
-                raise exc
+        await asyncio.wait({sender, receiver}, return_when=asyncio.FIRST_COMPLETED)
+    except asyncio.CancelledError:
+        raise
     except Exception:  # never leak internals to the client; the connection just ends
         pass
     finally:
         sub.close()
-        for t in (sender, receiver, watcher):
+        for t in tasks:
             t.cancel()
+        # every task has a done-callback that retrieves its exception (see _spawn): a send that raced the client's close can finish with
+        # WebSocketDisconnected instead of CancelledError (wait_for re-raises the inner result) and would be "never retrieved"
         try:
-            await ws.close()
+            if ws.client_state == WebSocketState.CONNECTED and ws.application_state == WebSocketState.CONNECTED:
+                await ws.close()
         except Exception:
             pass
+
+
+def _consume(t: "asyncio.Task[Any]") -> None:
+    if not t.cancelled():
+        t.exception()                                  # marks it retrieved; _guard already turned expected disconnects into a clean return
+
+
+def _spawn(coro: Any) -> "asyncio.Task[Any]":
+    t = asyncio.create_task(_guard(coro))
+    t.add_done_callback(_consume)
+    return t
+
+
+async def _guard(coro: Any) -> None:
+    """Run one stream task; a closed / vanished client ends it quietly instead of surfacing as an unretrieved task exception."""
+    try:
+        await coro
+    except (WebSocketDisconnect, ConnectionError, asyncio.TimeoutError):
+        return
+    except RuntimeError as e:   # starlette: 'Cannot call "send" once a close message has been sent' / 'WebSocket is not connected'
+        if "close message" in str(e) or "not connected" in str(e) or "websocket.close" in str(e):
+            return
+        raise
 
 
 async def _drain_client(st: StreamState) -> None:
@@ -258,28 +289,32 @@ async def _pump(st: StreamState, sub: Any, since: int, force_snapshot: bool) -> 
     head = int(world.get("last_seq", 0))
     cursor: int
 
-    backlog: list[Json] = []
     resume = (not force_snapshot) and 0 < since <= head
+    cursor = since
     if resume and since < head:
-        cur = since
-        while cur < head:
-            evs = engine.events_since(cur, page)
-            if not evs or int(evs[0]["seq"]) != cur + 1 or any(
+        # catch-up streams page by page (each page is sent before the next is read): memory stays bounded by one page however long the gap was,
+        # and a gap too long to be worth replaying (MAX_CATCHUP_PAGES) degrades to a snapshot instead of a minutes-long burst
+        pages = 0
+        while cursor < head:
+            evs = engine.events_since(cursor, page)
+            if not evs or int(evs[0]["seq"]) != cursor + 1 or any(
                 int(b["seq"]) != int(a["seq"]) + 1 for a, b in zip(evs, evs[1:])
             ):
                 resume = False  # engine can't serve a contiguous tail -> gap -> snapshot
                 break
-            backlog.extend(evs)
-            cur = int(evs[-1]["seq"])
-    if resume:
-        cursor = since
-        for ev in backlog:
-            cursor = int(ev["seq"])
-            if not interest.should_drop(ev):
-                await _send(st, ev, run_id)
-    else:
-        await _send(st, snapshot_event(world, run_id), run_id)
-        cursor = head
+            for ev in evs:
+                if not interest.should_drop(ev):
+                    await _send(st, ev, run_id)
+            cursor = int(evs[-1]["seq"])
+            pages += 1
+            if cursor < head and pages >= MAX_CATCHUP_PAGES:
+                resume = False
+                break
+    if not resume:
+        interest.elided = 0
+        w = engine.world() if cursor > since else world       # events already went out: the snapshot must be at least as new as the last one sent
+        await _send(st, snapshot_event(w, run_id), run_id)
+        cursor = max(int(w.get("last_seq", head)), cursor)
 
     async for ev in sub:
         seq = int(ev["seq"])

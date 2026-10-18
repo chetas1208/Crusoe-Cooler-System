@@ -35,7 +35,7 @@ def agent_id_for(role: str, kind: str) -> str:
         return "SEN-03"
     if kind == "safety":
         return "SEN-04"
-    if kind in ("verify", "dod_review"):
+    if kind in ("verify", "dod_review", "assess"):
         return "SEN-05"
     return "SEN-01"
 

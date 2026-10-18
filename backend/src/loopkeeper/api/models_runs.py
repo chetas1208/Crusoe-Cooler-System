@@ -27,6 +27,7 @@ ApiProblemCode = Literal[
 IssueSeverity = Literal["error", "warning", "info"]
 FaultKindT = Literal[
     "fouling", "strainer_blockage", "valve_stuck", "pump_degradation", "sensor_drift", "workload_spike", "leak",
+    "manifold_leak", "power_failure", "rack_thermal_runaway", "cdu_pump_backup_failure", "facility_heat_rejection_loss",
 ]
 
 

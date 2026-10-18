@@ -68,7 +68,12 @@ export class AssetCache {
   fetched = 0;
   fetchedBytes = 0;
   decodeFailures = 0;
+  decodeMsTotal = 0;
+  decodeMsMax = 0;
+  decodedCount = 0;
   hits = 0;
+  /** called with the sha of every tile whose GPU resources were disposed (LRU trim or explicit drop) */
+  onEvict: ((sha: string, tile: ManifestTile) => void) | null = null;
   constructor(public base: string, public quota: CacheQuota = { encodedBytes: 24 << 20, gpuBytes: 96 << 20 }) {}
 
   get inflightCount() {
@@ -124,6 +129,7 @@ export class AssetCache {
   async decode(tile: ManifestTile, buf: ArrayBuffer): Promise<DecodedTile> {
     const hit = this.decoded.get(tile.sha256);
     if (hit) return hit;
+    const t0 = performance.now();
     try {
       const gltf = await new Promise<{ scene: THREE.Group; asset?: { extras?: { lk?: { feature_table?: string[] } } } }>((res, rej) => LOADER.parse(buf, '', res as never, rej));
       const table = gltf.asset?.extras?.lk?.feature_table ?? [];
@@ -131,6 +137,10 @@ export class AssetCache {
       const d: DecodedTile = { tile, root: gltf.scene, table, gpuBytes: bytes, triangles: tris, last: performance.now(), refs: 0 };
       this.decoded.set(tile.sha256, d);
       this.gpuBytes += bytes;
+      const ms = performance.now() - t0;
+      this.decodeMsTotal += ms;
+      this.decodeMsMax = Math.max(this.decodeMsMax, ms);
+      this.decodedCount++;
       return d;
     } catch (e) {
       this.decodeFailures++;
@@ -163,6 +173,7 @@ export class AssetCache {
     this.decoded.delete(sha);
     this.gpuBytes -= d.gpuBytes;
     this.evicted++;
+    this.onEvict?.(sha, d.tile);
   }
   private trimEncoded() {
     if (this.encodedBytes <= this.quota.encodedBytes) return;

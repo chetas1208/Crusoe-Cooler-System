@@ -25,7 +25,7 @@ def emit(ctx: AgentContext, c: Json) -> None:
 
 
 def _facts(ctx: AgentContext, det: Json, before: Json, after0: Json, window: float, extra: Json | None = None) -> Json:
-    mand = dod.checks_for(ctx, det, before, after0)
+    mand = dod.mandatory_checks(ctx, det, before, after0)
     return {"incident": {"cause": det["cause"], "target": det["target_id"], "title": det.get("title", ""), "summary": det.get("summary", "")},
             "valid_asset_ids": sorted(dod.scope_assets(ctx, det))[:40],
             "mandatory_checks": [{"id": c["id"], "type": dod.TYPE_OF_ID[c["id"]], "label": c["label"], "unit": c["unit"], "direction": c["direction"],
@@ -109,7 +109,8 @@ async def revise_for_replan(ctx: AgentContext, s: Any, state: Json, det: Json, c
                          max_tokens=400)
     new = None
     try:
-        draft = {**dec, "hold_sim_seconds": max(int(dec.get("hold_sim_seconds") or 0), int(c["checks"][0]["hold_sim_s"]))}
+        draft = {**dec, "goal": c["goal"], "subject_asset_ids": list((c.get("scope") or {}).get("subjects") or []),     # the goal and subjects are pinned: a revision only adds checks / lengthens holds
+                 "hold_sim_seconds": max(int(dec.get("hold_sim_seconds") or 0), int(c["checks"][0]["hold_sim_s"]))}
         prop = dod.compile_contract(ctx, det, s.id, draft, before, after0, window_s=window, source=c["drafted_by"])
         prop["before"] = c.get("before")
         extra = [k for k in prop["checks"] if k["id"] not in {x["id"] for x in c["checks"]}]
@@ -191,6 +192,71 @@ async def layer_b(ctx: AgentContext, s: Any, c: Json, det: Json, t: Json) -> Jso
                                      "request_more_tests (list extra allowlisted checks / a longer hold) or request_replan (explain). You cannot pass a failed contract.",
                          max_tokens=400)
     m = t.get("model") or {}
-    return {"verdict": dec["verdict"], "reasons": dec.get("reasons", []), "extra_checks": dec.get("extra_checks", []),
-            "extra_hold_sim_seconds": dec.get("extra_hold_sim_seconds", 0), "source": "fallback" if m.get("fallback", True) else "model",
+    source = "fallback" if m.get("fallback", True) else "model"
+    verdict = dec["verdict"]
+    if source != "model" and verdict == "concur":
+        verdict = "unreviewed"                    # the deterministic fallback is not an independent review: it can never count as a concurrence
+        dec = {**dec, "reasons": ["Layer A passed, but no independent model review was available - not counted as a concurrence."]}
+    return {"verdict": verdict, "reasons": dec.get("reasons", []), "extra_checks": dec.get("extra_checks", []),
+            "extra_hold_sim_seconds": dec.get("extra_hold_sim_seconds", 0), "source": source,
             "model_id": m.get("model_id"), "provider": m.get("provider")}
+
+
+async def finish_escalated(ctx: AgentContext, s: Any, state: Json, dc: Json, det: Json, reason: str, *, human_required: bool = False, timed_out: bool = False) -> str:
+    """The honest end of an escalated incident. Takes ONE final, real reading of every frozen check (Layer A, hold timers and all) so the terminal state is
+    derived from measurements taken now - never from an earlier attempt's numbers - then sets VERIFIED-never terminal state, plain wording and the evidence
+    (what is safe, what is still unrepaired). Also records the final reading as a verification so /verifications and Communications show it."""
+    from ..analysis import twin_counterfactual
+    from .common import sentinel_root
+    attempt = int(s.inc["attempts"]) + 1
+    racks = ctx.fac.scope_racks(det["cause"], det["target_id"])
+    t = s.task("sentinel", "assess", "Final reading before handing over", "What is actually safe right now, and what is still not repaired?",
+               parent=sentinel_root(state), asset_ids=[det["target_id"]])
+    before = state.get("baseline") or {}
+    need = max([float(k["hold_sim_s"]) for k in dc["checks"]] or [0.0])
+    v: Json = {"id": f"ver_{s.id}_{attempt}", "incident_id": s.id, "attempt": attempt, "status": "pending", "window_s": need + 8.0, "elapsed_s": 0.0, "progress": 0.0,
+               "checks": [], "confidence": 0.0, "started_tick": ctx.tick}
+    s.inc["verification"] = v
+    ctx.emit("verification.result", s.id, {"verification": v})
+
+    async def reading() -> Json:
+        dod.begin(ctx, dc, attempt)
+        cf = await twin_counterfactual(ctx, det, f"{s.id}:{t['id']}:cfF", s.id, t["id"])
+        if cf is None:
+            cf = healthy_reference(ctx, racks, other_affected(ctx, s.id))
+        t0 = ctx.now
+        while True:
+            dod.step(ctx, dc, det, before, cf, before.get("_clean"))
+            cs = dc["evaluation"]["checks"]
+            v["elapsed_s"] = rnd(min(ctx.now - t0, v["window_s"]), 1)
+            v["progress"] = rnd(min(v["elapsed_s"] / max(v["window_s"], 1.0), 1.0), 3)
+            ctx.emit("verification.result", s.id, {"verification": v})
+            if any(x["status"] == "unknown" for x in cs.values()):        # no trustworthy reading: waiting cannot fix it
+                break
+            if not any(x["status"] == "passing" for x in cs.values()) or ctx.now - t0 >= v["window_s"]:
+                break
+            await ctx.sleep_sim(4.0)
+        dc["evaluation"]["layer_a"] = dod.verdict_a(dc)
+        return {"layer_a": dc["evaluation"]["layer_a"], "checks": {k: x["status"] for k, x in cs.items()}}
+
+    await s.tool(t, "final_reading", {"window_s": v["window_s"], "checks": [k["id"] for k in dc["checks"]]}, reading)
+    terminal = dod.terminal_of(dc, escalated=True, timed_out=timed_out, human_required=human_required)
+    text = dod.outcome_text(dc, terminal, reason)
+    dc.update(terminal_state=terminal, state="ESCALATED", escalation_reason=reason[:300], outcome_text=text, assessment=dod.assessment(dc))
+    checks = dod.eval_table(dc)
+    for c_ in checks:
+        c_["before"] = float((dc.get("before") or {}).get(c_["id"], 0.0) or 0.0) if isinstance((dc.get("before") or {}).get(c_["id"], 0.0), (int, float)) else 0.0
+        if not isinstance(c_.get("after"), (int, float)):
+            c_["after"] = 0.0
+    ev_ = dc["evaluation"]
+    v.update(checks=checks, status="rejected", progress=1.0, confidence=0.3, completed_tick=ctx.tick, failed_reason=text,
+             dod={"contract_id": dc["id"], "version": dc["version"], "frozen_hash": dc["frozen_hash"], "layer_a": ev_["layer_a"], "independently_reviewed": False,
+                  "terminal_state": terminal, "layer_b": {"verdict": None, "source": None, "model_id": None, "reasons": []}})
+    s.inc["verification"] = v
+    ctx.emit("verification.result", s.id, {"verification": v})
+    dc["history"] = [*dc["history"], {"attempt": attempt, "layer_a": ev_["layer_a"], "layer_b": None, "failed": [c_["id"] for c_ in checks if not c_["pass"]],
+                                      "plan_hash": "", "primary": None, "primary_delta": None, "version": dc["version"], "tick": ctx.tick, "final_reading": True}]
+    eid = s.ev("verification", f"Final reading: {text}", asset_id=det["target_id"])
+    s.finish(t, "blocked", text, (dod.STATE_TITLE.get(terminal, terminal), terminal in ("CONTAINED_NOT_REPAIRED", "PARTIAL")), [eid])
+    emit(ctx, dc)
+    return terminal

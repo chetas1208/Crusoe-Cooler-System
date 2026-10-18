@@ -1,6 +1,14 @@
 # Progress
 
-Last updated 2026-10-17.
+Last updated 2026-10-18.
+
+## Done (2026-10-18 — Cruso Cooler System: Safe Whole-Repository Rename)
+- **Safe Public Rebrand to Cruso Cooler System**:
+  - Established canonical single source of truth for branding in `packages/core/src/brand.ts` (`PRODUCT_BRAND`).
+  - Updated all user-facing surfaces across web console (`apps/web/index.html`, `TopBar.tsx`, design gallery), mobile companion (`app.json`, `BootOverlay.tsx`, `README.md`), documentation (`README.md`, `idea.md`), root package metadata, and FastAPI application title.
+  - Preserved all external infrastructure partner identifiers (`Crusoe`, `CRUSOE_API_KEY`, Crusoe Managed Inference) and underlying machine contracts (Postgres tables, `@loopkeeper/*` package names, `loopkeeper.*` Python modules, and API route signatures).
+  - Validated with complete test suite: 0 TypeScript errors across 5 workspaces, 90/90 core tests passing, 162/162 web tests passing, production build passing (1.43s), and backend suite passing.
+  - Documented audit trail in `docs/engineering/rename_audit_start.txt`, `docs/engineering/RENAME_HANDOFF.md`, and `docs/engineering/rename_audit_end.txt`.
 
 ## Done (2026-10-17 — LOOPKEEPER V11: Recursive Agent Teams, Model Gateway & Universal UI)
 - **Crusoe Managed Inference & Model Gateway Tiers**:

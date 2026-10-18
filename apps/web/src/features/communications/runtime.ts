@@ -57,6 +57,10 @@ async function fetchPage(base: string, runId: string, afterSeq: number, parent: 
   return { events, hasMore, lineage: lin ? [lin] : [] };
 }
 
+/** the Retry button: backfill again right now (set while ingestion runs; a no-op when nothing is mounted) */
+let retryNow: (() => void) | null = null;
+export const retryCommunications = () => retryNow?.();
+
 export function startCommunications(): () => void {
   const store = useCommunications;
   let alive = true;
@@ -136,6 +140,10 @@ export function startCommunications(): () => void {
     }
   };
 
+  retryNow = () => {
+    if (store.getState().backfill.state !== 'loading') void backfill();
+  };
+
   const offStream = onCommStreamEvent((e) => {
     if (PREVIEW_RE.test(e.type)) {
       store.getState().notePreview(); // V9 ghost drive: shown as a banner, never as a feed row
@@ -182,6 +190,7 @@ export function startCommunications(): () => void {
 
   return () => {
     alive = false;
+    retryNow = null;
     clearInterval(iv);
     if (flushTimer) clearTimeout(flushTimer);
     offStream();

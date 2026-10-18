@@ -18,6 +18,7 @@ class Tracking:
         self.tasks: dict[str, Json] = {}
         self.verifications: dict[str, Json] = {}
         self.decided: dict[str, str] = {}   # approval_id -> approved|held|expired
+        self.decided_by: dict[str, str] = {}  # approval_id -> 'operator:<principal>' (a person) | 'auto:veto_window' (system)
         self.contracts: dict[str, Json] = {}    # incident_id -> latest DoneContract document (V11)
         self.dirty_contracts: set = set()
         self.dirty_incidents: set = set()
@@ -33,6 +34,8 @@ class Tracking:
                 ap["status"] = self.decided[ap["id"]]
                 if ap["status"] == "held":
                     ap["auto_approve_at_s"] = None
+            if ap and ap.get("id") in self.decided_by and ap.get("status") in ("approved", "held"):
+                ap["decided_by"] = self.decided_by[ap["id"]]          # sticky: an agent copy of the request can never rewrite who decided it
             self.incidents[inc["id"]] = inc
             self.dirty_incidents.add(inc["id"])
         elif kind == "agent.task":
@@ -68,7 +71,7 @@ class Tracking:
                 return inc, ap
         return None
 
-    def decide(self, approval_id: str, approve: bool) -> tuple[Json | None, str | None]:
+    def decide(self, approval_id: str, approve: bool, by: str = "auto:unspecified") -> tuple[Json | None, str | None]:
         """-> (updated incident, error)."""
         found = self.find_approval(approval_id)
         if not found:
@@ -80,6 +83,8 @@ class Tracking:
         if not approve:
             ap["auto_approve_at_s"] = None
         self.decided[approval_id] = ap["status"]
+        self.decided_by[approval_id] = by
+        ap["decided_by"] = by
         self.dirty_incidents.add(inc["id"])
         return inc, None
 
@@ -122,11 +127,12 @@ class Tracking:
     # ---- state ---------------------------------------------------------
     def to_state(self) -> Json:
         return {"incidents": self.incidents, "tasks": self.tasks, "verifications": self.verifications,
-                "decided": self.decided, "contracts": self.contracts}
+                "decided": self.decided, "contracts": self.contracts, "decided_by": self.decided_by}
 
     def load_state(self, st: Json) -> None:
         self.incidents = clone(st["incidents"])
         self.tasks = clone(st["tasks"])
         self.verifications = clone(st["verifications"])
         self.decided = dict(st["decided"])
+        self.decided_by = dict(st.get("decided_by") or {})
         self.contracts = clone(st.get("contracts") or {})

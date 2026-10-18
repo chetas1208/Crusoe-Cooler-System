@@ -22,7 +22,7 @@ class Stack:
     @classmethod
     async def create(cls, seed: int = 3, *, model_client: Any = None, checkpointer: Any = None, limits: Limits | None = None,
                      mode: str = "autonomous", window_s: float = 6.0, warmup_s: float = 70.0, store: Any = None, random_faults: bool = False,
-                     overrides: Json | None = None, storage: Any = None, run_id: str | None = None) -> "Stack":
+                     overrides: Json | None = None, storage: Any = None, run_id: str | None = None, operator: bool = True) -> "Stack":
         ov: Json = {"physics": {"faults": {"enabled": random_faults}, "workload": {"wave_amplitude": 0.0 if not random_faults else 0.08}}}
         if overrides:
             ov["physics"]["faults"].update(overrides)
@@ -30,11 +30,14 @@ class Stack:
         plant = FacilityPlant(seed=seed, config=cfg)
         eng = create_engine(plant=plant, run_id=run_id or f"run_t{seed}", seed=seed, storage=storage or MemoryStorage())
         eng.cfg.safe_automation_mode, eng.cfg.approval_window_s = mode, window_s
-        lim = limits or Limits(approval_mode=mode, approval_window_s=window_s)
+        # L3 (zone isolation / section replacement) is never auto-approved: the harness plays the HUMAN operator (a real `approve_action` command from an
+        # operator principal) for those requests, so the repair flows still run end to end; pass `operator=False` to leave them waiting for a person.
+        lim = limits or Limits(approval_mode=mode, approval_window_s=window_s, l3_requires_human=False)
         rt = AgentRuntimeImpl(intelligence=IntelligenceConfig(api_key=""), model_client=model_client, checkpointer=checkpointer,
                               database_url="", limits=lim, decision_store=store)
         await rt.start(eng.as_actor("agent", "agent"))
         st = cls(eng, rt)
+        st.operator = operator
         await st.advance(warmup_s)       # lets the monitor calibrate its healthy reference
         return st
 
@@ -45,6 +48,17 @@ class Stack:
             await self.eng.step_ticks(per)
             await self.rt.on_tick(self.eng.world(), [])
             await self.rt.settle()
+            await self._operator_approves()
+
+    async def _operator_approves(self) -> None:
+        if not getattr(self, "operator", False) or self.rt.limits.l3_requires_human:
+            return
+        for inc in list(self.eng.track.incidents.values()):
+            ap = inc.get("approval") or {}
+            if ap.get("status") == "pending" and str(ap.get("action", "")).startswith("Isolate zone"):
+                self.n_cmd += 1
+                await self.eng.submit({"command_id": f"op-{self.n_cmd}", "kind": "approve_action", "target_id": ap["id"], "actor_type": "operator"},
+                                      principal="harness-operator", actor_type="operator")
 
     async def inject(self, kind: str, target: str | None = None, severity: float | None = None) -> Json:
         self.n_cmd += 1

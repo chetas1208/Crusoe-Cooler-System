@@ -15,12 +15,17 @@ export const C = {
   ghostRack: '#363d49',
   white: '#e9ecf1',
   safety: '#e8b93b',
+  /** painted floor markings: neutral off-white, so the only amber in the hall is TCS return and the only red is a fault */
+  paint: '#b9bfc9',
+  /** air side (not coolant): cold supply air / hot exhaust air tints, deliberately desaturated vs the pipe colours */
+  airCold: '#7fa6c4',
+  airHot: '#b9856a',
 
   // fluids — separate visual channels per loop & direction (ASHRAE/OCP)
   tcsSupply: '#00d8f6', // Electric Coolant Cyan (secondary supply to cold plates)
   tcsReturn: '#f59e0b', // Warm Amber (secondary return from server heat)
-  fwsSupply: '#2563eb', // Facility Water Blue (primary loop from cooling plant)
-  fwsReturn: '#475569', // Darker Slate / Blue-Gray (primary return to plant)
+  fwsSupply: '#2f55b0', // Facility Water navy (primary loop from cooling plant)
+  fwsReturn: '#566377', // Slate (primary return to plant)
 
   // semantic state
   nominal: '#41d6a3',

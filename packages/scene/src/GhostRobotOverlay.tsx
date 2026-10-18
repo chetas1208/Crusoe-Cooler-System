@@ -2,6 +2,7 @@ import React, { useMemo, useRef } from 'react';
 import * as THREE from 'three';
 import { useFrame } from '@react-three/fiber';
 import { usePreviewDrive } from '@loopkeeper/core/store';
+import { makeLabelSprite } from './Trail';
 
 /**
  * Renders a visually distinct holographic ghost proxy robot during non-destructive Preview Drive.
@@ -59,6 +60,12 @@ export function GhostRobotOverlay() {
     []
   );
 
+  // always-visible tag: this body is a local what-if, the authoritative robot is the one the server reports
+  const tag = useMemo(() => {
+    const s = makeLabelSprite('PREVIEW ONLY · NOT SENT', '#22d3ee');
+    s.position.set(0, 1.25, 0);
+    return s;
+  }, []);
   const chassisGeo = useMemo(() => new THREE.BoxGeometry(0.72, 0.38, 0.95), []);
   const mastGeo = useMemo(() => new THREE.CylinderGeometry(0.06, 0.06, 0.7, 16), []);
   const crawlerGeo = useMemo(() => new THREE.CylinderGeometry(0.08, 0.08, 0.45, 16), []);
@@ -115,6 +122,7 @@ export function GhostRobotOverlay() {
 
       {/* Ghost Robot Body */}
       <group ref={groupRef}>
+        <primitive object={tag} />
         {robotClass === 'outrig' ? (
           <>
             <mesh geometry={chassisGeo} material={ghostMat} />

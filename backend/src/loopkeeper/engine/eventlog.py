@@ -3,6 +3,7 @@ events_since(), and bounded subscriber queues. Events become visible to subscrib
 from __future__ import annotations
 
 import asyncio
+import threading
 from collections import deque
 from datetime import datetime, timezone
 
@@ -99,27 +100,32 @@ class EventBus:
     def __init__(self, ring_size: int = 20000):
         self.ring: deque[Json] = deque(maxlen=ring_size)  # published (committed) wire envelopes
         self._subs: set[Subscription] = set()
+        self._ring_lock = threading.RLock()                # the engine loop appends while API worker threads read: never iterate a live deque
         self.base_seq = 0  # last seq committed before this process started publishing
 
     @property
     def last_published_seq(self) -> int:
-        return self.ring[-1]["seq"] if self.ring else 0
+        with self._ring_lock:
+            return self.ring[-1]["seq"] if self.ring else 0
 
     def publish(self, envs: list[Json]) -> None:
         for e in envs:
-            self.ring.append(e)
+            with self._ring_lock:
+                self.ring.append(e)
             for s in list(self._subs):
                 s._push(e)
 
     def since(self, seq: int, limit: int = 1000) -> list[Json] | None:
         """Envelopes with seq > `seq`, or None if the ring no longer covers that point (caller falls back to storage)."""
-        if self.ring:
-            if self.ring[0]["seq"] > seq + 1:
+        with self._ring_lock:
+            ring = tuple(self.ring)                       # snapshot under the lock; scanned outside it
+        if ring:
+            if ring[0]["seq"] > seq + 1:
                 return None
         elif seq < self.base_seq:
             return None
         out = []
-        for e in self.ring:
+        for e in ring:
             if e["seq"] > seq:
                 out.append(e)
                 if len(out) >= limit:
@@ -129,7 +135,9 @@ class EventBus:
     def subscribe(self, since_seq: int | None = None) -> Subscription:
         sub = Subscription(self)
         if since_seq is not None:
-            for e in self.ring:
+            with self._ring_lock:
+                ring = tuple(self.ring)
+            for e in ring:
                 if e["seq"] > since_seq:
                     sub._push(e)
         self._subs.add(sub)

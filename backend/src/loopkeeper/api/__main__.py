@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import logging
+import os
 import sys
 
 import uvicorn
@@ -11,8 +12,43 @@ from .config import Settings
 from .wiring import WiringError, build_real_stack
 
 
+# Third-party loggers that flooded .state/api.out (pandapipes logs "numba is not installed..." + "Setting the following nodes out of service..."
+# on EVERY pipeflow = thousands of lines per hour). Their warnings and errors still come through.
+QUIET_LOGGERS = ("pandapipes", "pandapower", "numba", "matplotlib", "urllib3", "httpx", "httpcore", "asyncio", "PIL", "fsspec")
+LOG_FORMAT = "%(asctime)s %(levelname)s %(name)s: %(message)s"
+
+
+class AccessErrorsOnly(logging.Filter):
+    """uvicorn access log: keep one line per HTTP request that FAILED (status >= 400); successful requests are not logged (a polling UI makes
+    several per second). ``record.args`` = (client, method, path, http_version, status)."""
+
+    def filter(self, record: logging.LogRecord) -> bool:
+        try:
+            return int(record.args[4]) >= 400                        # type: ignore[index]
+        except Exception:                                            # noqa: BLE001
+            return True
+
+
+def configure_logging() -> dict:
+    """Root logging + noisy-library levels; returns the uvicorn ``log_config`` (timestamps, access log limited to errors)."""
+    level = getattr(logging, (os.environ.get("LOG_LEVEL") or "INFO").upper(), logging.INFO)
+    logging.basicConfig(level=level, format=LOG_FORMAT)
+    for name in QUIET_LOGGERS:
+        logging.getLogger(name).setLevel(max(level, logging.WARNING))
+    import copy
+    from uvicorn.config import LOGGING_CONFIG
+    cfg = copy.deepcopy(LOGGING_CONFIG)
+    cfg["formatters"]["default"]["fmt"] = LOG_FORMAT
+    cfg["formatters"]["default"]["use_colors"] = False
+    cfg["formatters"]["access"]["fmt"] = '%(asctime)s ACCESS %(client_addr)s - "%(request_line)s" %(status_code)s'
+    cfg["formatters"]["access"]["use_colors"] = False
+    cfg["filters"] = {"errors_only": {"()": AccessErrorsOnly}}
+    cfg["handlers"]["access"]["filters"] = ["errors_only"]
+    return cfg
+
+
 def main() -> int:
-    logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(name)s: %(message)s")
+    log_config = configure_logging()
     settings = Settings.from_env()
     # Fail BEFORE touching storage if the port is taken: a second supervisor loop used to start a full engine (recover from Neon, write a
     # "shutdown" snapshot on exit) every ~45 s only to die on "address already in use" - 192 snapshots / ~100 MB of the 1 GB project in a few hours.
@@ -39,6 +75,7 @@ def main() -> int:
         host=settings.host,
         port=settings.port,
         log_level="info",
+        log_config=log_config,
         # behind the Cloudflare tunnel (cloudflared connects from loopback): trust its forwarded headers only
         proxy_headers=True,
         forwarded_allow_ips="127.0.0.1",

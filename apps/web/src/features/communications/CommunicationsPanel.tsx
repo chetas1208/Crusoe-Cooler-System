@@ -1,12 +1,15 @@
-import { usePhoneLayout } from '../responsive/phone';
-import { useEffect, useMemo, useRef, useState } from 'react';
-import { X } from 'lucide-react';
+import { useEffect, useLayoutEffect, useMemo, useRef, useState, type ReactNode } from 'react';
+import { Layers, Rows2, Rows4, SearchX, WifiOff, X, MessageSquareDashed, RotateCw } from 'lucide-react';
+import { Button, EmptyState, ErrorState, IconButton, Skeleton } from '../../ui/kit/index';
 import { useCommunications } from './communicationStore';
-import { Feed } from './Feed';
+import { Feed, type FeedHandle } from './Feed';
 import { Filters } from './Filters';
 import { Detail } from './Detail';
-import { restoreFocus } from './Launcher';
+import { CopyButton } from './badges';
+import { closePanel } from '../responsive/panels';
 import { useCommunicationsIngest, useVisibleCommunications } from './useRunCommunications';
+import { retryCommunications } from './runtime';
+import { CLEAR_ALL, filterCount } from './chips';
 import { fmtSim } from './format';
 import './communications.css';
 
@@ -50,11 +53,34 @@ function PreviewBanner() {
   return <div className="cm-banner" role="status">Preview only; backend robot unchanged</div>;
 }
 
+function Retry({ busy }: { busy: boolean }) {
+  return (
+    <Button size="sm" variant="primary" icon={<RotateCw size={13} />} loading={busy} disabledReason={busy ? 'Already asking the backend for messages' : undefined} onClick={() => retryCommunications()}>
+      Retry
+    </Button>
+  );
+}
+
+function Rows() {
+  return (
+    <div className="cm-skel" aria-hidden>
+      {[0, 1, 2, 3, 4].map((i) => (
+        <div key={i} className="cm-skel__row">
+          <Skeleton w={36} h={12} />
+          <Skeleton w={64} h={12} />
+          <Skeleton w={64} h={12} />
+          <Skeleton w={`${90 - i * 10}%`} h={10} />
+        </div>
+      ))}
+    </div>
+  );
+}
+
 /**
  * The Communications panel. Layout-agnostic: it fills whatever hosts it (the Execution dock on desktop, C's bottom sheet on
  * phones via variant="sheet"). Closing it only hides it: ingestion, filters, scroll position and run context live in the store.
  */
-export function CommunicationsPanel({ variant = 'dock', onClose }: { variant?: 'dock' | 'sheet'; onClose?: () => void }) {
+export function CommunicationsPanel({ variant = 'host', onClose }: { variant?: 'dock' | 'sheet' | 'host'; onClose?: () => void }) {
   useCommunicationsIngest();
   const visible = useVisibleCommunications();
   const total = useCommunications((s) => s.events.length);
@@ -66,85 +92,166 @@ export function CommunicationsPanel({ variant = 'dock', onClose }: { variant?: '
   const selectedId = useCommunications((s) => s.selectedId);
   const select = useCommunications((s) => s.select);
   const backfill = useCommunications((s) => s.backfill);
-  const setOpen = useCommunications((s) => s.setOpen);
-  const filtered = useCommunications((s) => s.filter !== 'all' || s.query.trim() !== '');
-  const closeBtn = useRef<HTMLButtonElement>(null);
+  const density = useCommunications((s) => s.density);
+  const grouped = useCommunications((s) => s.grouped);
+  const setDensity = useCommunications((s) => s.setDensity);
+  const setGrouped = useCommunications((s) => s.setGrouped);
+  const nFilters = useCommunications((s) => filterCount(s));
   const root = useRef<HTMLElement>(null);
+  const feed = useRef<FeedHandle>(null);
+  const feedWrap = useRef<HTMLDivElement>(null);
+  const head = useRef<HTMLElement>(null);
+  // the detail drawer starts right under the header so it covers the filter bar too (one thing at a time)
+  useLayoutEffect(() => {
+    const h = head.current;
+    if (h) root.current?.style.setProperty('--cm-head-h', `${h.offsetHeight}px`);
+  });
   const focusRequest = useCommunications((s) => s.focusRequest);
-  // opened on purpose -> the panel takes focus (ESC then works); leaving the detail view hands focus back to the panel instead of <body>
+  // opened on purpose -> the panel takes focus (ESC then works from the keyboard)
   useEffect(() => {
     if (focusRequest) root.current?.focus();
   }, [focusRequest]);
-  useEffect(() => {
-    if (!selectedId) return;
-    return () => {
-      if (!root.current?.contains(document.activeElement) || document.activeElement === document.body) root.current?.focus();
-    };
-  }, [selectedId]);
   const selected = useMemo(() => (selectedId ? visible.find((e) => e.event_id === selectedId) ?? useCommunications.getState().events.find((e) => e.event_id === selectedId) : undefined), [selectedId, visible]);
+  const selIndex = selected ? visible.findIndex((e) => e.event_id === selected.event_id) : -1;
+
+  // the list behind the drawer must not take focus or be read by a screen reader while the drawer is open
+  useEffect(() => {
+    const el = feedWrap.current;
+    if (el) el.inert = Boolean(selected);
+  }, [selected]);
+  // closing the drawer hands focus back to the message it was opened from
+  const lastKey = useRef<string | null>(null);
+  useEffect(() => {
+    if (selected) {
+      lastKey.current = `${selected.run_id}:${selected.seq}`;
+      return;
+    }
+    if (lastKey.current) {
+      const k = lastKey.current;
+      lastKey.current = null;
+      const id = requestAnimationFrame(() => {
+        if (!root.current?.contains(document.activeElement) || document.activeElement === document.body || document.activeElement === root.current) feed.current?.focusRow(k);
+      });
+      return () => cancelAnimationFrame(id);
+    }
+  }, [selected]);
 
   const close = () => {
     if (onClose) onClose();
-    else setOpen(false);
-    restoreFocus();
+    else closePanel('comms'); // also returns keyboard focus to whatever opened the panel
   };
   const onKey = (e: React.KeyboardEvent) => {
-    if (e.key !== 'Escape') return;
-    e.stopPropagation();
-    e.nativeEvent.stopImmediatePropagation?.();
-    if (selected) select(null);
-    else close();
+    const t = e.target as HTMLElement;
+    const typing = t instanceof HTMLInputElement || t instanceof HTMLSelectElement || t instanceof HTMLTextAreaElement;
+    if (e.key === 'Escape') {
+      e.stopPropagation();
+      e.nativeEvent.stopImmediatePropagation?.();
+      // Escape peels one layer at a time: filter popover (Filters) -> detail -> search text -> the panel
+      const st = useCommunications.getState();
+      if (selected) select(null);
+      else if (st.query.trim() !== '' || (t instanceof HTMLInputElement && t.value !== '')) st.setQuery('');
+      else close();
+      return;
+    }
+    if (e.defaultPrevented || typing || e.altKey || e.ctrlKey || e.metaKey) return;
+    if (e.key === '/' && !selected) {
+      e.preventDefault();
+      window.dispatchEvent(new Event('lk-comms-focus-search'));
+    } else if (t === root.current && !selected) {
+      if (e.key === 'j' || e.key === 'ArrowDown') (e.preventDefault(), feed.current?.move(1));
+      else if (e.key === 'k' || e.key === 'ArrowUp') (e.preventDefault(), feed.current?.move(-1));
+    }
   };
 
-  const empty =
-    total === 0
-      ? conn === 'OFFLINE' || conn === 'CONNECTING' || backfill.state === 'loading'
-        ? 'Waiting for backend…'
-        : conn === 'ERROR'
-          ? `Could not load messages${backfill.error ? `: ${backfill.error}` : ''}.`
-          : 'No messages yet. Agents idle.'
-      : filtered
-        ? 'No messages match these filters.'
-        : mode === 'replay'
-          ? 'Nothing was said yet at this point of the replay.'
-          : 'No messages yet. Agents idle.';
+  const busy = backfill.state === 'loading';
+  let empty: ReactNode;
+  if (total === 0 && (conn === 'CONNECTING' || busy)) {
+    empty = (
+      <>
+        <Rows />
+        <EmptyState compact icon={<MessageSquareDashed size={18} />} title="Waiting for backend…">Messages appear here as soon as the run reports them.</EmptyState>
+      </>
+    );
+  } else if (total === 0 && conn === 'OFFLINE') {
+    empty = (
+      <EmptyState icon={<WifiOff size={20} />} title="Backend is unreachable" action={<Retry busy={busy} />}>
+        Check that the API is running. Messages load again on their own once it answers.
+      </EmptyState>
+    );
+  } else if (total === 0 && conn === 'ERROR') {
+    empty = <ErrorState title="Could not load messages" detail={backfill.error ?? undefined} onRetry={() => retryCommunications()} retryLabel="Retry">The backend answered with an error. Retry, or check the API logs if it keeps failing.</ErrorState>;
+  } else if (total > 0 && visible.length === 0 && nFilters > 0) {
+    empty = (
+      <EmptyState
+        icon={<SearchX size={20} />}
+        title="No messages match"
+        action={
+          <Button size="sm" variant="primary" onClick={() => { const s = useCommunications.getState(); s.setFilter(CLEAR_ALL.filter); s.setQuery(CLEAR_ALL.query); s.setAdv(CLEAR_ALL.adv); }}>
+            Clear filters
+          </Button>
+        }
+      >
+        {total} messages are hidden by the current filters and search.
+      </EmptyState>
+    );
+  } else if (mode === 'replay') {
+    empty = <EmptyState icon={<MessageSquareDashed size={20} />} title="Nothing said yet">No agent had spoken by this point of the replay. Move the playhead forward.</EmptyState>;
+  } else {
+    empty = <EmptyState icon={<MessageSquareDashed size={20} />} title="No messages yet">Agents are idle. Their messages show up here as they happen.</EmptyState>;
+  }
 
+  const stateKey = mode === 'replay' ? 'REPLAY' : conn;
   return (
     <aside ref={root} tabIndex={-1} id="lk-comms-panel" className="cm-panel" data-variant={variant} aria-label="Communications" onKeyDown={onKey}>
-      <header className="cm-head">
+      <header ref={head} className="cm-head">
         <h2>Communications</h2>
-        <span className="cm-state" data-conn={mode === 'replay' ? 'REPLAY' : conn} data-mode={mode}>
+        <span className="cm-state" data-conn={stateKey} data-mode={mode}>
           <i aria-hidden /> {mode === 'replay' ? 'Replay' : CONN_TEXT[conn]}
         </span>
-        {mode === 'replay' && cursor !== null && <span className="cm-cursor mono" title="Only messages up to the playhead are shown">≤ {fmtSim(cursor * 500)}</span>}
-        {unread > 0 && <span className="cm-badge" aria-label={`${unread} unread`}>{unread > 99 ? '99+' : unread}</span>}
-        <span className="cm-grow" />
-        <button ref={closeBtn} type="button" className="cm-x" onClick={close} aria-label="Close communications">
-          <X size={15} aria-hidden />
-        </button>
+        {mode === 'replay' && cursor !== null && <span className="cm-cursor mono" title="Only messages up to the playhead are shown">up to {fmtSim(cursor * 500)}</span>}
+        {runId ? (
+          <span className="cm-run" title="Run context is kept while this panel is closed">
+            <span className="mono cm-run__id">{runId}</span>
+            <CopyButton value={runId} label="run id" />
+          </span>
+        ) : (
+          <span className="cm-grow" />
+        )}
+        {unread > 0 && <span className="cm-new" aria-label={`${unread} new messages`} title={`${unread} messages arrived while you were away from the live edge`}>{unread > 99 ? '99+' : unread} new</span>}
+        <IconButton size="sm" className="cm-hbtn" pressed={grouped} onClick={() => setGrouped(!grouped)} aria-label="Group by thread" tip={grouped ? 'Threads are grouped under collapsible headers. Click for a flat list.' : 'Group messages by thread under collapsible headers'} icon={<Layers size={15} />} />
+        <IconButton size="sm" className="cm-hbtn" pressed={density === 'compact'} onClick={() => setDensity(density === 'compact' ? 'comfortable' : 'compact')} aria-label="Compact rows" tip={density === 'compact' ? 'Compact rows. Click for full rows with tool and model chips.' : 'Switch to compact rows to see more messages'} icon={density === 'compact' ? <Rows4 size={15} /> : <Rows2 size={15} />} />
+        <IconButton size="sm" className="cm-x" aria-label="Close communications" tip="Close (Esc)" onClick={close} icon={<X size={15} />} />
       </header>
-      {runId && <div className="cm-run mono" title="Run context is kept while this panel is closed">{runId}</div>}
       <PreviewBanner />
       {conn === 'STALE' && <div className="cm-note" role="status">No data for a while. Showing the last messages received.</div>}
       {conn === 'RECONNECTING' && <div className="cm-note" role="status">Reconnecting. Missed messages are filled in on reconnect.</div>}
-      <Filters shown={visible.length} total={total} />
-      {selected ? <Detail e={selected} onBack={() => select(null)} /> : null}
-      <div hidden={!!selected} className="cm-body">
-        <Feed visible={visible} emptyText={empty} onOpen={select} />
+      {total > 0 && (conn === 'OFFLINE' || conn === 'ERROR') && (
+        <div className="cm-note" data-bad role="status">
+          <span>{conn === 'OFFLINE' ? 'Backend is unreachable. Showing the last messages received.' : `Could not refresh messages${backfill.error ? `: ${backfill.error}` : ''}.`}</span>
+          <Retry busy={busy} />
+        </div>
+      )}
+      <div ref={feedWrap} className="cm-main">
+        <Filters shown={visible.length} total={total} />
+        <div className="cm-body">
+          <div className="cm-body__feed">
+            <Feed visible={visible} empty={empty} onOpen={select} handle={feed} />
+          </div>
+        </div>
       </div>
+      {selected && (
+        <Detail
+          e={selected}
+          position={{ index: selIndex, total: visible.length }}
+          onBack={() => select(null)}
+          onSelect={select}
+          onStep={(d) => {
+            const n = visible[selIndex + d];
+            if (n) select(n.event_id);
+          }}
+        />
+      )}
       <Announcer visible={visible.length} />
     </aside>
-  );
-}
-
-/** Execution-tab host: docks the panel on the right when open. */
-export function CommunicationsDock() {
-  const open = useCommunications((s) => s.open);
-  const phone = usePhoneLayout();      // phones host the panel in the shell's BottomSheet (features/responsive); never two panels at once
-  if (!open || phone) return null;
-  return (
-    <div className="cm-dock" role="region" aria-label="Communications dock">
-      <CommunicationsPanel variant="dock" />
-    </div>
   );
 }

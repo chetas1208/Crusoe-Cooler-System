@@ -44,7 +44,9 @@ async def _signature(model_client=None) -> dict:
 
 @pytest.fixture(scope="module")
 def flow() -> dict:
-    return asyncio.run(_signature())
+    # a model client answers SEN-05, so Layer B is an independent (model) concurrence; without one the contract ends PARTIAL / needs review (V12 review #1,
+    # see tests/test_v12_terminal_states.py::test_fallback_concur_is_never_verified_but_a_model_concur_is)
+    return asyncio.run(_signature(FakeModelClient()))
 
 
 def test_signature_flow_reject_replan_restore_sustained_pass(flow):

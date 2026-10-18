@@ -1,0 +1,53 @@
+/* Panel host (Communications / Done / Team / Scorecard): one chrome, three presentations (dock, drawer, sheet).
+   Dock  : fixed right column, the app narrows beside it (nothing is covered).   Drawer: slim right drawer in short landscape.
+   Sheet : bottom sheet in portrait (see BottomSheet + mobile.css, which also restyles it as a drawer in landscape phones). */
+:root { --dock-w: clamp(320px, 28vw, 400px); }
+html[data-dock='open'] .app { right: var(--dock-w); }
+
+.phost { display: flex; flex-direction: column; min-height: 0; background: var(--panel-solid, #11141a); color: var(--t1); outline: none; }
+.phost--dock { position: fixed; z-index: 45; top: 0; right: 0; bottom: 0; width: var(--dock-w); border-left: 1px solid var(--line-2); box-shadow: -14px 0 32px -18px rgba(0, 0, 0, 0.7); animation: phost-in 0.18s var(--ease); }
+.phost--drawer { position: fixed; z-index: 75; top: 0; right: 0; bottom: 0; width: clamp(300px, 40vw, 440px); padding: env(safe-area-inset-top, 0px) env(safe-area-inset-right, 0px) env(safe-area-inset-bottom, 0px) 0; border: 1px solid var(--line-2); border-right: 0; border-radius: 16px 0 0 16px; box-shadow: -16px 0 40px -12px rgba(0, 0, 0, 0.7); animation: phost-in 0.2s var(--ease); }
+@keyframes phost-in { from { transform: translateX(28px); opacity: 0; } }
+
+.phost__head { display: flex; align-items: center; gap: 4px; padding: 8px 8px 8px 10px; border-bottom: 1px solid var(--line); flex: none; }
+.phost__tabs { display: flex; gap: 2px; flex: 1; min-width: 0; overflow-x: auto; scrollbar-width: none; }
+.phost__tabs::-webkit-scrollbar { display: none; }
+.phost__tab { display: inline-flex; align-items: center; justify-content: center; gap: 6px; height: 32px; min-width: 44px; padding: 0 12px; flex: 1 1 auto; border-radius: 9px; color: var(--t2); font-size: 12.5px; font-weight: 580; white-space: nowrap; transition: background-color 0.15s ease, color 0.15s ease; }
+.phost__tab:hover { color: var(--t1); background: var(--panel-2); }
+.phost__tab[aria-selected='true'] { color: var(--accent); background: var(--accent-soft); }
+.phost__dot { width: 7px; height: 7px; border-radius: 50%; background: #8b93a7; flex: none; }
+.phost__dot[data-conn='LIVE'] { background: var(--nominal); }
+.phost__dot[data-conn='REPLAY'] { background: var(--watch); }
+.phost__dot[data-conn='RECONNECTING'], .phost__dot[data-conn='STALE'], .phost__dot[data-conn='CONNECTING'] { background: var(--warning); }
+.phost__dot[data-conn='OFFLINE'], .phost__dot[data-conn='ERROR'] { background: var(--critical); }
+.phost__close { width: 32px; height: 32px; margin: 0; display: grid; place-items: center; flex: none; border-radius: 9px; color: var(--t2); background: transparent; border: 0; }
+.phost__close:hover { background: var(--panel-3); color: var(--t1); }
+.phost__body { flex: 1; min-height: 0; display: flex; flex-direction: column; overflow: hidden; }
+.phost__body > .cm-panel { flex: 1; }
+.phost__body > :is(.dd-panel, .sc-panel) { flex: 1; min-height: 0; overflow-y: auto; overscroll-behavior: contain; border: 0; border-radius: 0; background: transparent; padding: 10px 12px 16px; }
+/* the host's tabs and close button replace the panels' own title and close button */
+.phost :is(.dd-x, .cm-head h2, .dd-panel > header h2) { display: none; }
+.phost .cm-panel .cm-x { display: none; }
+.phost .dd-panel > header { margin-bottom: 8px; }
+.phost .dd-panel > header:not(:has(> *:not(h2):not(.dd-x):not(.dd-grow))) { display: none; }
+.phost .cm-head { padding-top: 8px; }
+
+/* touch: 44 px targets in every host and orientation */
+html[data-compact='1'] .phost__tab, html[data-compact='1'] .phost__close, html[data-compact='1'] .phost__tabs { min-height: 44px; }
+html[data-compact='1'] .phost__close { width: 44px; height: 44px; }
+html[data-compact='1'] .phost__tab { height: 44px; }
+@media (pointer: coarse) { .phost__tab, .phost__close { min-height: 44px; height: 44px; } .phost__close { width: 44px; } }
+
+@media (prefers-reduced-motion: reduce) { .phost--dock, .phost--drawer { animation: none; } }
+
+/* beside the dock the app is narrower: the status banner moves under the health strip instead of centring across the right-hand panels */
+html[data-dock='open'] .banner { left: 12px; transform: none; max-width: calc(100% - 336px); white-space: normal; }
+
+/* Execution on the regular chrome: the state rail sits between the side panels (never across them) and the Scenario Library overlay stays clear of the rail, the inspector and the timeline.
+   (compact chrome stacks everything in normal flow, see mobile.css) */
+html[data-compact='0'] .ex-state { left: 328px; right: 372px; transform: none; width: auto; min-width: 0; overflow: hidden; justify-content: flex-start; }
+html[data-compact='0'] .ex-state > .ex-state__m:not(:nth-last-child(2)) { display: none; }   /* topology id: shown in Details and the Runs list */
+html[data-compact='0'] .ex-state > :is(.ex-state__v) { min-width: 0; overflow: hidden; text-overflow: ellipsis; }
+html[data-compact='0'] .ex-state > div { min-width: 0; margin-left: auto !important; overflow-x: auto; scrollbar-width: none; }
+html[data-compact='0'] .ex-library { width: calc(100% - 40px - 360px) !important; max-height: calc(100dvh - 118px - var(--tl-h) - 24px) !important; }
+html[data-compact='0'] .ex[data-timeline='closed'] .ex-library { max-height: calc(100dvh - 118px - 24px) !important; }

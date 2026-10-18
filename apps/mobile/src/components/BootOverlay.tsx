@@ -2,9 +2,11 @@ import { useEffect } from 'react';
 import { ActivityIndicator, StyleSheet, View } from 'react-native';
 import Animated, { Easing, FadeOut, useAnimatedStyle, useReducedMotion, useSharedValue, withRepeat, withTiming } from 'react-native-reanimated';
 import { useWorld } from '@loopkeeper/core/store';
+import { PRODUCT_BRAND } from '@loopkeeper/core';
 import { colors } from '@/theme';
 import { resolveApiUrl } from '@/lib/api';
 import { LogoMark, T } from '@/components/ui';
+import { AuthGate } from '@/components/AuthGate';
 
 function SpinningMark() {
   const reduce = useReducedMotion();
@@ -30,8 +32,8 @@ export function BootOverlay() {
     <Animated.View exiting={FadeOut.duration(450)} style={[StyleSheet.absoluteFill, { backgroundColor: colors.bg, alignItems: 'center', justifyContent: 'center', gap: 22, zIndex: 50 }]}>
       <SpinningMark />
       <View style={{ alignItems: 'center', gap: 6 }}>
-        <T v="title" style={{ letterSpacing: 4.2, fontSize: 17, fontFamily: 'Geist_600SemiBold' }}>
-          LOOPKEEPER
+        <T v="title" style={{ letterSpacing: 2.5, fontSize: 16, fontFamily: 'Geist_600SemiBold' }}>
+          {PRODUCT_BRAND.name}
         </T>
         <T v="callout" color={colors.t3}>
           Autonomous maintenance twin
@@ -47,7 +49,7 @@ export function BootOverlay() {
               {resolveApiUrl()}
             </T>
             <T v="micro" color={colors.t4} style={{ textAlign: 'center' }}>
-              Retrying automatically{error ? ` · ${error}` : ''}. Start the simulator with pnpm dev:api.
+              Retrying automatically{error ? ` · ${error}` : ''}. Set EXPO_PUBLIC_API_URL to the backend.
             </T>
           </>
         ) : (
@@ -58,6 +60,9 @@ export function BootOverlay() {
             </T>
           </>
         )}
+      </View>
+      <View style={{ position: 'absolute', left: 20, right: 20, bottom: 60 }}>
+        <AuthGate />
       </View>
     </Animated.View>
   );

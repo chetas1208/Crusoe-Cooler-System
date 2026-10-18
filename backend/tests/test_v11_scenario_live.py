@@ -154,19 +154,19 @@ async def test_invalid_selector_p17_is_rejected_with_reason_and_nothing_injected
 
 
 @pytest.mark.asyncio
-async def test_unsupported_families_listed_honestly_and_supported_ones_still_run(no_wait):
+async def test_hazard_families_map_to_real_kinds_and_bad_selectors_are_listed_honestly(no_wait):
     st = await _stack("run_t_scn_unsup", warmup_s=2.0)
     try:
-        rig = Rig(st, ScenarioModel([{"family": "leak", "severity": "severe", "asset_query": "manifold"},
-                                     {"family": "fire_smoke", "severity": "emergency", "asset_query": "rack_c4"}]))
-        rec = await rig.final(await rig.submit("coolant leak and smoke at the racks"))
-        assert rec["status"] == "REJECTED" and rec["error_code"] == "UNSUPPORTED_FAULT"
-        assert {u["family"] for u in rec["live"]["unsupported"]} == {"leak", "fire_smoke"} and "not_supported_yet" in rec["error_message"]
-        assert rig.injected() == 0
-        # mixed request: leak is listed as unsupported, the supported pump fault is injected on the TCS duty pump (declared default)
-        rig2 = Rig(st, ScenarioModel([{"family": "leak", "severity": "severe"}, {"family": "pump_failure", "severity": "moderate"}]))
+        # V12: leak / fire_smoke are real hazards now (manifold_leak / rack_thermal_runaway), no longer "unsupported"
+        rig = Rig(st, ScenarioModel([{"family": "leak", "severity": "minor", "asset_query": "Row B"},
+                                     {"family": "fire_smoke", "severity": "minor", "asset_query": "rack_a1"}]))
+        rec = await rig.final(await rig.submit("coolant leak in row B and smoke at rack a1"))
+        assert rec["live"]["unsupported"] == []
+        assert {(i["kind"], i["target"]) for i in rec["live"]["injections"]} == {("manifold_leak", "p_hs_b"), ("rack_thermal_runaway", "rack_a1")}
+        # mixed request: a leak with a non-header selector is rejected with the reason, the supported pump fault is injected on the TCS duty pump (declared default)
+        rig2 = Rig(st, ScenarioModel([{"family": "leak", "severity": "severe", "asset_query": "rack_a1"}, {"family": "pump_failure", "severity": "moderate"}]))
         rec2 = await rig2.final(await rig2.submit("leak and the pump is dying"))
-        assert rec2["status"] == "READY" and [u["family"] for u in rec2["live"]["unsupported"]] == ["leak"]
+        assert rec2["status"] == "READY" and [r["code"] for r in rec2["live"]["rejected"]] == ["INVALID_SELECTOR"]
         inj = rec2["live"]["injections"][0]
         assert inj["kind"] == "pump_degradation" and inj["target"] == "pump_t1" and inj["resolution"] == "default"
         assert any("defaulted" in a for a in rec2["interpretation"]["compiler"]["assumptions"])
@@ -175,9 +175,11 @@ async def test_unsupported_families_listed_honestly_and_supported_ones_still_run
 
 
 @pytest.mark.asyncio
-async def test_only_the_six_supported_kinds_and_mapping_table():
-    from loopkeeper.physics.faults import SUPPORTED_KINDS as PHYS
-    assert set(SL.SUPPORTED_KINDS) == set(PHYS) and len(SL.SUPPORTED_KINDS) == 6
+async def test_only_the_supported_kinds_and_mapping_table():
+    from loopkeeper.physics.faults import HAZARD_KINDS_A, SUPPORTED_KINDS as PHYS
+    from loopkeeper.physics.hazards import HAZARD_KINDS
+    assert set(SL.SUPPORTED_KINDS) == set(PHYS) | set(HAZARD_KINDS_A) | set(HAZARD_KINDS) and len(SL.SUPPORTED_KINDS) == 11
+    assert all(len(t) <= SL.MAX_PARAMS for t in SL.PARAMS.values())
     assert set(SL.PARAMS) == set(SL.SUPPORTED_KINDS) and not set(SL.UNSUPPORTED_FAMILIES) & {"flow_restriction", "pump_failure", "overheating", "sensor_fault"}
     st = await _stack("run_t_scn_map", warmup_s=2.0)
     try:
@@ -194,18 +196,26 @@ async def test_only_the_six_supported_kinds_and_mapping_table():
         assert plan({"family": "overheating", "asset_query": "rack_a1", "cause_hint": "starved by a stuck valve"}).injections[0].kind == "valve_stuck"
         assert plan({"family": "sensor_fault", "asset_query": "p_01"}).rejected[0]["code"] == "INVALID_SELECTOR"       # exists, wrong type
         assert plan({"family": "flow_restriction", "asset_query": "somewhere"}).rejected[0]["code"] == "INVALID_SELECTOR"
-        assert plan({"family": "power_failure"}).unsupported[0]["family"] == "power_failure"
-        assert plan({"family": "heat_rejection_loss"}).unsupported
+        assert [(i.kind, i.target) for i in plan({"family": "power_failure"}).injections] == [("power_failure", "feed_a")]
+        assert [(i.kind, i.target) for i in plan({"family": "power_failure", "asset_query": "Row A"}).injections] == [("power_failure", "zone_a")]
+        assert [(i.kind, i.target) for i in plan({"family": "heat_rejection_loss"}).injections] == [("facility_heat_rejection_loss", "chiller_01")]
+        assert [(i.kind, i.target) for i in plan({"family": "leak", "asset_query": "Row A"}).injections] == [("manifold_leak", "p_hs_a")]
+        assert plan({"family": "leak", "asset_query": "rack_a1"}).rejected[0]["code"] == "INVALID_SELECTOR"
+        assert plan({"family": "fire_smoke", "asset_query": "rack_zz9"}).rejected[0]["code"] == "INVALID_SELECTOR"
+        assert plan({"family": "pump_failure", "cause_hint": "the standby pump is also dead"}).injections[0].kind == "cdu_pump_backup_failure"
         capped = SL.plan_injections(ScenarioProposalV1.model_validate({"summary": "x", "proposed_faults": [
             {"family": "pump_failure", "asset_query": "pump_t1"}, {"family": "pump_failure", "asset_query": "pump_t2"},
             {"family": "sensor_fault", "asset_query": "sn_flow_za"}, {"family": "sensor_fault", "asset_query": "sn_flow_zb"}]}),
             {"abstained": True}, cat, max_per_request=3)
         assert len(capped.injections) == 3 and capped.rejected[0]["code"] == "REQUEST_CAP"
         # every generated parameter is accepted by the real physics (all kinds x all severities, real bus, fresh engine each)
-        for kind, target in (("fouling", "p_hs_a"), ("strainer_blockage", "strainer_01"), ("valve_stuck", "valve_a1"),
-                             ("pump_degradation", "pump_t1"), ("sensor_drift", "sn_flow_za"), ("workload_spike", "rack_b1")):
+        for kind, target, extra in (("fouling", "p_hs_a", {}), ("strainer_blockage", "strainer_01", {}), ("valve_stuck", "valve_a1", {}),
+                                    ("pump_degradation", "pump_t1", {}), ("sensor_drift", "sn_flow_za", {}), ("workload_spike", "rack_b1", {}),
+                                    ("manifold_leak", "p_hs_a", {}), ("power_failure", "zone_a", {"racks": 1.0, "pumps": 0.0}),
+                                    ("power_failure", "feed_a", {"racks": 0.0, "pumps": 1.0}), ("rack_thermal_runaway", "rack_a1", {}),
+                                    ("cdu_pump_backup_failure", "pump_t1", {}), ("facility_heat_rejection_loss", "chiller_01", {})):
             for sev in SL.SEV_ORDER:
-                inj = SL.Injection(kind, target, sev, SL._params(kind, sev), "x", "exact")
+                inj = SL.Injection(kind, target, sev, SL._params(kind, sev, **extra), "x", "exact")
                 st2 = await _stack(f"run_t_scn_{kind}_{sev}", warmup_s=0.0)
                 try:
                     ack = await st2.eng.submit({"command_id": "c1", "kind": "test.inject_fault", "args": inj.args(True)}, principal="t", actor_type="operator")

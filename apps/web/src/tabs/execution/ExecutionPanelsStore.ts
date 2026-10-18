@@ -1,4 +1,5 @@
 import { create } from 'zustand';
+import { getLayout } from '../../features/responsive/layout';
 
 export interface ExecutionPanelsState {
   scenarioLibrary: boolean;
@@ -13,17 +14,23 @@ export interface ExecutionPanelsState {
   closeAll(): void;
 }
 
+type PanelName = 'scenarioLibrary' | 'runsPanel' | 'runInspector' | 'timelinePanel';
+const PANEL_NAMES: PanelName[] = ['scenarioLibrary', 'runsPanel', 'runInspector', 'timelinePanel'];
+
+/** Compact chrome (the layout model, features/responsive/layout.ts): three absolute panels cannot share a 390 px screen, so a phone shows one at a time. */
+const onPhone = () => typeof window !== 'undefined' && getLayout().compact;
+const only = (name: PanelName) => Object.fromEntries(PANEL_NAMES.map((n) => [n, n === name])) as Record<PanelName, boolean>;
+
 export const useExecutionPanels = create<ExecutionPanelsState>()((set) => ({
-  scenarioLibrary: true,
-  runsPanel: false,
-  runInspector: true,
-  timelinePanel: true,
+  ...(onPhone()
+    ? only('scenarioLibrary')
+    : { scenarioLibrary: true, runsPanel: false, runInspector: true, timelinePanel: true }),
   activeView: 'library',
-  togglePanel: (name) => set((s) => ({ [name]: !s[name] })),
-  setPanel: (name, visible) => set({ [name]: visible }),
+  togglePanel: (name) => set((s) => (onPhone() && !s[name] ? only(name) : { [name]: !s[name] })),
+  setPanel: (name, visible) => set(onPhone() && visible ? only(name) : { [name]: visible }),
   setActiveView: (activeView) => set({ activeView }),
   openAll: () =>
-    set({
+    set(onPhone() ? only('scenarioLibrary') : {
       scenarioLibrary: true,
       runsPanel: true,
       runInspector: true,

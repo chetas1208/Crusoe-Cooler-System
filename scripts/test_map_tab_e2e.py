@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""E2E verification script for LOOPKEEPER Map Tab using Playwright."""
+"""E2E verification script for Cruso Cooler System Map Tab using Playwright."""
 import os
 import sys
 import time
@@ -23,7 +23,7 @@ def run_map_tab_e2e():
     errors: list[str] = []
     console_logs: list[str] = []
 
-    print("=== STARTING LOOPKEEPER MAP TAB E2E TEST ===")
+    print("=== STARTING CRUSO COOLER SYSTEM MAP TAB E2E TEST ===")
 
     with sync_playwright() as p:
         browser = p.chromium.launch(

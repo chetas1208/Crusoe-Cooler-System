@@ -54,10 +54,7 @@ import './exec.css';
 
 import { useExecutionPanels } from './ExecutionPanelsStore';
 import { ScenarioLibrary } from './ScenarioLibrary';
-import { DodChips, DodRail, ScorecardHost } from '../../features/dod/Panels';
-import { CommunicationsDock } from '../../features/communications/CommunicationsPanel';
-import { CommunicationsLauncher } from '../../features/communications/Launcher';
-import { useCommunications } from '../../features/communications/communicationStore';
+import { PromptRail } from '../../features/dod/Panels';
 
 const useExecMonitor = () => usePlayer.getState().monitor;
 
@@ -76,12 +73,11 @@ export function ExecutionTab() {
   const selRun = useExec((s) => s.runs.find((r) => r.run_id === s.selectedId));
   const stamp = useExec((s) => s.topoStamp);
   const panels = useExecutionPanels();
-  const commsOpen = useCommunications((s) => s.open);
   // a stopped run is a replay whatever chip is lit
   const eff = mode === 'live' && isReplayOnly(selRun) && selRun ? 'replay' : mode;
 
   return (
-    <div className="ex" data-comms={commsOpen ? 'open' : 'closed'} data-timeline={panels.timelinePanel ? 'open' : 'closed'}>
+    <div className="ex" data-timeline={panels.timelinePanel ? 'open' : 'closed'}>
       {stamp?.source === 'unavailable' && selRun?.run_id === stamp.runId && (
         <div className="ex-void" role="status">
           <b>Topology unavailable for {stamp.runId}</b>
@@ -104,8 +100,6 @@ export function ExecutionTab() {
 
         {/* Reversible Panel Toggles */}
         <div style={{ display: 'flex', gap: 4, marginLeft: 12, borderLeft: '1px solid var(--line-2)', paddingLeft: 12, alignItems: 'center' }}>
-          <CommunicationsLauncher />
-          <DodChips />
           <button
             className="chip"
             data-active={panels.scenarioLibrary}
@@ -165,9 +159,7 @@ export function ExecutionTab() {
       {panels.runInspector && <RunInspectorPanel />}
       {panels.timelinePanel && <TimelinePanel />}
 
-      <DodRail />
-      <ScorecardHost />
-      <CommunicationsDock />
+      <PromptRail />
 
       {/* Notifications / Alerts */}
       {notice && (
@@ -490,7 +482,7 @@ function TimelinePanel() {
       const ratio = Math.max(0, Math.min(1, clickX / rect.width));
       const targetTick = Math.round(from + ratio * span);
       if (useExecMonitor()) {
-        useExec.getState().say('info', `Live monitor: tick ${fmtTick(targetTick)} is in the recorded event log, but this backend recorded no world frames, so the 3D world cannot be rewound. Hover a marker for its details.`);
+        useExec.getState().say('info', `Live monitor: tick ${fmtTick(targetTick)} is in the recorded event log. The live monitor follows the running simulation and cannot rewind the 3D world; open this run as a Replay to scrub it. Hover a marker for its details.`);
         return;
       }
       void seek(targetTick);

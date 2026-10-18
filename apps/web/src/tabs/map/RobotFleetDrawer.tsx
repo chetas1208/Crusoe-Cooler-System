@@ -66,6 +66,8 @@ export function RobotFleetDrawer({ collapsed, onToggleCollapse }: RobotFleetDraw
     return (
       <div
         className="map-drawer-collapsed panel"
+        data-panel="fleet"
+        data-inset="left"
         style={{
           width: 44,
           padding: '10px 4px',
@@ -101,7 +103,8 @@ export function RobotFleetDrawer({ collapsed, onToggleCollapse }: RobotFleetDraw
   return (
     <aside
       className="map-fleet-drawer panel"
-        data-inset="left"
+      data-panel="fleet"
+      data-inset="left"
       style={{
         width: 290,
         display: 'flex',

@@ -53,6 +53,8 @@ class Limits:
     approval_mode: str = "autonomous"
     approval_window_s: float = 20.0
     settle_grace_s: float = 90.0
+    reopen_cooldown_s: float = 600.0    # an escalated anchor is not re-opened for this long (sim s); afterwards a persisting fault opens a fresh incident
+    l3_requires_human: bool = True      # high-impact (L3) work is never run or auto-approved by the agent in ANY mode: an approval request goes to a person and the incident escalates (no env override; the engine enforces it again at mission commit)
     stuck_stage_s: float = 1500.0       # liveness guard: an open incident whose stage/status/evidence did not move for this long is escalated with a reason
 
 
@@ -163,7 +165,14 @@ class AgentContext:
             try:
                 self.command_count += 1
                 ack = await self.engine.submit(cmd)
-                return dict(ack or {}), v
+                ack = dict(ack or {})
+                if ack.get("durable") is False:
+                    if ack.get("accepted"):
+                        self.nondurable_acks = getattr(self, "nondurable_acks", 0) + 1
+                        log.warning("command %s applied but NOT yet durable (storage down)", cmd.get("command_id"))
+                    else:                                        # refused because evidence cannot be persisted: the caller sees a plain refusal
+                        log.info("command %s refused: storage down", cmd.get("command_id"))
+                return ack, v
             except Exception as e:  # transient engine error: resubmit with the SAME id (idempotent)
                 last = e
                 await asyncio.sleep(0)

@@ -74,7 +74,7 @@ def create_app(
                 await res
 
     app = FastAPI(
-        title="LOOPKEEPER API", version="1", openapi_url=f"{API_PREFIX}/openapi.json" if settings.expose_docs else None,
+        title="Cruso Cooler System API", version="1", openapi_url=f"{API_PREFIX}/openapi.json" if settings.expose_docs else None,
         docs_url=f"{API_PREFIX}/docs" if settings.expose_docs else None, redoc_url=None,
         lifespan=lifespan,
     )
@@ -87,7 +87,7 @@ def create_app(
     app.add_middleware(
         CORSMiddleware, allow_origins=list(settings.cors_origins), allow_origin_regex=settings.cors_origin_regex,
         allow_credentials=False, allow_methods=["GET", "HEAD", "POST", "OPTIONS"],
-        allow_headers=["Content-Type", "Authorization", "Accept"], max_age=600,
+        allow_headers=["Content-Type", "Authorization", "Accept", "Idempotency-Key"], max_age=600,
     )
     app.add_middleware(SecurityMiddleware, max_body_bytes=settings.max_body_bytes)
     # replay windows / topology are large, highly repetitive JSON (the v6 hall: ~21 MB of replay frames -> ~2 MB gzipped); WebSockets are not touched
@@ -95,6 +95,7 @@ def create_app(
     app.add_middleware(GZipMiddleware, minimum_size=2048, compresslevel=5)
 
     app.include_router(router, prefix=API_PREFIX)
+    from .health_detail import router as health_detail_router; app.include_router(health_detail_router, prefix=API_PREFIX)  # V12 ops: GET /health/detail (agent W)
     app.include_router(dod_router, prefix=API_PREFIX)             # V11 Definition of Done + team graph
     app.include_router(comms_router, prefix=API_PREFIX)           # V10 communications: typed runtime events, filters, replay-safe cursor
     app.include_router(nav_router, prefix=API_PREFIX)               # V7 navigation: graphs, reachability, route plan/commit/cancel, traffic
@@ -102,6 +103,13 @@ def create_app(
     app.include_router(scenario_requests_router, prefix=API_PREFIX) # V9 natural language scenario launcher
     app.include_router(asset_router)                               # /assets/sha256/{hash}: BEFORE the SPA /assets static mount below
     app.add_api_websocket_route(f"{API_PREFIX}/stream", stream_endpoint)
+
+    if settings.expose_docs:                                          # one schema, every spelling clients try (the SPA fallback must never answer these with HTML)
+        def _openapi() -> JSONResponse:
+            return JSONResponse(app.openapi())
+
+        for alias_path in ("/openapi.json", "/api/openapi.json"):
+            app.add_api_route(alias_path, _openapi, methods=["GET", "HEAD"], include_in_schema=False)
 
     dist_dir = Path(__file__).resolve().parents[4] / "apps" / "web" / "dist"
     if (dist_dir / "index.html").is_file():
@@ -115,14 +123,14 @@ def create_app(
         def favicon():
             return FileResponse(dist_dir / "favicon.svg")
 
-        @app.get("/", include_in_schema=False)
+        @app.api_route("/", methods=["GET", "HEAD"], include_in_schema=False)
         def root(request: Request):
             accept = request.headers.get("accept", "")
             if "text/html" in accept or "application/xhtml+xml" in accept or not accept:
                 return FileResponse(dist_dir / "index.html")
             return {"name": "loopkeeper-api", "api": API_PREFIX}
 
-        @app.get("/{full_path:path}", include_in_schema=False)
+        @app.api_route("/{full_path:path}", methods=["GET", "HEAD"], include_in_schema=False)
         def spa_fallback(request: Request, full_path: str):
             if full_path.startswith("api/") or full_path.startswith("api"):
                 raise StarletteHTTPException(status_code=404, detail="not found")
@@ -131,7 +139,7 @@ def create_app(
                 return FileResponse(target)
             return FileResponse(dist_dir / "index.html")
     else:
-        @app.get("/", include_in_schema=False)
+        @app.api_route("/", methods=["GET", "HEAD"], include_in_schema=False)
         def root() -> dict:
             return {"name": "loopkeeper-api", "api": API_PREFIX}
 
@@ -151,6 +159,7 @@ def create_app(
     async def invalid(request: Request, exc: RequestValidationError) -> JSONResponse:
         # never echo request input back (it may contain secrets); loc + message only
         detail = [{"loc": [str(x) for x in e.get("loc", ())], "msg": e.get("msg", "invalid")} for e in exc.errors()]
+        log.info("422 %s %s: %s", request.method, request.url.path, "; ".join(f"{'.'.join(d['loc'])}: {d['msg']}" for d in detail)[:300])
         if request.url.path.endswith("/commands"):  # frontend does res.json() as CommandAck regardless of status
             body = exc.body if isinstance(exc.body, dict) else {}
             cid = body.get("command_id") if isinstance(body.get("command_id"), str) else ""

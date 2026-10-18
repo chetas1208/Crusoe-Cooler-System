@@ -2,6 +2,11 @@ import { useEffect, useId, useMemo, useState, type CSSProperties, type ReactNode
 import { motion } from 'motion/react';
 import { useWorld } from '@loopkeeper/core/store';
 import { READING_META } from '@loopkeeper/core/contracts';
+import { Kbd, Stat } from './kit/Data';
+import { useRoving } from './kit/a11y';
+
+/* New design-system components live in ./kit/ (import from './kit/index'); legacy atoms below delegate to them. */
+export { Kbd, Stat };
 
 /* ───────── brand ───────── */
 
@@ -23,9 +28,10 @@ export function LogoMark({ size = 26 }: { size?: number }) {
 
 /* ───────── small atoms ───────── */
 
-export function Chip({ tone, children, sm, style, title }: { tone?: string; children: ReactNode; sm?: boolean; style?: CSSProperties; title?: string }) {
+export function Chip({ tone, children, sm, style, title, icon }: { tone?: string; children: ReactNode; sm?: boolean; style?: CSSProperties; title?: string; icon?: ReactNode }) {
   return (
     <span className={`chip${sm ? ' chip--sm' : ''}`} data-tone={tone} style={style} title={title}>
+      {icon && <span aria-hidden="true" style={{ display: 'inline-flex' }}>{icon}</span>}
       {children}
     </span>
   );
@@ -33,10 +39,6 @@ export function Chip({ tone, children, sm, style, title }: { tone?: string; chil
 
 export function Dot({ tone, pulse }: { tone?: string; pulse?: boolean }) {
   return <span className={`dot tone-${tone ?? 'nominal'}${pulse ? ' dot--pulse' : ''}`} />;
-}
-
-export function Kbd({ children }: { children: ReactNode }) {
-  return <span className="kbd">{children}</span>;
 }
 
 export function Eyebrow({ children, style }: { children: ReactNode; style?: CSSProperties }) {
@@ -47,29 +49,18 @@ export function Eyebrow({ children, style }: { children: ReactNode; style?: CSSP
   );
 }
 
-export function Segmented<T extends string>({ items, value, onChange, small, group }: { items: Array<{ id: T; label: ReactNode; hint?: string; disabled?: boolean }>; value: T; onChange: (v: T) => void; small?: boolean; group: string }) {
+export function Segmented<T extends string>({ items, value, onChange, small, group }: { items: Array<{ id: T; label: ReactNode; hint?: string; disabled?: boolean; aria?: string }>; value: T; onChange: (v: T) => void; small?: boolean; group: string }) {
+  const idx = Math.max(0, items.findIndex((i) => i.id === value));
+  const r = useRoving(items.length, idx, (i) => onChange(items[i].id), 'horizontal', (i) => !!items[i].disabled);
   return (
-    <div className={`seg${small ? ' seg--sm' : ''}`} role="tablist">
-      {items.map((it) => (
-        <button key={it.id} className="seg__item" role="tab" aria-selected={value === it.id} disabled={it.disabled} onClick={() => onChange(it.id)}>
+    <div className={`seg${small ? ' seg--sm' : ''}`} role="tablist" onKeyDown={r.onKeyDown}>
+      {items.map((it, i) => (
+        <button key={it.id} {...r.item(i)} className="seg__item" role="tab" aria-selected={value === it.id} aria-label={it.aria} title={it.aria} disabled={it.disabled} onClick={() => onChange(it.id)}>
           {value === it.id && <motion.span layoutId={`seg-${group}`} className="seg__thumb" transition={{ type: 'spring', stiffness: 520, damping: 38 }} />}
           <span style={{ position: 'relative', display: 'inline-flex', alignItems: 'center', gap: 8 }}>{it.label}</span>
           {it.hint && <span className="kbd" style={{ position: 'relative' }}>{it.hint}</span>}
         </button>
       ))}
-    </div>
-  );
-}
-
-export function Stat({ label, value, unit, tone, hint }: { label: string; value: ReactNode; unit?: string; tone?: string; hint?: ReactNode }) {
-  return (
-    <div className="stat">
-      <div className="stat__label">{label}</div>
-      <div className={`stat__value${tone ? ` tone-${tone}` : ''}`}>
-        {value}
-        {unit && <span className="stat__unit">{unit}</span>}
-      </div>
-      {hint && <div style={{ fontSize: 11, color: 'var(--t3)' }}>{hint}</div>}
     </div>
   );
 }

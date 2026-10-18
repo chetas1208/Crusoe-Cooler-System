@@ -157,8 +157,12 @@ export const FLOW_FRAG = /* glsl */ `
     float s = vS - uTime * uSpeed;
     float ph = fract(s / 0.85);
     float streak = smoothstep(0.0, 0.1, ph) * (1.0 - smoothstep(0.1, 0.62, ph));
-    float fres = pow(1.0 - clamp(dot(normalize(vN), normalize(vV)), 0.0, 1.0), 1.7);
-    vec3 col = uColor * (0.5 + 0.62 * streak) + uColor * fres * 0.55;
+    vec3 n = normalize(vN);
+    float fres = pow(1.0 - clamp(dot(n, normalize(vV)), 0.0, 1.0), 2.2);
+    // jacketed-pipe shading: a soft key from above-left in view space gives the tube its cylinder form, instead of a flat emissive colour
+    float diff = clamp(dot(n, normalize(vec3(-0.35, 0.8, 0.5))), 0.0, 1.0);
+    float shade = 0.34 + 0.78 * diff;
+    vec3 col = uColor * shade * (0.8 + 0.5 * streak) + uColor * fres * 0.22;
     float d = smoothstep(0.55, 0.0, abs(vS - uOccS) / 0.7);
     col = mix(col, vec3(0.30, 0.19, 0.10), d * uOcc * 0.85);
     col = mix(col, uAlert, uAlertAmt * (0.22 + 0.5 * fres));

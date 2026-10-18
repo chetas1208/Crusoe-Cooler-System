@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import json
+import os
 import time
 from dataclasses import dataclass, field
 from datetime import datetime, timezone
@@ -81,6 +82,7 @@ def now_iso() -> str:
 
 def load_cache(path: Path, ttl_s: float) -> Catalog | None:
     try:
+        path = Path(path)
         d = json.loads(path.read_text())
         age = time.time() - path.stat().st_mtime
         c = Catalog.from_json(d)
@@ -92,7 +94,10 @@ def load_cache(path: Path, ttl_s: float) -> Catalog | None:
 
 def save_cache(path: Path, cat: Catalog) -> None:
     try:
+        path = Path(path)
         path.parent.mkdir(parents=True, exist_ok=True)
-        path.write_text(json.dumps(cat.to_json(), indent=1, sort_keys=True) + "\n")
+        tmp = path.with_name(f"{path.name}.{os.getpid()}.tmp")           # atomic: concurrent workers never read a half-written catalog
+        tmp.write_text(json.dumps(cat.to_json(), indent=1, sort_keys=True) + "\n")
+        os.replace(tmp, path)
     except OSError:
         pass
